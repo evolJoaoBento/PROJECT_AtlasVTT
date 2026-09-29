@@ -7,7 +7,8 @@ import { DiceGrid } from './DiceGrid';
 import { DiceFormulaBar } from './DiceFormulaBar';
 import { DiceToastContainer } from './DiceToastContainer';
 import { SegmentedControl, type SegmentedOption } from '../../../packages/components/primitives/SegmentedControl';
-import { LabelTooltip } from '../../../packages/components/primitives/tooltip';
+import { openContextMenuGlobal } from '../../root/ContextMenuContext';
+import type { ContextMenuEntry } from '../context-menu/AtlasContextMenu';
 import type { DiceMode } from '../../../services/SettingsService';
 import type { DiceColor } from '../../../types/collectionSettingsTypes';
 
@@ -41,7 +42,7 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
     return counts;
   }, [picks]);
   const [diceColors, setDiceColors] = useState<DiceColor[]>([]);
-  const [pickColor, setPickColor] = useState<string | null>(null);
+
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const portalRef = useRef<HTMLDivElement>(null);
   const keepInView = useKeepInView(portalRef, isOpen, 'top', `${position.left},${position.top}`);
@@ -54,22 +55,53 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
 
   // ── Dice add / remove ────────────────────────
 
+  const addDie = useCallback((die: string, color: string | null): void => {
+    setPicks((prev) => [...prev, { die, color }]);
+  }, []);
+
+  const removeDie = useCallback((die: string): void => {
+    setPicks((prev) => {
+      const index = prev.findLastIndex((pick) => pick.die === die);
+      return index === -1 ? prev : prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  /** Click: a die in the pack's colour. */
   const handleAdd = useCallback((die: string, event: React.MouseEvent): void => {
     event.stopPropagation();
     event.preventDefault();
-    setPicks((prev) => [...prev, { die, color: pickColor }]);
-  }, [pickColor]);
+    addDie(die, null);
+  }, [addDie]);
 
+  /**
+   * Right-click: with physical dice and colours set up, the colours to add the
+   * die in, and removing one; otherwise it removes the last die of the type.
+   */
   const handleRemove = useCallback((die: string, event: React.MouseEvent): void => {
     event.preventDefault();
     event.stopPropagation();
-    // The last die of this type in the chosen colour, else the last of the type.
-    setPicks((prev) => {
-      let index = prev.findLastIndex((pick) => pick.die === die && pick.color === pickColor);
-      if (index === -1) index = prev.findLastIndex((pick) => pick.die === die);
-      return index === -1 ? prev : prev.filter((_, i) => i !== index);
-    });
-  }, [pickColor]);
+    if (mode !== 'physical' || diceColors.length === 0) {
+      removeDie(die);
+      return;
+    }
+    openContextMenuGlobal([
+      ...diceColors.map((entry): ContextMenuEntry => ({
+        type: 'item',
+        label: `${entry.name || entry.color} ${die}`,
+        leading: <span className="atlas-dice-color-dot" style={{ '--atlas-die-color': entry.color } as React.CSSProperties} />,
+        keepOpen: true,
+        onClick: () => addDie(die, entry.color),
+      })),
+      {
+        type: 'item',
+        label: `Remove a ${die}`,
+        icon: 'minus',
+        disabled: !picks.some((pick) => pick.die === die),
+        keepOpen: true,
+        onClick: () => removeDie(die),
+      },
+    ], { x: event.clientX, y: event.clientY });
+  }, [mode, diceColors, picks, addDie, removeDie]);
 
   // ── Roll & clear ─────────────────────────────
 
@@ -105,7 +137,6 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
     setMode(diceTool.getMode());
     const colors = diceTool.getDiceColors();
     setDiceColors(colors);
-    setPickColor((current) => (colors.some((entry) => entry.color === current) ? current : null));
     if (triggerRef?.current) {
       const rect = triggerRef.current.getBoundingClientRect();
       setPosition({ top: rect.top - 16, left: rect.left + rect.width / 2 });
@@ -121,6 +152,8 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
       const target = event.target as HTMLElement;
       if (triggerRef?.current?.contains(target)) return;
       if (target.closest('.atlas-dice-portal')) return;
+      // The colour menu a right-click opens on a die.
+      if (target.closest('.atlas-ctx-menu')) return;
       onToggle();
     };
 
@@ -153,23 +186,6 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
                   onChange={handleModeChange}
                   ariaLabel="Dice mode"
                 />
-              )}
-              {mode === 'physical' && diceColors.length > 0 && (
-                <div className="atlas-dice-colors" role="radiogroup" aria-label="Colour of the dice you add">
-                  {[{ id: 'pack', name: 'Pack colour', color: null as string | null }, ...diceColors].map((entry) => (
-                    <LabelTooltip key={entry.id} label={entry.color ? entry.name || entry.color : 'Pack colour'}>
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={pickColor === entry.color}
-                        aria-label={entry.color ? entry.name || entry.color : 'Pack colour'}
-                        className={cn('atlas-dice-color', !entry.color && 'atlas-dice-color--pack', pickColor === entry.color && 'atlas-active')}
-                        style={entry.color ? { '--atlas-die-color': entry.color } as React.CSSProperties : undefined}
-                        onClick={() => setPickColor(entry.color)}
-                      />
-                    </LabelTooltip>
-                  ))}
-                </div>
               )}
               <DiceGrid selection={selection} onAdd={handleAdd} onRemove={handleRemove} />
               <DiceFormulaBar selection={selection} onClear={handleClear} onRoll={handleRoll} />

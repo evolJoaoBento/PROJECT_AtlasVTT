@@ -27,10 +27,11 @@ used it goes back to Default.
 
 A collection can also give its dice colours of their own, on top of the pack:
 add them in **Collection Settings → Physical Dice → Dice colours**, as many as
-you like, each with a name. With the dice panel on Physical, pick a colour and
-then add dice; each die wears the colour it was added in, and the roll names it
-("Red d20: 14"). The pack's face sheets are painted over the colour, as over
-the pack's own. Right-click removes the last die of the chosen colour.
+you like, each with a name. With the dice panel on Physical, click a die to add
+it in the pack's colour, or right-click it to choose one of your colours (or
+remove a die). Each die wears the colour it was added in, and the roll and the
+roll log name it ("Red d20: 14"). The pack's face sheets are painted over the
+colour, as over the pack's own.
 
 ## Making a pack
 

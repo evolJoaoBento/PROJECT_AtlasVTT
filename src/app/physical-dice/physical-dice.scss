@@ -283,37 +283,38 @@
   align-self: flex-start;
 }
 
-// ── Dice panel: the colour new dice are added in ──────────────
-.atlas-dice-colors {
-  @include atlas-flex-row($gap: $spacing-s);
-  flex-wrap: wrap;
-  padding: 0 $spacing-xs;
+// ── Dice panel: a die's colour in its right-click menu ────────
+.atlas-dice-color-dot {
+  display: inline-block;
+  width: $icon-s;
+  height: $icon-s;
+  border-radius: $radius-full;
+  background: var(--atlas-die-color);
+  box-shadow: 0 0 0 $border-width-s color-mix(in oklch, var(--mono-100) $border-opacity-default, transparent);
 }
 
-.atlas-dice-color {
-  width: $icon-l;
-  height: $icon-l;
-  padding: 0;
-  margin: 0;
+// Roll log: the dice a roll threw in colours of their own, beside its formula.
+.atlas-dice-color-dot--small {
+  width: 8px;
+  height: 8px;
+}
+
+.dice-log-entry__colors {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: $spacing-xs;
+}
+
+.dice-log-entry__badge--colored::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: $spacing-xs;
   border-radius: $radius-full;
-  border: $border-width-l solid var(--background-primary);
-  background: var(--atlas-die-color, var(--background-modifier-hover));
-  box-shadow: 0 0 0 $border-width-s color-mix(in oklch, var(--mono-100) $border-opacity-default, transparent);
-  cursor: pointer;
-  transition: transform $transition-press $transition-ease-out;
-
-  &:active {
-    transform: scale(0.92);
-  }
-
-  // The pack's own colour: a split swatch.
-  &--pack {
-    background: linear-gradient(135deg, var(--background-primary) 50%, var(--text-muted) 50%);
-  }
-
-  &.atlas-active {
-    box-shadow: 0 0 0 $border-width-l var(--interactive-accent);
-  }
+  background: var(--atlas-die-color);
+  vertical-align: middle;
 }
 
 // Toast details: a die thrown in a colour of its own shows it.

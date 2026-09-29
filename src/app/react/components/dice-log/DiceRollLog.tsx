@@ -131,7 +131,7 @@ export function DiceRollLog({ isOpen, onClose }: DiceRollLogProps): React.ReactE
               key={result.id}
               result={result}
               isNew={index === 0 && history.length > prevLengthRef.current}
-              onRepeat={() => repeatRoll(result.formula, result.source)}
+              onRepeat={() => repeatRoll(result)}
             />
           ))
         )}

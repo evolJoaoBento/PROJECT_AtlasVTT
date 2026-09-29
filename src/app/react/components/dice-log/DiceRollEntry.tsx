@@ -87,6 +87,17 @@ export function DiceRollEntry({ result, isNew, onRepeat }: DiceRollEntryProps): 
         {/* Summary: formula = total */}
         <div className="dice-log-entry__summary">
           <span className="dice-log-entry__formula">{result.formula}</span>
+          {result.rolls.some((roll) => roll.color) && (
+            <span className="dice-log-entry__colors" aria-hidden="true">
+              {result.rolls.filter((roll) => roll.color).map((roll, i) => (
+                <span
+                  key={i}
+                  className="atlas-dice-color-dot atlas-dice-color-dot--small"
+                  style={{ '--atlas-die-color': roll.color } as React.CSSProperties}
+                />
+              ))}
+            </span>
+          )}
           <span className="dice-log-entry__eq">=</span>
           <span className="dice-log-entry__total">{result.total}</span>
         </div>
@@ -117,9 +128,11 @@ export function DiceRollEntry({ result, isNew, onRepeat }: DiceRollEntryProps): 
                   'dice-log-entry__badge',
                   roll.value === roll.max && 'dice-log-entry__badge--max',
                   roll.value === 1 && 'dice-log-entry__badge--min',
+                  roll.color && 'dice-log-entry__badge--colored',
                 )}
+                style={roll.color ? { '--atlas-die-color': roll.color } as React.CSSProperties : undefined}
               >
-                {roll.die}: {roll.value}
+                {roll.colorName ? `${roll.colorName} ` : ''}{roll.die}: {roll.value}
               </span>
             ))}
           </div>

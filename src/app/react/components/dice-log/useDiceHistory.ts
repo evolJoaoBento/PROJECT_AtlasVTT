@@ -11,7 +11,11 @@ const MAX_HISTORY = 20;
 export function useDiceHistory(
   getDiceTool: () => {
     rollDice: (formula: string, source?: DiceRollResult['source']) => DiceRollResult;
-    requestRoll?: (formula: string, source?: DiceRollResult['source']) => Promise<DiceRollResult | null>;
+    requestRoll?: (
+      formula: string,
+      source?: DiceRollResult['source'],
+      dieColors?: ReadonlyArray<string | null>,
+    ) => Promise<DiceRollResult | null>;
   } | null,
   storeActions?: {
     diceLog: DiceRollResult[];
@@ -21,7 +25,7 @@ export function useDiceHistory(
 ): {
   history: DiceRollResult[];
   clearHistory: () => void;
-  repeatRoll: (formula: string, source?: DiceRollResult['source']) => void;
+  repeatRoll: (result: DiceRollResult) => void;
 } {
   const [history, setHistory] = useState<DiceRollResult[]>(() =>
     storeActions?.diceLog ?? [],
@@ -64,10 +68,12 @@ export function useDiceHistory(
     document.dispatchEvent(new CustomEvent('atlas-dice-history-cleared'));
   }, [storeActions]);
 
-  const repeatRoll = useCallback((formula: string, source?: DiceRollResult['source']): void => {
+  /** Rolls the same formula again, from the same source, with each die in the colour it had. */
+  const repeatRoll = useCallback((result: DiceRollResult): void => {
     const diceTool = getDiceTool();
-    if (diceTool?.requestRoll) void diceTool.requestRoll(formula, source);
-    else diceTool?.rollDice(formula, source);
+    const dieColors = result.rolls.some((roll) => roll.color) ? result.rolls.map((roll) => roll.color ?? null) : undefined;
+    if (diceTool?.requestRoll) void diceTool.requestRoll(result.formula, result.source, dieColors);
+    else diceTool?.rollDice(result.formula, result.source);
   }, [getDiceTool]);
 
   return { history, clearHistory, repeatRoll };
