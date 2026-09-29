@@ -45,7 +45,7 @@ their own tokens:
 | Admission | Unguessable link, then the GM approves each join. |
 | Scene players see | The presented scene, as in the local player window (used from piece 2 on). |
 | Player page | Static build in this repo (`online-client/`), hosted e.g. on GitHub Pages; its URL is a setting. |
-| Join link | `<player page URL>#<gm-peer-id>`: the id is in the fragment, so it never reaches the page's host. |
+| Join link | `<player page URL>#id=<gm-peer-id>` plus, when the GM uses them, `&signal=` (custom signaling server) and `&ice=` (TURN servers), each base64url JSON. Everything is in the fragment, so it never reaches the page's host. |
 
 ## Architecture
 
@@ -153,10 +153,10 @@ A new "Online play" group in Atlas settings, stored in `AtlasSettings.online`:
 
 - **Start / stop online session:** a command, and a button beside the player
   window controls in the view actions menu.
-- **Online panel:** a popover from that button showing the join link (Copy),
-  pending requests with Allow and Deny, connected and dropped players with Kick,
-  and Stop session. It is built from existing primitives (panel radius, close
-  button, `ToolButton`) per CLAUDE.md.
+- **Online session modal:** an Obsidian modal with Atlas's native modal classes,
+  opened by the "Online session…" command, the view actions menu and the status
+  bar item. It shows the status, the join link (Copy), pending requests with
+  Allow and Deny, connected and dropped players with Kick, and Start or Stop.
 - **Join requests:** a persistent notice ("Anna wants to join — Allow / Deny")
   appears whatever view is focused, and it stays in the panel until answered.
 - **Status:** a status bar item while hosting ("Online · 3 players").
