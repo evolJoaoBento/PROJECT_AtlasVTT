@@ -269,3 +269,61 @@
     height: $icon-xs;
   }
 }
+
+.atlas-csm-dice-color-row {
+  @include atlas-flex-row($gap: $spacing-s);
+
+  .atlas-csm-input {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.atlas-csm-dice-add-color {
+  align-self: flex-start;
+}
+
+// ── Dice panel: the colour new dice are added in ──────────────
+.atlas-dice-colors {
+  @include atlas-flex-row($gap: $spacing-s);
+  flex-wrap: wrap;
+  padding: 0 $spacing-xs;
+}
+
+.atlas-dice-color {
+  width: $icon-l;
+  height: $icon-l;
+  padding: 0;
+  margin: 0;
+  border-radius: $radius-full;
+  border: $border-width-l solid var(--background-primary);
+  background: var(--atlas-die-color, var(--background-modifier-hover));
+  box-shadow: 0 0 0 $border-width-s color-mix(in oklch, var(--mono-100) $border-opacity-default, transparent);
+  cursor: pointer;
+  transition: transform $transition-press $transition-ease-out;
+
+  &:active {
+    transform: scale(0.92);
+  }
+
+  // The pack's own colour: a split swatch.
+  &--pack {
+    background: linear-gradient(135deg, var(--background-primary) 50%, var(--text-muted) 50%);
+  }
+
+  &.atlas-active {
+    box-shadow: 0 0 0 $border-width-l var(--interactive-accent);
+  }
+}
+
+// Toast details: a die thrown in a colour of its own shows it.
+.atlas-dice-toast__die-badge--colored::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: $spacing-xs;
+  border-radius: $radius-full;
+  background: var(--atlas-die-color);
+  vertical-align: middle;
+}

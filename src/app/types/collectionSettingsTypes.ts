@@ -80,4 +80,14 @@ export interface PhysicalDiceSettings {
   faceDetectionTolerance: number;
   highlightCompletedDice: boolean;
   completedDiceHighlightColor: string;
+  /** Colours dice can be added in, beside the pack's own. */
+  colors?: DiceColor[] | undefined;
+}
+
+/** A colour physical dice can be added in: a red set for damage, a blue d20 for advantage. */
+export interface DiceColor {
+  id: string;
+  name: string;
+  /** `#rrggbb` */
+  color: string;
 }

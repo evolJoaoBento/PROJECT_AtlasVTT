@@ -23,6 +23,15 @@ the dice's size, shadows, light and how they settle. Changes apply from the
 next roll. Deleting a pack moves its folder to the trash; a collection that
 used it goes back to Default.
 
+## Dice colours
+
+A collection can also give its dice colours of their own, on top of the pack:
+add them in **Collection Settings → Physical Dice → Dice colours**, as many as
+you like, each with a name. With the dice panel on Physical, pick a colour and
+then add dice; each die wears the colour it was added in, and the roll names it
+("Red d20: 14"). The pack's face sheets are painted over the colour, as over
+the pack's own. Right-click removes the last die of the chosen colour.
+
 ## Making a pack
 
 The quickest way is to start from Default, since its sheets already match the

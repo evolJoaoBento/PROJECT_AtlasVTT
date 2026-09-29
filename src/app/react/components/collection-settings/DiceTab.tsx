@@ -5,7 +5,9 @@
 
 import React, { useId } from 'react';
 import type { App } from 'obsidian';
-import type { PhysicalDiceSettings } from '../../../types/collectionSettingsTypes';
+import { Plus, Trash2 } from 'lucide-react';
+import type { DiceColor, PhysicalDiceSettings } from '../../../types/collectionSettingsTypes';
+import { Button } from '../../../packages/components/primitives/button';
 import { Select } from '../../../packages/components/primitives/Select';
 import { Slider } from '../../../packages/components/primitives/slider';
 import { resolvePhysicalDice } from '../../../physical-dice/physicalDiceSettings';
@@ -71,6 +73,64 @@ function ToggleField({ label, hint, checked, onChange }: ToggleFieldProps): Reac
   );
 }
 
+const SUGGESTED_COLORS = ['#d64545', '#3b82f6', '#22a06b', '#e0a526', '#8b5cf6', '#1f2937'];
+
+interface DiceColorsFieldProps {
+  colors: DiceColor[];
+  onChange: (colors: DiceColor[]) => void;
+}
+
+/** The colours dice can be added in: name and colour each, add and remove. */
+function DiceColorsField({ colors, onChange }: DiceColorsFieldProps): React.ReactElement {
+  const update = (index: number, partial: Partial<DiceColor>): void =>
+    onChange(colors.map((entry, i) => (i === index ? { ...entry, ...partial } : entry)));
+
+  const add = (): void => {
+    const used = new Set(colors.map((entry) => entry.color));
+    const color = SUGGESTED_COLORS.find((c) => !used.has(c)) ?? '#ffffff';
+    onChange([...colors, { id: `color-${Date.now().toString(36)}`, name: '', color }]);
+  };
+
+  return (
+    <div className="atlas-csm-field">
+      <label className="atlas-csm-label">Dice colours</label>
+      <p className="atlas-csm-hint">
+        Colours dice can be added in, beside the pack&apos;s own. Pick one in the dice panel, then add dice:
+        each die keeps its colour, and the roll names it.
+      </p>
+      {colors.map((entry, index) => (
+        <div key={entry.id} className="atlas-csm-dice-color-row">
+          <input
+            type="color"
+            className="atlas-csm-dice-color"
+            aria-label={`Colour of ${entry.name || `colour ${index + 1}`}`}
+            value={entry.color}
+            onChange={(e) => update(index, { color: e.target.value })}
+          />
+          <input
+            type="text"
+            className="atlas-csm-input"
+            placeholder="Name, e.g. Fire"
+            value={entry.name}
+            onChange={(e) => update(index, { name: e.target.value })}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove ${entry.name || 'colour'}`}
+            onClick={() => onChange(colors.filter((_, i) => i !== index))}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+      <Button variant="outline" className="atlas-csm-add-btn atlas-csm-dice-add-color" onClick={add}>
+        <Plus /> Add colour
+      </Button>
+    </div>
+  );
+}
+
 export function DiceTab({ app, collectionId, value, onChange }: DiceTabProps): React.ReactElement {
   const dice = resolvePhysicalDice(value);
   const { packs } = useDicePacks(app, collectionId);
@@ -99,6 +159,11 @@ export function DiceTab({ app, collectionId, value, onChange }: DiceTabProps): R
           labelledBy={packLabelId}
         />
       </div>
+
+      <DiceColorsField
+        colors={dice.colors ?? []}
+        onChange={(colors) => update({ colors: colors.map((entry) => ({ ...entry, name: entry.name.trimStart() })) })}
+      />
 
       <SliderField
         label="Dice size" hint="How big the dice are on the table."

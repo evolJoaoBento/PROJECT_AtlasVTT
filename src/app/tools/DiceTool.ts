@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import type { DiceMode, SettingsService } from '../services/SettingsService';
+import type { DiceColor } from '../types/collectionSettingsTypes';
 import type { PhysicalDiceTable } from '../physical-dice/PhysicalDiceTable';
 import { readTableDice, tableDiceFor } from '../physical-dice/physicalDiceValues';
 import { buildRollResult, parseDiceFormula, rollRandomDie } from './diceFormula';
@@ -12,6 +13,9 @@ export interface DiceRollResult {
     die: string; // e.g., "d20", "d6"
     value: number;
     max: number;
+    /** The colour the physical die was thrown in, when it had one of its own. */
+    color?: string;
+    colorName?: string;
   }>;
   modifiers: number;
   total: number;
@@ -66,7 +70,12 @@ export class DiceTool {
    * dice table, where the roll waits for the dice to be thrown. Resolves with
    * null when a physical roll is cancelled.
    */
-  public async requestRoll(formula: string, source?: DiceRollResult['source']): Promise<DiceRollResult | null> {
+  public async requestRoll(
+    formula: string,
+    source?: DiceRollResult['source'],
+    /** One colour per die of the formula, in formula order; null wears the pack's. */
+    dieColors?: ReadonlyArray<string | null>,
+  ): Promise<DiceRollResult | null> {
     const table = this.physicalTable;
     if (this.getMode() !== 'physical' || !table) return this.rollDice(formula, source);
 
@@ -74,8 +83,10 @@ export class DiceTool {
     const plan = parsed.sides.map(tableDiceFor);
     const types = plan.flatMap((dice) => dice ?? []);
     if (types.length === 0) return this.rollDice(formula, source);
+    // A percentile die's tens die and d10 share its colour.
+    const colors = plan.flatMap((dice, i) => (dice ?? []).map(() => dieColors?.[i] ?? null));
 
-    const faces = await table.roll(types, formula);
+    const faces = await table.roll(types, formula, colors);
     if (!faces) return null;
 
     // Dice the table has no model for (a d3, a d7) still get random numbers.
@@ -87,7 +98,20 @@ export class DiceTool {
       next += dice.length;
       return read;
     });
-    return this.publish(buildRollResult(formula, parsed, values), source);
+    const result = buildRollResult(formula, parsed, values);
+    const names = new Map(table.getDiceColors().map((entry) => [entry.color, entry.name || entry.color]));
+    result.rolls.forEach((roll, i) => {
+      const color = plan[i] ? dieColors?.[i] : null;
+      if (!color) return;
+      roll.color = color;
+      roll.colorName = names.get(color) ?? color;
+    });
+    return this.publish(result, source);
+  }
+
+  /** The colours dice can be added in, from the open map's collection. */
+  public getDiceColors(): DiceColor[] {
+    return this.physicalTable?.getDiceColors() ?? [];
   }
 
   public getMode(): DiceMode {

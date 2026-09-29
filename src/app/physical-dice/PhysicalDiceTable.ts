@@ -5,6 +5,7 @@ import { loadDicePack } from './dicePack';
 import { resolvePackRoot } from './dicePackStore';
 import { engineSettingsFor, resolvePhysicalDice } from './physicalDiceSettings';
 import { AssetService } from '../services/AssetService';
+import type { DiceColor, PhysicalDiceSettings } from '../types/collectionSettingsTypes';
 
 const SETTLED_DICE_LINGER_MS = 1500;
 
@@ -81,7 +82,7 @@ export class PhysicalDiceTable {
    * Puts `types` (`['d20', 'd6']`) on the table and resolves with the face each
    * came up on, in the same order, or null when the roll is cancelled.
    */
-  async roll(types: string[], formula: string): Promise<number[] | null> {
+  async roll(types: string[], formula: string, colors: ReadonlyArray<string | null> = []): Promise<number[] | null> {
     this.finish(null);
     let engine: DiceEngine;
     try {
@@ -91,7 +92,7 @@ export class PhysicalDiceTable {
       this.layout();
       engine.isViewActive = true;
       engine.clearAllDice();
-      for (const type of types) engine.createSingleDice(type);
+      types.forEach((type, i) => engine.createSingleDice(type, colors[i] ?? null));
     } catch (error) {
       reportDiceError('Could not set up the physical dice', error);
       this.clearTable();
@@ -130,13 +131,22 @@ export class PhysicalDiceTable {
     return engine;
   }
 
-  /** Takes the settings and pack of the map's collection, read afresh for every roll. */
-  private async applyCollection(engine: DiceEngine): Promise<void> {
+  /** The colours dice can be added in, from the open map's collection. */
+  getDiceColors(): DiceColor[] {
+    return this.collectionDice().dice.colors ?? [];
+  }
+
+  private collectionDice(): { collectionId: string | null; dice: PhysicalDiceSettings } {
     const mapPath = this.getMapPath();
     const assets = AssetService.getInstance(this.app);
     const collectionId = mapPath ? assets.getCollectionForMap(mapPath) : null;
     const dice = resolvePhysicalDice(collectionId ? assets.getCollectionSettings(collectionId).physicalDice : undefined);
+    return { collectionId, dice };
+  }
 
+  /** Takes the settings and pack of the map's collection, read afresh for every roll. */
+  private async applyCollection(engine: DiceEngine): Promise<void> {
+    const { collectionId, dice } = this.collectionDice();
     const root = await resolvePackRoot(this.app, collectionId, dice.pack);
     if (root !== this.packRoot) {
       const loaded = await loadDicePack(this.app, root);

@@ -22,6 +22,6 @@ export function resolvePhysicalDice(stored: Partial<PhysicalDiceSettings> | unde
 
 /** The engine's settings for a collection's physical dice; each call returns a fresh copy. */
 export function engineSettingsFor(dice: PhysicalDiceSettings): DiceSettings {
-  const { pack: _pack, ...values } = dice;
+  const { pack: _pack, colors: _colors, ...values } = dice;
   return { ...createDiceSettings(), ...values };
 }
