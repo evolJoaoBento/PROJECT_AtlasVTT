@@ -1,0 +1,78 @@
+import type { Channel, ClientTransport, HostTransport, PeerLink, TransportError, Unsubscribe } from './types';
+
+type Listener<T extends unknown[]> = (...args: T) => void;
+
+function listeners<T extends unknown[]>(): { add(cb: Listener<T>): Unsubscribe; emit(...args: T): void; clear(): void } {
+  const set = new Set<Listener<T>>();
+  return {
+    add: (cb) => { set.add(cb); return () => set.delete(cb); },
+    emit: (...args) => { for (const cb of [...set]) cb(...args); },
+    clear: () => set.clear(),
+  };
+}
+
+/** One end of an in-memory link; `peer` is the other end. */
+class MemoryLink implements PeerLink {
+  peer!: MemoryLink;
+  private closed = false;
+  private readonly messages = listeners<[Channel, unknown]>();
+  private readonly closes = listeners<[]>();
+
+  constructor(readonly remoteId: string) {}
+
+  send(channel: Channel, data: string | ArrayBuffer): void {
+    if (this.closed) return;
+    this.peer.messages.emit(channel, data);
+  }
+  onMessage(cb: (channel: Channel, data: unknown) => void): Unsubscribe { return this.messages.add(cb); }
+  onClose(cb: () => void): Unsubscribe { return this.closes.add(cb); }
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.peer.close();
+    this.closes.emit();
+    this.messages.clear();
+    this.closes.clear();
+  }
+}
+
+class MemoryHost implements HostTransport {
+  closed = false;
+  readonly connections = listeners<[PeerLink]>();
+  private readonly errors = listeners<[TransportError]>();
+  constructor(readonly id: string, private readonly remove: () => void) {}
+  onConnection(cb: (link: PeerLink) => void): Unsubscribe { return this.connections.add(cb); }
+  onError(cb: (error: TransportError) => void): Unsubscribe { return this.errors.add(cb); }
+  fail(error: TransportError): void { this.errors.emit(error); }
+  close(): void { this.closed = true; this.remove(); }
+}
+
+/** Hosts and clients in one process, for tests. */
+export class MemoryNetwork {
+  private readonly hosts = new Map<string, MemoryHost>();
+  private clients = 0;
+
+  host(id = `host-${this.hosts.size + 1}`): MemoryHost {
+    const host = new MemoryHost(id, () => this.hosts.delete(id));
+    this.hosts.set(id, host);
+    return host;
+  }
+
+  client(): ClientTransport {
+    return {
+      connect: async (hostId: string): Promise<PeerLink> => {
+        const host = this.hosts.get(hostId);
+        if (!host || host.closed) {
+          const error = Object.assign(new Error(`No host ${hostId}`), { code: 'unreachable' } as TransportError);
+          throw error;
+        }
+        const clientEnd = new MemoryLink(hostId);
+        const hostEnd = new MemoryLink(`client-${++this.clients}`);
+        clientEnd.peer = hostEnd;
+        hostEnd.peer = clientEnd;
+        host.connections.emit(hostEnd);
+        return clientEnd;
+      },
+    };
+  }
+}
