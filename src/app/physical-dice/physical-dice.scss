@@ -283,6 +283,56 @@
   align-self: flex-start;
 }
 
+// ── Dice panel: the colours a right-click shows over a die ────
+// A column of circles rising from the die's button, over the panel. Portaled to
+// document.body, so the portal itself carries .atlas-vtt-plugin.
+&.atlas-dice-color-picker {
+  position: fixed;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: $spacing-s;
+  padding: $spacing-s;
+  transform: translate(-50%, calc(-100% - #{$spacing-s}));
+  background: var(--background-primary);
+  border: $border-width-m solid color-mix(in oklch, var(--mono-100) $border-opacity-default, transparent);
+  border-radius: $radius-full;
+  box-shadow: $shadow-elevated;
+  animation: atlas-dice-color-picker-in 150ms $transition-ease-out both;
+
+  .atlas-dice-color {
+    width: $button-height-m;
+    height: $button-height-m;
+  }
+}
+
+@keyframes atlas-dice-color-picker-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% - #{$spacing-s})) translateY(6px); }
+  to { opacity: 1; transform: translate(-50%, calc(-100% - #{$spacing-s})); }
+}
+
+.atlas-dice-color {
+  flex-shrink: 0;
+  width: $icon-l;
+  height: $icon-l;
+  padding: 0;
+  margin: 0;
+  border-radius: $radius-full;
+  border: $border-width-l solid var(--background-primary);
+  background: var(--atlas-die-color);
+  box-shadow: 0 0 0 $border-width-s color-mix(in oklch, var(--mono-100) $border-opacity-default, transparent);
+  cursor: pointer;
+  transition: transform $transition-press $transition-ease-out;
+
+  &:hover {
+    transform: scale(1.08);
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
 // ── Dice panel: a die's colour in its right-click menu ────────
 .atlas-dice-color-dot {
   display: inline-block;

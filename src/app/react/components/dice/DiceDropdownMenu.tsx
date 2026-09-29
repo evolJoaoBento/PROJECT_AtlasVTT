@@ -7,8 +7,6 @@ import { DiceGrid } from './DiceGrid';
 import { DiceFormulaBar } from './DiceFormulaBar';
 import { DiceToastContainer } from './DiceToastContainer';
 import { SegmentedControl, type SegmentedOption } from '../../../packages/components/primitives/SegmentedControl';
-import { openContextMenuGlobal } from '../../root/ContextMenuContext';
-import type { ContextMenuEntry } from '../context-menu/AtlasContextMenu';
 import type { DiceMode } from '../../../services/SettingsService';
 import type { DiceColor } from '../../../types/collectionSettingsTypes';
 
@@ -42,6 +40,8 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
     return counts;
   }, [picks]);
   const [diceColors, setDiceColors] = useState<DiceColor[]>([]);
+  /** The die whose colours are showing, and where its button's top centre is. */
+  const [colorPicker, setColorPicker] = useState<{ die: string; x: number; y: number } | null>(null);
 
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const portalRef = useRef<HTMLDivElement>(null);
@@ -74,8 +74,8 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
   }, [addDie]);
 
   /**
-   * Right-click: with physical dice and colours set up, the colours to add the
-   * die in, and removing one; otherwise it removes the last die of the type.
+   * Right-click: with physical dice and colours set up, a column of the colours
+   * over the die, each adding it in that colour; otherwise it removes a die.
    */
   const handleRemove = useCallback((die: string, event: React.MouseEvent): void => {
     event.preventDefault();
@@ -84,24 +84,9 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
       removeDie(die);
       return;
     }
-    openContextMenuGlobal([
-      ...diceColors.map((entry): ContextMenuEntry => ({
-        type: 'item',
-        label: `${entry.name || entry.color} ${die}`,
-        leading: <span className="atlas-dice-color-dot" style={{ '--atlas-die-color': entry.color } as React.CSSProperties} />,
-        keepOpen: true,
-        onClick: () => addDie(die, entry.color),
-      })),
-      {
-        type: 'item',
-        label: `Remove a ${die}`,
-        icon: 'minus',
-        disabled: !picks.some((pick) => pick.die === die),
-        keepOpen: true,
-        onClick: () => removeDie(die),
-      },
-    ], { x: event.clientX, y: event.clientY });
-  }, [mode, diceColors, picks, addDie, removeDie]);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setColorPicker({ die, x: rect.left + rect.width / 2, y: rect.top });
+  }, [mode, diceColors, removeDie]);
 
   // ── Roll & clear ─────────────────────────────
 
@@ -132,6 +117,7 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
   useEffect(() => {
     if (!isOpen) {
       setPicks([]);
+      setColorPicker(null);
       return;
     }
     setMode(diceTool.getMode());
@@ -143,6 +129,23 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
     }
   }, [isOpen, triggerRef, diceTool]);
 
+  // ── Colour column: closes on a click elsewhere or Escape ──
+
+  useEffect(() => {
+    if (!colorPicker) return;
+    const close = (event: Event): void => {
+      if (event instanceof KeyboardEvent && event.key !== 'Escape') return;
+      if (event.target instanceof Element && event.target.closest('.atlas-dice-color-picker')) return;
+      setColorPicker(null);
+    };
+    document.addEventListener('mousedown', close, true);
+    document.addEventListener('keydown', close, true);
+    return () => {
+      document.removeEventListener('mousedown', close, true);
+      document.removeEventListener('keydown', close, true);
+    };
+  }, [colorPicker]);
+
   // ── Click-outside ────────────────────────────
 
   useEffect(() => {
@@ -152,8 +155,8 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
       const target = event.target as HTMLElement;
       if (triggerRef?.current?.contains(target)) return;
       if (target.closest('.atlas-dice-portal')) return;
-      // The colour menu a right-click opens on a die.
-      if (target.closest('.atlas-ctx-menu')) return;
+      // The colours a right-click shows over a die.
+      if (target.closest('.atlas-dice-color-picker')) return;
       onToggle();
     };
 
@@ -190,6 +193,28 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
               <DiceGrid selection={selection} onAdd={handleAdd} onRemove={handleRemove} />
               <DiceFormulaBar selection={selection} onClear={handleClear} onRoll={handleRoll} />
             </div>
+          </div>,
+          document.body,
+        )}
+
+      {isOpen && colorPicker &&
+        createPortal(
+          <div
+            className="atlas-dice-color-picker atlas-vtt-plugin"
+            role="group"
+            aria-label={`Add a ${colorPicker.die} in a colour`}
+            style={{ left: `${colorPicker.x}px`, top: `${colorPicker.y}px` }}
+          >
+            {diceColors.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className="atlas-dice-color"
+                aria-label={`${entry.name || entry.color} ${colorPicker.die}`}
+                style={{ '--atlas-die-color': entry.color } as React.CSSProperties}
+                onClick={() => addDie(colorPicker.die, entry.color)}
+              />
+            ))}
           </div>,
           document.body,
         )}
