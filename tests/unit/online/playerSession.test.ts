@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GmSession, type SessionPlayer } from '../../../src/app/online/GmSession';
 import { PlayerSession, RECONNECT_GIVE_UP_MS, type PlayerSessionState } from '../../../src/app/online/PlayerSession';
+import { decodeControl, encodeControl, type ControlMessage } from '../../../src/app/online/protocol';
 import { MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport';
+import type { ClientTransport, PeerLink } from '../../../src/app/online/transport/types';
 
 function setup() {
   const network = new MemoryNetwork();
@@ -45,7 +47,7 @@ describe('PlayerSession', () => {
   });
 
   it('reconnects after a drop without asking the GM again', async () => {
-    const { network, gm, requests, player } = setup();
+    const { gm, requests, player } = setup();
     player.start();
     await flush();
     gm.allow(requests[0]!.playerId);
@@ -56,7 +58,6 @@ describe('PlayerSession', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(player.state.status).toBe('admitted');
     expect(requests).toHaveLength(1);
-    expect(network).toBeDefined();
   });
 
   it('stops when the GM ends the session', async () => {
@@ -92,5 +93,127 @@ describe('PlayerSession', () => {
     expect(player.state.status).toBe('connecting');
     await vi.advanceTimersByTimeAsync(20_000);
     expect(player.state).toMatchObject({ status: 'lost', reason: 'unreachable' });
+  });
+
+  describe('with a hand-written transport', () => {
+    class FakeLink implements PeerLink {
+      readonly remoteId = 'gm';
+      sent: ControlMessage[] = [];
+      private messageCb: ((c: 'control' | 'assets', d: unknown) => void) | null = null;
+      private closeCb: (() => void) | null = null;
+      send(_c: 'control' | 'assets', data: string | ArrayBuffer): void {
+        const d = decodeControl(data);
+        if (d.kind === 'message') this.sent.push(d.message);
+      }
+      onMessage(cb: (c: 'control' | 'assets', d: unknown) => void): () => void { this.messageCb = cb; return () => {}; }
+      onClose(cb: () => void): () => void { this.closeCb = cb; return () => {}; }
+      close(): void {}
+      receive(m: ControlMessage): void { this.messageCb?.('control', encodeControl(m)); }
+      drop(): void { this.closeCb?.(); }
+    }
+
+    function fake() {
+      const links: FakeLink[] = [];
+      const state = { calls: 0, fail: false };
+      const transport: ClientTransport = {
+        connect: () => {
+          state.calls++;
+          if (state.fail) return Promise.reject(new Error('down'));
+          const link = new FakeLink();
+          links.push(link);
+          return Promise.resolve(link);
+        },
+      };
+      const changes: PlayerSessionState[] = [];
+      const player = new PlayerSession({
+        hostId: 'gm', name: 'A', playerKey: 'k', clientVersion: '1', transport, onChange: (s) => changes.push({ ...s }),
+      });
+      const admit = (link: FakeLink): void => link.receive({ v: 1, type: 'admitted', playerId: 'p1', session: { title: 'T' } });
+      return { links, state, player, changes, admit };
+    }
+
+    it('does not retry after being denied and ignores a late bye', async () => {
+      const { links, state, player } = fake();
+      player.start();
+      await flush();
+      links[0]!.receive({ v: 1, type: 'denied', reason: 'denied' });
+      links[0]!.receive({ v: 1, type: 'bye', reason: 'ended' });
+      links[0]!.drop();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(player.state).toMatchObject({ status: 'denied', reason: 'denied' });
+      expect(state.calls).toBe(1);
+    });
+
+    it('ignores messages after stop() and says goodbye', async () => {
+      const { links, player, changes, admit } = fake();
+      player.start();
+      await flush();
+      admit(links[0]!);
+      player.stop();
+      const count = changes.length;
+      links[0]!.receive({ v: 1, type: 'presence', players: [] });
+      expect(changes).toHaveLength(count);
+      expect(links[0]!.sent.at(-1)).toEqual({ v: 1, type: 'bye', reason: 'left' });
+    });
+
+    it('is lost/replaced when a newer tab takes over', async () => {
+      const { links, player, admit } = fake();
+      player.start();
+      await flush();
+      admit(links[0]!);
+      links[0]!.receive({ v: 1, type: 'bye', reason: 'replaced' });
+      expect(player.state).toMatchObject({ status: 'lost', reason: 'replaced' });
+    });
+
+    it('answers ping with pong carrying the same t', async () => {
+      const { links, player } = fake();
+      player.start();
+      await flush();
+      links[0]!.receive({ v: 1, type: 'ping', t: 42 });
+      expect(links[0]!.sent.at(-1)).toEqual({ v: 1, type: 'pong', t: 42 });
+    });
+
+    it('start() twice connects once', async () => {
+      const { state, player } = fake();
+      player.start();
+      player.start();
+      await flush();
+      expect(state.calls).toBe(1);
+    });
+
+    it('reconnects at 1, 2, 4, 8, 15, 15 s and stays connecting (never waiting)', async () => {
+      const { links, state, player, changes, admit } = fake();
+      player.start();
+      await flush();
+      admit(links[0]!);
+      state.fail = true;
+      const before = changes.length;
+      links[0]!.drop();
+      expect(state.calls).toBe(1);
+      let elapsed = 0;
+      let calls = 1;
+      for (const step of [1000, 2000, 4000, 8000, 15000, 15000]) {
+        await vi.advanceTimersByTimeAsync(step - 1);
+        expect(state.calls).toBe(calls);
+        await vi.advanceTimersByTimeAsync(1);
+        calls++;
+        expect(state.calls).toBe(calls);
+        elapsed += step;
+      }
+      expect(elapsed).toBe(45_000);
+      expect(changes.slice(before).map((c) => c.status)).not.toContain('waiting');
+    });
+
+    it('stop() during a pending retry cancels it', async () => {
+      const { links, state, player, admit } = fake();
+      player.start();
+      await flush();
+      admit(links[0]!);
+      state.fail = true;
+      links[0]!.drop();
+      player.stop();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(state.calls).toBe(1);
+    });
   });
 });

@@ -32,6 +32,7 @@ export interface PlayerSessionOptions {
 export class PlayerSession {
   state: PlayerSessionState = { status: 'connecting', playerId: null, title: null, players: [], reason: null };
   private link: PeerLink | null = null;
+  private started = false;
   private finished = false;
   private wasAdmitted = false;
   private attempt = 0;
@@ -41,6 +42,9 @@ export class PlayerSession {
   constructor(private readonly options: PlayerSessionOptions) {}
 
   start(): void {
+    if (this.started) return;
+    this.started = true;
+    this.update({ status: 'connecting' });
     void this.connect();
   }
 
@@ -53,7 +57,6 @@ export class PlayerSession {
   }
 
   private async connect(): Promise<void> {
-    this.update({ status: 'connecting' });
     let link: PeerLink;
     try {
       link = await this.options.transport.connect(this.options.hostId);
@@ -72,10 +75,11 @@ export class PlayerSession {
       v: 1, type: 'join', name: this.options.name, playerKey: this.options.playerKey,
       client: { kind: 'web', version: this.options.clientVersion },
     }));
-    if (this.state.status === 'connecting') this.update({ status: 'waiting' });
+    if (!this.wasAdmitted && this.state.status === 'connecting') this.update({ status: 'waiting' });
   }
 
   private receive(link: PeerLink, data: unknown): void {
+    if (this.finished || this.link !== link) return;
     const decoded = decodeControl(data);
     if (decoded.kind !== 'message') return;
     const message = decoded.message;

@@ -30,5 +30,6 @@ export interface HostTransport {
 }
 
 export interface ClientTransport {
+  /** Must settle (resolve or reject) within a bounded time; PlayerSession relies on it for its give-up. */
   connect(hostId: string): Promise<PeerLink>;
 }
