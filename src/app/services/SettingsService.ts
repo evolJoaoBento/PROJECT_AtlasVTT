@@ -2,7 +2,7 @@ import { App, Platform, normalizePath } from 'obsidian';
 import { availableHotkeys, canShareHotkey, type MapHotkeyId, type MapHotkeys } from '../keyboard/mapHotkeys';
 import { hotkeyOrigin, readHotkeyOverrides, resolveHotkeys, withHotkey, type HotkeyOrigin, type HotkeyOverrides } from '../keyboard/hotkeyOverrides';
 import { getDataFilePath } from '../utils/dataFileMigration';
-import { DEFAULT_ONLINE_SETTINGS, type OnlineSettings } from '../online/onlineSettings';
+import { DEFAULT_ONLINE_SETTINGS, resolveOnlineSettings, type OnlineSettings } from '../online/onlineSettings';
 import {
   DEFAULT_LASER_POINTER_SETTINGS,
   resolveLaserPointerSettings,
@@ -306,8 +306,7 @@ export class SettingsService {
   }
 
   getOnlineSettings(): OnlineSettings {
-    const online = this.settings.online ?? DEFAULT_ONLINE_SETTINGS;
-    return { ...online, signaling: { ...online.signaling }, turnServers: online.turnServers.map((server) => ({ ...server })) };
+    return resolveOnlineSettings(this.settings.online);
   }
 
   setOnlineSettings(settings: Partial<OnlineSettings>): void {

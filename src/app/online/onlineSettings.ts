@@ -35,10 +35,46 @@ export function parseTurnServers(text: string): TurnServer[] {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => line.split(/\s+/))
-    .filter(([urls]) => /^turns?:/.test(urls ?? ''))
+    .filter(([urls]) => /^turns?:/i.test(urls ?? ''))
     .map(([urls = '', username = '', credential = '']) => ({ urls, username, credential }));
 }
 
 export function formatTurnServers(servers: TurnServer[]): string {
   return servers.map((server) => `${server.urls} ${server.username} ${server.credential}`).join('\n');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** One TURN/TURNS relay if `value` is a well-formed entry, else null. Shared by join links and stored settings. */
+export function validTurnServer(value: unknown): TurnServer | null {
+  if (!isRecord(value)) return null;
+  const { urls, username, credential } = value;
+  if (typeof urls !== 'string' || urls.length > 512 || !/^turns?:/i.test(urls)) return null;
+  if (typeof username !== 'string' || username.length > 256) return null;
+  if (typeof credential !== 'string' || credential.length > 256) return null;
+  return { urls, username, credential };
+}
+
+/** Settings from stored data of any shape: every wrongly typed field falls back to its default. */
+export function resolveOnlineSettings(stored: unknown): OnlineSettings {
+  const defaults = DEFAULT_ONLINE_SETTINGS;
+  const source = isRecord(stored) ? stored : {};
+  const signaling = isRecord(source.signaling) ? source.signaling : {};
+  const port = signaling.port;
+  return {
+    signaling: {
+      mode: signaling.mode === 'custom' || signaling.mode === 'cloud' ? signaling.mode : defaults.signaling.mode,
+      host: typeof signaling.host === 'string' ? signaling.host : defaults.signaling.host,
+      port: typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65535 ? port : defaults.signaling.port,
+      path: typeof signaling.path === 'string' ? signaling.path : defaults.signaling.path,
+      key: typeof signaling.key === 'string' ? signaling.key : defaults.signaling.key,
+      secure: typeof signaling.secure === 'boolean' ? signaling.secure : defaults.signaling.secure,
+    },
+    turnServers: Array.isArray(source.turnServers)
+      ? source.turnServers.flatMap((entry) => validTurnServer(entry) ?? [])
+      : [],
+    playerPageUrl: typeof source.playerPageUrl === 'string' ? source.playerPageUrl : defaults.playerPageUrl,
+  };
 }

@@ -34,4 +34,26 @@ describe('join links', () => {
     expect(parseJoinFragment('#id=ok&signal=%%%')).toBeNull();
     expect(parseJoinFragment('#id=ok&ice=bm90IGpzb24')).toBeNull();
   });
+
+  const encode = (value: unknown): string => btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  it('refuses a signal that is not a plain server description', () => {
+    expect(parseJoinFragment(`#id=ok&signal=${encode([])}`)).toBeNull();
+    expect(parseJoinFragment(`#id=ok&signal=${encode({ host: 5 })}`)).toBeNull();
+    expect(parseJoinFragment(`#id=ok&signal=${encode({ host: 'a.example', debug: 3 })}`)).toBeNull();
+    expect(parseJoinFragment(`#id=ok&signal=${encode({ host: 'a.example', config: {} })}`)).toBeNull();
+    expect(parseJoinFragment(`#id=ok&signal=${encode({ host: 'a.example', port: 99999 })}`)).toBeNull();
+    expect(parseJoinFragment(`#id=ok&signal=${encode({ host: 'a.example', secure: 'yes' })}`)).toBeNull();
+  });
+
+  it('refuses malformed or non-relay ice entries', () => {
+    for (const ice of [[null], ['x'], [{ urls: 'http://x', username: 'u', credential: 'c' }], [{ urls: 'stun:attacker.example', username: 'u', credential: 'c' }], [{ urls: 'turn:a.example' }]]) {
+      expect(parseJoinFragment(`#id=ok&ice=${encode(ice)}`)).toBeNull();
+    }
+    expect(parseJoinFragment(`#id=ok&ice=${encode(Array.from({ length: 9 }, () => ({ urls: 'turn:a.example', username: 'u', credential: 'c' })))}`)).toBeNull();
+  });
+
+  it('will not build a link for an invalid host id', () => {
+    expect(() => buildJoinUrl('https://example.github.io/', 'bad id!', DEFAULT_ONLINE_SETTINGS)).toThrow();
+  });
 });

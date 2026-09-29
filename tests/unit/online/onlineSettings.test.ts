@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_ONLINE_SETTINGS, DEFAULT_STUN, formatTurnServers, parseTurnServers, peerServerOptions } from '../../../src/app/online/onlineSettings';
+import { DEFAULT_ONLINE_SETTINGS, DEFAULT_STUN, formatTurnServers, parseTurnServers, peerServerOptions, resolveOnlineSettings } from '../../../src/app/online/onlineSettings';
 
 describe('online settings', () => {
   it('uses the PeerJS cloud and public STUN by default', () => {
@@ -26,5 +26,28 @@ describe('online settings', () => {
       { urls: 'turns:b.example:5349', username: 'bob', credential: 'pw' },
     ]);
     expect(parseTurnServers(formatTurnServers(servers))).toEqual(servers);
+  });
+
+  it('reads relay prefixes case-insensitively', () => {
+    expect(parseTurnServers('TURN:a.example u c')).toEqual([{ urls: 'TURN:a.example', username: 'u', credential: 'c' }]);
+  });
+
+  it('falls back to defaults for missing or malformed stored settings', () => {
+    for (const stored of [undefined, 'x', { turnServers: 'x' }, { signaling: 5 }, { playerPageUrl: 3 }, {}]) {
+      expect(resolveOnlineSettings(stored)).toEqual(DEFAULT_ONLINE_SETTINGS);
+    }
+  });
+
+  it('keeps valid stored fields and drops invalid relays', () => {
+    const resolved = resolveOnlineSettings({
+      signaling: { mode: 'custom', host: 'h.example', port: 'x', path: '/p', key: 'k', secure: false },
+      turnServers: [null, { urls: 'http://x', username: 'u', credential: 'c' }, { urls: 'turn:a.example', username: 'u', credential: 'c' }],
+      playerPageUrl: 'https://p.example/',
+    });
+    expect(resolved).toEqual({
+      signaling: { mode: 'custom', host: 'h.example', port: 443, path: '/p', key: 'k', secure: false },
+      turnServers: [{ urls: 'turn:a.example', username: 'u', credential: 'c' }],
+      playerPageUrl: 'https://p.example/',
+    });
   });
 });

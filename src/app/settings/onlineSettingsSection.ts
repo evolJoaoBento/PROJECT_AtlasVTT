@@ -2,6 +2,15 @@ import type { SettingsService } from '../services/SettingsService';
 import { DEFAULT_ONLINE_SETTINGS, formatTurnServers, parseTurnServers } from '../online/onlineSettings';
 import type { AtlasSettingSection } from './settingSections';
 
+function isHttpUrl(text: string): boolean {
+  try {
+    const url = new URL(text);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function onlineSettingsSection(settings: SettingsService): AtlasSettingSection {
   const signaling = (): ReturnType<SettingsService['getOnlineSettings']>['signaling'] => settings.getOnlineSettings().signaling;
   const setSignaling = (partial: Partial<ReturnType<typeof signaling>>): void =>
@@ -28,7 +37,7 @@ export function onlineSettingsSection(settings: SettingsService): AtlasSettingSe
         render: (setting) => {
           setting
             .addText((text) => text.setPlaceholder('peer.example.org').setValue(signaling().host).onChange((host) => setSignaling({ host: host.trim() })))
-            .addText((text) => text.setPlaceholder('443').setValue(String(signaling().port)).onChange((port) => setSignaling({ port: Number(port) || 443 })))
+            .addText((text) => text.setPlaceholder('443').setValue(String(signaling().port)).onChange((port) => { const value = Number(port); if (Number.isInteger(value) && value >= 1 && value <= 65535) setSignaling({ port: value }); }))
             .addText((text) => text.setPlaceholder('/').setValue(signaling().path).onChange((path) => setSignaling({ path: path.trim() || '/' })));
         },
       },
@@ -57,7 +66,7 @@ export function onlineSettingsSection(settings: SettingsService): AtlasSettingSe
         render: (setting) => {
           setting.addText((text) => text
             .setValue(settings.getOnlineSettings().playerPageUrl)
-            .onChange((url) => settings.setOnlineSettings({ playerPageUrl: url.trim() })));
+            .onChange((url) => { if (isHttpUrl(url.trim())) settings.setOnlineSettings({ playerPageUrl: url.trim() }); }));
         },
       },
     ],
