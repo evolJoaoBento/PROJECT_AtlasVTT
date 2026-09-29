@@ -24,19 +24,50 @@ describe('MemoryTransport', () => {
     expect(atClient[0]![1]).toBeInstanceOf(ArrayBuffer);
   });
 
-  it('closes both ends once', async () => {
+  it('closes both ends once when client closes', async () => {
     const network = new MemoryNetwork();
     const host = network.host('gm');
     let hostLink: PeerLink | undefined;
     host.onConnection((link) => { hostLink = link; });
     const client = await network.client().connect('gm');
-    let closes = 0;
-    hostLink!.onClose(() => closes++);
-    client.onClose(() => closes++);
+    let hostCloses = 0;
+    let clientCloses = 0;
+    hostLink!.onClose(() => hostCloses++);
+    client.onClose(() => clientCloses++);
     client.close();
     client.close();
-    expect(closes).toBe(2);
+    expect(hostCloses).toBe(1);
+    expect(clientCloses).toBe(1);
     expect(() => client.send('control', 'late')).not.toThrow();
+  });
+
+  it('closes both ends once when host closes', async () => {
+    const network = new MemoryNetwork();
+    const host = network.host('gm');
+    let hostLink: PeerLink | undefined;
+    host.onConnection((link) => { hostLink = link; });
+    const client = await network.client().connect('gm');
+    let hostCloses = 0;
+    let clientCloses = 0;
+    hostLink!.onClose(() => hostCloses++);
+    client.onClose(() => clientCloses++);
+    host.close();
+    expect(hostCloses).toBe(1);
+    expect(clientCloses).toBe(1);
+    expect(() => client.send('control', 'late')).not.toThrow();
+  });
+
+  it('far end receives nothing after close', async () => {
+    const network = new MemoryNetwork();
+    const host = network.host('gm');
+    let hostLink: PeerLink | undefined;
+    host.onConnection((link) => { hostLink = link; });
+    const client = await network.client().connect('gm');
+    const messagesAtClient: Array<[string, unknown]> = [];
+    client.onMessage((channel, data) => messagesAtClient.push([channel, data]));
+    hostLink!.close();
+    hostLink!.send('control', 'should-not-arrive');
+    expect(messagesAtClient).toHaveLength(0);
   });
 
   it('refuses an unknown or closed host', async () => {

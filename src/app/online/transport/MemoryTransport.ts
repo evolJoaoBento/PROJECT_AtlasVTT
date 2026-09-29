@@ -38,23 +38,38 @@ class MemoryLink implements PeerLink {
 
 class MemoryHost implements HostTransport {
   closed = false;
+  private readonly hostSideLinks: MemoryLink[] = [];
   readonly connections = listeners<[PeerLink]>();
   private readonly errors = listeners<[TransportError]>();
   constructor(readonly id: string, private readonly remove: () => void) {}
   onConnection(cb: (link: PeerLink) => void): Unsubscribe { return this.connections.add(cb); }
   onError(cb: (error: TransportError) => void): Unsubscribe { return this.errors.add(cb); }
   fail(error: TransportError): void { this.errors.emit(error); }
-  close(): void { this.closed = true; this.remove(); }
+  registerLink(link: MemoryLink): void { this.hostSideLinks.push(link); }
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const link of this.hostSideLinks) {
+      link.close();
+    }
+    this.remove();
+  }
 }
 
 /** Hosts and clients in one process, for tests. */
 export class MemoryNetwork {
   private readonly hosts = new Map<string, MemoryHost>();
   private clients = 0;
+  private nextHostId = 1;
 
-  host(id = `host-${this.hosts.size + 1}`): MemoryHost {
-    const host = new MemoryHost(id, () => this.hosts.delete(id));
-    this.hosts.set(id, host);
+  host(id?: string): MemoryHost {
+    const hostId = id ?? `host-${this.nextHostId++}`;
+    const host = new MemoryHost(hostId, () => {
+      if (this.hosts.get(hostId) === host) {
+        this.hosts.delete(hostId);
+      }
+    });
+    this.hosts.set(hostId, host);
     return host;
   }
 
@@ -63,13 +78,16 @@ export class MemoryNetwork {
       connect: async (hostId: string): Promise<PeerLink> => {
         const host = this.hosts.get(hostId);
         if (!host || host.closed) {
-          const error = Object.assign(new Error(`No host ${hostId}`), { code: 'unreachable' } as TransportError);
-          throw error;
+          const error: TransportError = { code: 'unreachable', message: `No host ${hostId}` };
+          throw Object.assign(new Error(error.message), error);
         }
         const clientEnd = new MemoryLink(hostId);
         const hostEnd = new MemoryLink(`client-${++this.clients}`);
         clientEnd.peer = hostEnd;
         hostEnd.peer = clientEnd;
+        // The host sees the link before the client can subscribe, which is safe because the GM session
+        // sends nothing until the player's join arrives.
+        host.registerLink(hostEnd);
         host.connections.emit(hostEnd);
         return clientEnd;
       },
