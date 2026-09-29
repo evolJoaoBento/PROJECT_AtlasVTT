@@ -2,6 +2,7 @@ import { App, Platform, normalizePath } from 'obsidian';
 import { availableHotkeys, canShareHotkey, type MapHotkeyId, type MapHotkeys } from '../keyboard/mapHotkeys';
 import { hotkeyOrigin, readHotkeyOverrides, resolveHotkeys, withHotkey, type HotkeyOrigin, type HotkeyOverrides } from '../keyboard/hotkeyOverrides';
 import { getDataFilePath } from '../utils/dataFileMigration';
+import { DEFAULT_ONLINE_SETTINGS, type OnlineSettings } from '../online/onlineSettings';
 import {
   DEFAULT_LASER_POINTER_SETTINGS,
   resolveLaserPointerSettings,
@@ -35,6 +36,8 @@ export interface AtlasSettings {
   laserPointer: LaserPointerSettings;
   /** Game system presets the user saved, as stored; `SystemPresetService` validates them. */
   systemPresets: unknown[];
+  /** Hosting online sessions; nothing here is used until a session starts. */
+  online: OnlineSettings;
   localPlayerView: {
     // UI element visibility toggles
     showToolbar: boolean;
@@ -62,6 +65,7 @@ const DEFAULT_SETTINGS: AtlasSettings = {
   },
   laserPointer: DEFAULT_LASER_POINTER_SETTINGS,
   systemPresets: [],
+  online: DEFAULT_ONLINE_SETTINGS,
   localPlayerView: {
     // UI element visibility defaults
     showToolbar: false, // Hide toolbar by default in player view
@@ -298,6 +302,16 @@ export class SettingsService {
 
   setLaserPointerSettings(settings: Partial<LaserPointerSettings>): void {
     this.settings.laserPointer = resolveLaserPointerSettings({ ...this.settings.laserPointer, ...settings });
+    this.commit();
+  }
+
+  getOnlineSettings(): OnlineSettings {
+    const online = this.settings.online ?? DEFAULT_ONLINE_SETTINGS;
+    return { ...online, signaling: { ...online.signaling }, turnServers: online.turnServers.map((server) => ({ ...server })) };
+  }
+
+  setOnlineSettings(settings: Partial<OnlineSettings>): void {
+    this.settings.online = { ...this.getOnlineSettings(), ...settings };
     this.commit();
   }
 
