@@ -26,6 +26,12 @@ describe('online protocol', () => {
     expect(decodeControl(JSON.stringify({ v: 1, type: 'snapshot', scene: {} }))).toEqual({ kind: 'ignored' });
   });
 
+  it('ignores prototype keys and does not throw', () => {
+    expect(decodeControl(JSON.stringify({ v: 1, type: '__proto__' }))).toEqual({ kind: 'ignored' });
+    expect(decodeControl(JSON.stringify({ v: 1, type: 'constructor' }))).toEqual({ kind: 'ignored' });
+    expect(decodeControl(JSON.stringify({ v: 1, type: 'toString' }))).toEqual({ kind: 'ignored' });
+  });
+
   it('rejects malformed input', () => {
     expect(decodeControl('not json').kind).toBe('invalid');
     expect(decodeControl(42).kind).toBe('invalid');
@@ -39,8 +45,15 @@ describe('online protocol', () => {
     expect(decodeControl(big)).toEqual({ kind: 'invalid', reason: 'too-large' });
   });
 
+  it('rejects messages that are large in UTF-8 bytes even if under UTF-16 limit', () => {
+    // 'é' is 1 UTF-16 unit but 2 UTF-8 bytes; 131073 repetitions = 131073 UTF-16 units but 262146 UTF-8 bytes
+    const byteOversize = JSON.stringify({ v: 1, type: 'bye', reason: 'é'.repeat(131073) });
+    expect(decodeControl(byteOversize)).toEqual({ kind: 'invalid', reason: 'too-large' });
+  });
+
   it('normalizes player names and refuses empty ones', () => {
     expect(normalizePlayerName('  Anna   the\tBold  ')).toBe('Anna the Bold');
+    expect(normalizePlayerName('Jo\u0000hn')).toBe('John');
     expect(normalizePlayerName('Bob\u0000\u0007')).toBe('Bob');
     expect(normalizePlayerName('   ')).toBeNull();
     expect(normalizePlayerName(12)).toBeNull();
