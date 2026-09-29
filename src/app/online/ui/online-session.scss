@@ -19,8 +19,8 @@
 
 .atlas-online-modal__player {
   @include atlas-flex-row($gap: $spacing-s);
-  padding: $spacing-xs $spacing-s;
-  border-radius: $radius-m;
+  padding: $spacing-s;
+  border-radius: $radius-l;
   background: var(--background-secondary);
 }
 

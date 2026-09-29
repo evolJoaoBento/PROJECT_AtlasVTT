@@ -29,7 +29,7 @@ describe('OnlineSessionService', () => {
     const { svc } = service();
     await svc.start();
     expect(onlineSessionStore.getState()).toMatchObject({
-      status: 'hosting', peerId: 'gm-id', joinUrl: 'https://evoljoaobento.github.io/atlas-vtt/#id=gm-id',
+      status: 'hosting', peerId: 'gm-id', joinUrl: 'https://evoljoaobento.github.io/atlas-vtt/#id=gm-id', error: null,
     });
   });
 
@@ -83,5 +83,56 @@ describe('OnlineSessionService', () => {
     expect(onlineSessionStore.getState()).toMatchObject({
       status: 'hosting', error: 'Your relay (TURN) settings are too long for a join link — remove some.',
     });
+  });
+
+  it('ends in error and closes the host when the player page address is invalid', async () => {
+    const host = new MemoryNetwork().host('gm-id');
+    const closeSpy = vi.spyOn(host, 'close');
+    const svc = new OnlineSessionService(app, { getOnlineSettings: () => ({ ...DEFAULT_ONLINE_SETTINGS, playerPageUrl: 'foo' }) } as never, {
+      createHost: async () => host,
+      showRequest: () => ({ hide: () => {} }),
+    });
+    await expect(svc.start()).resolves.toBeUndefined();
+    expect(onlineSessionStore.getState()).toMatchObject({ status: 'error', error: expect.stringContaining('valid web address') });
+    expect(closeSpy).toHaveBeenCalled();
+    expect(svc.session).toBeNull();
+  });
+
+  it('ignores signaling errors after stop', async () => {
+    const { svc, host } = service();
+    await svc.start();
+    svc.stop();
+    host.fail({ code: 'network', message: 'late' });
+    expect(onlineSessionStore.getState()).toMatchObject({ status: 'idle', error: null });
+  });
+
+  it('closes a late host when stopped while starting', async () => {
+    const host = new MemoryNetwork().host('gm-id');
+    const closeSpy = vi.spyOn(host, 'close');
+    let resolve!: (h: typeof host) => void;
+    const svc = new OnlineSessionService(app, settings, {
+      createHost: () => new Promise((r) => { resolve = r; }),
+      showRequest: () => ({ hide: () => {} }),
+    });
+    const started = svc.start();
+    svc.stop();
+    resolve(host);
+    await started;
+    expect(closeSpy).toHaveBeenCalled();
+    expect(onlineSessionStore.getState().status).toBe('idle');
+    expect(svc.session).toBeNull();
+  });
+
+  it('does not report a late failure after stop', async () => {
+    let reject!: (e: unknown) => void;
+    const svc = new OnlineSessionService(app, settings, {
+      createHost: () => new Promise((_, r) => { reject = r; }),
+      showRequest: () => ({ hide: () => {} }),
+    });
+    const started = svc.start();
+    svc.stop();
+    reject(null);
+    await started;
+    expect(onlineSessionStore.getState().status).toBe('idle');
   });
 });
