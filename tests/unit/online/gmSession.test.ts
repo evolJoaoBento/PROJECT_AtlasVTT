@@ -21,19 +21,29 @@ async function player(network: MemoryNetwork): Promise<{ link: PeerLink; receive
   return { link, received, closed: () => isClosed };
 }
 
-function setup() {
+interface Harness {
+  network: MemoryNetwork;
+  session: GmSession;
+  requests: SessionPlayer[];
+  closedRequests: string[];
+  players: () => SessionPlayer[];
+  changes: () => number;
+}
+
+function setup(): Harness {
   const network = new MemoryNetwork();
   const requests: SessionPlayer[] = [];
   const closedRequests: string[] = [];
   let players: SessionPlayer[] = [];
+  let changes = 0;
   const session = new GmSession(network.host('gm'), {
     title: 'Vault',
     onJoinRequest: (p) => requests.push(p),
     onRequestClosed: (id) => closedRequests.push(id),
-    onPlayersChanged: (list) => { players = list; },
+    onPlayersChanged: (list) => { players = list; changes++; },
   });
   session.start();
-  return { network, session, requests, closedRequests, players: () => players };
+  return { network, session, requests, closedRequests, players: () => players, changes: () => changes };
 }
 
 describe('GmSession', () => {
@@ -99,7 +109,7 @@ describe('GmSession', () => {
     session.allow(requests[0]!.playerId);
     const tab2 = await player(network);
     tab2.link.send('control', join('Anna', 'key-a'));
-    expect(tab1.received.at(-1)).toMatchObject({ type: 'bye' });
+    expect(tab1.received.at(-1)).toMatchObject({ type: 'bye', reason: 'replaced' });
     expect(tab1.closed()).toBe(true);
     expect(session.getPlayers()).toHaveLength(1);
     expect(tab2.received[0]).toMatchObject({ type: 'admitted' });
@@ -187,5 +197,117 @@ describe('GmSession', () => {
     session.allow(requests[0]!.playerId);
     anna.link.send('control', encodeControl({ v: 1, type: 'bye', reason: 'x' }));
     expect(seen).toEqual(['in:Anna']);
+  });
+
+  it('does not let a gone player back in when the session is full', async () => {
+    const { network, session, requests } = setup();
+    const first = await player(network);
+    first.link.send('control', join('P0', 'key-0'));
+    session.allow(requests[0]!.playerId);
+    for (let i = 1; i < SESSION_LIMITS.maxPlayers; i++) {
+      const p = await player(network);
+      p.link.send('control', join(`P${i}`, `key-${i}`));
+      session.allow(requests[i]!.playerId);
+    }
+    first.link.close();
+    const newcomer = await player(network);
+    newcomer.link.send('control', join('New', 'key-new'));
+    session.allow(requests[SESSION_LIMITS.maxPlayers]!.playerId);
+
+    const back = await player(network);
+    back.link.send('control', join('P0', 'key-0'));
+    expect(back.received).toEqual([{ v: 1, type: 'denied', reason: 'full' }]);
+    expect(session.getPlayers().filter((p) => p.status === 'admitted')).toHaveLength(SESSION_LIMITS.maxPlayers);
+    expect(session.getPlayers().find((p) => p.name === 'P0')!.status).toBe('gone');
+  });
+
+  it('treats a kick as a removal, not a drop', async () => {
+    const { network, session, requests, changes } = setup();
+    const gone: string[] = [];
+    session.use({ onGone: (p) => gone.push(p.name) });
+    const anna = await player(network);
+    anna.link.send('control', join('Anna', 'key-a'));
+    session.allow(requests[0]!.playerId);
+    const before = changes();
+    session.kick(requests[0]!.playerId);
+    expect(gone).toEqual([]);
+    expect(changes() - before).toBe(1);
+    expect(session.getPlayers()).toEqual([]);
+  });
+
+  it('closes a request exactly once for allow, deny, full and withdrawal', async () => {
+    const { network, session, requests, closedRequests } = setup();
+    const a = await player(network);
+    a.link.send('control', join('A', 'key-a'));
+    session.allow(requests[0]!.playerId);
+    const b = await player(network);
+    b.link.send('control', join('B', 'key-b'));
+    session.deny(requests[1]!.playerId);
+    const c = await player(network);
+    c.link.send('control', join('C', 'key-c'));
+    c.link.close();
+    expect(closedRequests).toEqual([requests[0]!.playerId, requests[1]!.playerId, requests[2]!.playerId]);
+  });
+
+  it('closes a request once when allow finds the session full', async () => {
+    const { network, session, requests, closedRequests } = setup();
+    const waiting = await player(network);
+    waiting.link.send('control', join('Wait', 'key-w'));
+    for (let i = 0; i < SESSION_LIMITS.maxPlayers; i++) {
+      const p = await player(network);
+      p.link.send('control', join(`P${i}`, `key-${i}`));
+      session.allow(requests[i + 1]!.playerId);
+    }
+    session.allow(requests[0]!.playerId);
+    expect(waiting.received).toEqual([{ v: 1, type: 'denied', reason: 'full' }]);
+    expect(closedRequests.filter((id) => id === requests[0]!.playerId)).toEqual([requests[0]!.playerId]);
+    expect(closedRequests).toHaveLength(SESSION_LIMITS.maxPlayers + 1);
+  });
+
+  it('keeps the approved name when the same key rejoins', async () => {
+    const { network, session } = setup();
+    const first = await player(network);
+    first.link.send('control', join('Anna', 'key-a'));
+    const second = await player(network);
+    second.link.send('control', join('Mallory', 'key-a'));
+    expect(session.getPlayers()).toMatchObject([{ name: 'Anna', status: 'pending' }]);
+  });
+
+  it('limits open join requests', async () => {
+    const { network, requests } = setup();
+    for (let i = 0; i < SESSION_LIMITS.maxPendingRequests; i++) {
+      const p = await player(network);
+      p.link.send('control', join(`P${i}`, `key-${i}`));
+    }
+    const extra = await player(network);
+    extra.link.send('control', join('Extra', 'key-extra'));
+    expect(requests).toHaveLength(SESSION_LIMITS.maxPendingRequests);
+    expect(extra.received).toEqual([{ v: 1, type: 'denied', reason: 'full' }]);
+  });
+
+  it('ignores a second start and a start after stop', async () => {
+    const { network, session, requests } = setup();
+    session.start();
+    const anna = await player(network);
+    anna.link.send('control', join('Anna', 'key-a'));
+    session.allow(requests[0]!.playerId);
+    vi.advanceTimersByTime(SESSION_LIMITS.pingIntervalMs + 1);
+    expect(anna.received.filter((m) => m.type === 'ping')).toHaveLength(1);
+    session.stop();
+    session.start();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('never sends presence to a pending player', async () => {
+    const { network, session, requests } = setup();
+    const anna = await player(network);
+    anna.link.send('control', join('Anna', 'key-a'));
+    session.allow(requests[0]!.playerId);
+    const bob = await player(network);
+    bob.link.send('control', join('Bob', 'key-b'));
+    const cy = await player(network);
+    cy.link.send('control', join('Cy', 'key-c'));
+    session.allow(requests[2]!.playerId);
+    expect(bob.received).toEqual([]);
   });
 });

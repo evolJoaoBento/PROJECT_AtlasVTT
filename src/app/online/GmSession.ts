@@ -9,6 +9,7 @@ export const SESSION_LIMITS = {
   pingIntervalMs: 5_000,
   pingTimeoutMs: 15_000,
   maxPlayers: 12,
+  maxPendingRequests: 12,
   maxInvalidMessages: 3,
 } as const;
 
@@ -66,6 +67,7 @@ export class GmSession {
   constructor(private readonly transport: HostTransport, private readonly options: GmSessionOptions) {}
 
   start(): void {
+    if (this.stopped || this.stopTransport) return;
     this.stopTransport = this.transport.onConnection((link) => this.accept(link));
     this.pingTimer = window.setInterval(() => this.pingAll(), SESSION_LIMITS.pingIntervalMs);
   }
@@ -83,9 +85,9 @@ export class GmSession {
     const entry = this.entries.get(playerId);
     if (this.stopped || !entry || entry.player.status !== 'pending' || !entry.link) return;
     this.closeRequest(entry);
-    if (this.admittedCount() >= SESSION_LIMITS.maxPlayers) {
-      this.refuse(entry.link, 'full');
+    if (this.countStatus('admitted') >= SESSION_LIMITS.maxPlayers) {
       this.entries.delete(playerId);
+      this.refuse(this.release(entry), 'full');
       this.changed();
       return;
     }
@@ -97,7 +99,7 @@ export class GmSession {
     if (!entry || entry.player.status !== 'pending') return;
     this.closeRequest(entry);
     this.entries.delete(playerId);
-    if (entry.link) this.refuse(entry.link, 'denied');
+    this.refuse(this.release(entry), 'denied');
     this.changed();
   }
 
@@ -107,7 +109,7 @@ export class GmSession {
     if (!entry) return;
     this.closeRequest(entry);
     this.entries.delete(playerId);
-    if (entry.link) this.refuse(entry.link, 'kicked');
+    this.refuse(this.release(entry), 'kicked');
     this.changed();
     this.broadcastPresence();
   }
@@ -184,9 +186,12 @@ export class GmSession {
     const known = [...this.entries.values()].find((entry) => entry.playerKey === message.playerKey);
     if (known) {
       // Another tab of the same player, or a reconnect: the new link takes over.
+      if (known.player.status === 'gone' && this.countStatus('admitted') >= SESSION_LIMITS.maxPlayers) {
+        this.refuse(link, 'full');
+        return;
+      }
       const older = known.link;
       known.link = link;
-      known.player.name = name;
       state.entry = known;
       if (older && older !== link) {
         this.links.get(older)!.entry = null;
@@ -201,7 +206,7 @@ export class GmSession {
       return;
     }
 
-    if (this.admittedCount() >= SESSION_LIMITS.maxPlayers) {
+    if (this.countStatus('admitted') >= SESSION_LIMITS.maxPlayers || this.countStatus('pending') >= SESSION_LIMITS.maxPendingRequests) {
       this.refuse(link, 'full');
       return;
     }
@@ -270,7 +275,17 @@ export class GmSession {
     }
   }
 
-  private refuse(link: PeerLink, reason: DenyReason): void {
+  /** Detaches an entry from its connection so closing it is not seen as a drop. */
+  private release(entry: Entry): PeerLink | null {
+    const link = entry.link;
+    const state = link ? this.links.get(link) : undefined;
+    if (state) state.entry = null;
+    entry.link = null;
+    return link;
+  }
+
+  private refuse(link: PeerLink | null, reason: DenyReason): void {
+    if (!link) return;
     link.send('control', encodeControl({ v: 1, type: 'denied', reason }));
     link.close();
   }
@@ -281,8 +296,8 @@ export class GmSession {
     entry.requestTimer = null;
   }
 
-  private admittedCount(): number {
-    return [...this.entries.values()].filter((entry) => entry.player.status === 'admitted').length;
+  private countStatus(status: PlayerStatus): number {
+    return [...this.entries.values()].filter((entry) => entry.player.status === status).length;
   }
 
   private changed(): void {
