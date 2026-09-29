@@ -1,0 +1,79 @@
+/**
+ * The online play wire format. Shared with the web player page, so this file
+ * imports nothing: no Obsidian, no PIXI, no PeerJS.
+ */
+export const PROTOCOL_VERSION = 1;
+export const MAX_CONTROL_MESSAGE_BYTES = 256 * 1024;
+export const MAX_PLAYER_NAME_LENGTH = 40;
+
+export type DenyReason = 'denied' | 'kicked' | 'full' | 'version' | 'ended';
+const DENY_REASONS: readonly DenyReason[] = ['denied', 'kicked', 'full', 'version', 'ended'];
+
+export interface PresencePlayer {
+  playerId: string;
+  name: string;
+  connected: boolean;
+}
+
+export type ControlMessage =
+  | { v: 1; type: 'join'; name: string; playerKey: string; client: { kind: 'web' | 'obsidian'; version: string } }
+  | { v: 1; type: 'admitted'; playerId: string; session: { title: string } }
+  | { v: 1; type: 'denied'; reason: DenyReason }
+  | { v: 1; type: 'presence'; players: PresencePlayer[] }
+  | { v: 1; type: 'ping'; t: number }
+  | { v: 1; type: 'pong'; t: number }
+  | { v: 1; type: 'bye'; reason: string };
+
+export type Decoded =
+  | { kind: 'message'; message: ControlMessage }
+  | { kind: 'ignored' }
+  | { kind: 'version' }
+  | { kind: 'invalid'; reason: string };
+
+type Fields = Record<string, unknown>;
+
+const isString = (value: unknown, max = 1024): value is string => typeof value === 'string' && value.length <= max;
+const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const isRecord = (value: unknown): value is Fields => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Checks the fields of each known type; returns null when the shape is wrong. */
+const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
+  join: (m) => isString(m.name, 200) && isString(m.playerKey, 64) && m.playerKey.length > 0
+    && isRecord(m.client) && (m.client.kind === 'web' || m.client.kind === 'obsidian') && isString(m.client.version, 32),
+  admitted: (m) => isString(m.playerId, 64) && isRecord(m.session) && isString(m.session.title, 200),
+  denied: (m) => DENY_REASONS.includes(m.reason as DenyReason),
+  presence: (m) => Array.isArray(m.players) && m.players.length <= 64 && m.players.every((p) =>
+    isRecord(p) && isString(p.playerId, 64) && isString(p.name, 200) && typeof p.connected === 'boolean'),
+  ping: (m) => isNumber(m.t),
+  pong: (m) => isNumber(m.t),
+  bye: (m) => isString(m.reason, 200),
+};
+
+export function encodeControl(message: ControlMessage): string {
+  return JSON.stringify(message);
+}
+
+export function decodeControl(raw: unknown): Decoded {
+  if (typeof raw !== 'string') return { kind: 'invalid', reason: 'not-text' };
+  if (raw.length > MAX_CONTROL_MESSAGE_BYTES) return { kind: 'invalid', reason: 'too-large' };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { kind: 'invalid', reason: 'not-json' };
+  }
+  if (!isRecord(parsed) || typeof parsed.type !== 'string') return { kind: 'invalid', reason: 'no-type' };
+  if (parsed.v !== PROTOCOL_VERSION) return { kind: 'version' };
+  const validate = VALIDATORS[parsed.type as ControlMessage['type']];
+  if (!validate) return { kind: 'ignored' };
+  return validate(parsed)
+    ? { kind: 'message', message: parsed as unknown as ControlMessage }
+    : { kind: 'invalid', reason: `bad-${parsed.type}` };
+}
+
+/** A player's display name, cleaned up; null when nothing usable is left or it is too long. */
+export function normalizePlayerName(name: unknown): string | null {
+  if (typeof name !== 'string') return null;
+  const cleaned = name.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned.length > 0 && cleaned.length <= MAX_PLAYER_NAME_LENGTH ? cleaned : null;
+}
