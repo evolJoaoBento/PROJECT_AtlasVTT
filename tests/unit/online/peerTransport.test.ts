@@ -12,9 +12,25 @@ class FakeEmitter {
 class FakeConnection extends FakeEmitter {
   sent: unknown[] = [];
   closed = false;
-  constructor(public peer: string, public label: string, public metadata: unknown) { super(); }
+  opened = false;
+  constructor(
+    public peer: string,
+    public label: string,
+    public metadata: unknown,
+    public serialization = 'raw',
+    public reliable = true,
+  ) { super(); }
+  emit(event: string, ...args: unknown[]): void {
+    if (event === 'open') this.opened = true;
+    super.emit(event, ...args);
+  }
   send(data: unknown): void { this.sent.push(data); }
-  close(): void { if (!this.closed) { this.closed = true; this.emit('close'); } }
+  /** Like PeerJS: closing a connection that never opened emits nothing. */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    if (this.opened) this.emit('close');
+  }
 }
 
 const peers: FakePeer[] = [];
@@ -35,14 +51,23 @@ class FakePeer extends FakeEmitter {
 vi.mock('peerjs', () => ({ Peer: FakePeer }));
 
 const { createPeerHost, createPeerClient, LINK_OPEN_TIMEOUT_MS } = await import('../../../src/app/online/transport/PeerTransport');
+const { peerHostId, peerOptions, PEER_ID_PATTERN } = await import('../../../src/app/online/transport/peerOptions');
 
 afterEach(() => { peers.length = 0; vi.useRealTimers(); });
+
+async function openedHost(): Promise<{ peer: FakePeer; host: Awaited<ReturnType<typeof createPeerHost>> }> {
+  const pending = createPeerHost({ iceServers: [] });
+  const peer = peers[0]!;
+  peer.emit('open', peer.id);
+  return { peer, host: await pending };
+}
 
 describe('PeerTransport', () => {
   it('opens a host with a 128-bit id and pairs the two connections of a player', async () => {
     const pending = createPeerHost({ iceServers: [] });
     const peer = peers[0]!;
-    expect(peer.id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(peer.id).toMatch(PEER_ID_PATTERN);
+    expect(peer.id).toHaveLength(22);
     peer.emit('open', peer.id);
     const host = await pending;
 
@@ -122,10 +147,7 @@ describe('PeerTransport', () => {
 
   it('drops a half-paired player after the open timeout', async () => {
     vi.useFakeTimers();
-    const pending = createPeerHost({ iceServers: [] });
-    const peer = peers[0]!;
-    peer.emit('open', peer.id);
-    const host = await pending;
+    const { peer, host } = await openedHost();
     const links: unknown[] = [];
     host.onConnection((link) => links.push(link));
     const control = new FakeConnection('p1', 'control', { linkId: 'L1' });
@@ -135,20 +157,124 @@ describe('PeerTransport', () => {
     control.emit('open');
     await vi.advanceTimersByTimeAsync(LINK_OPEN_TIMEOUT_MS);
     expect(control.closed).toBe(true);
-    expect(assets.closed).toBe(true);
+    expect(assets.closed).toBe(true); // asked to close although it never opened
     assets.emit('open');
     expect(links).toHaveLength(0);
   });
 
-  it('reconnects signaling while hosting but never after close', async () => {
-    const pending = createPeerHost({ iceServers: [] });
-    const peer = peers[0]!;
-    peer.emit('open', peer.id);
-    const host = await pending;
+  it('reconnects signaling with backoff while hosting, and never after close', async () => {
+    vi.useFakeTimers();
+    const { peer, host } = await openedHost();
     peer.emit('disconnected');
+    expect(peer.reconnects).toBe(0);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(peer.reconnects).toBe(1);
+    peer.emit('disconnected'); // still down
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(peer.reconnects).toBe(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(peer.reconnects).toBe(2);
+    peer.emit('open', peer.id); // back: the backoff starts over
+    peer.emit('disconnected');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(peer.reconnects).toBe(3);
+    peer.emit('disconnected');
     host.close();
-    expect(() => peer.emit('disconnected')).not.toThrow();
+    peer.emit('disconnected');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(peer.reconnects).toBe(3);
+  });
+
+  it('reports a taken id once while reconnecting and stops retrying', async () => {
+    vi.useFakeTimers();
+    const { peer, host } = await openedHost();
+    const errors: string[] = [];
+    host.onError((error) => errors.push(error.code));
+    peer.emit('disconnected');
+    await vi.advanceTimersByTimeAsync(1000);
+    peer.emit('error', { type: 'unavailable-id', message: 'taken' });
+    peer.emit('error', { type: 'unavailable-id', message: 'taken' });
+    peer.emit('disconnected');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(errors).toEqual(['unavailable-id']);
     expect(peer.reconnects).toBe(1);
+  });
+
+  it('draws host ids PeerJS accepts', () => {
+    for (let i = 0; i < 2000; i++) expect(peerHostId()).toMatch(PEER_ID_PATTERN);
+  });
+
+  it('leaves unset server options to the PeerJS defaults', () => {
+    expect(peerOptions({ host: undefined, port: undefined, iceServers: [] })).toEqual({ config: { iceServers: [] } });
+    void createPeerHost({ host: undefined, path: '/p', iceServers: [] }).catch(() => undefined);
+    expect(peers[0]!.options).toEqual({ path: '/p', config: { iceServers: [] } });
+    expect('host' in (peers[0]!.options as object)).toBe(false);
+  });
+
+  it('rejects a host that never reaches the signaling server', async () => {
+    vi.useFakeTimers();
+    const pending = createPeerHost({ iceServers: [] });
+    const outcome = expect(pending).rejects.toMatchObject({ code: 'timeout' });
+    await vi.advanceTimersByTimeAsync(LINK_OPEN_TIMEOUT_MS);
+    await outcome;
+    expect(peers[0]!.destroyed).toBe(true);
+  });
+
+  it('replays what arrived before the link was handed out', async () => {
+    const { peer, host } = await openedHost();
+    const received: Array<[string, unknown]> = [];
+    host.onConnection((link) => { link.onMessage((channel, data) => received.push([channel, data])); });
+    const control = new FakeConnection('p1', 'control', { linkId: 'L1' });
+    const assets = new FakeConnection('p1', 'assets', { linkId: 'L1' });
+    peer.emit('connection', control);
+    peer.emit('connection', assets);
+    control.emit('open');
+    control.emit('data', 'join');
+    assets.emit('open');
+    expect(received).toEqual([['control', 'join']]);
+    control.emit('data', 'next');
+    expect(received).toEqual([['control', 'join'], ['control', 'next']]);
+  });
+
+  describe('host refuses', () => {
+    it('connections that are not raw and reliable', async () => {
+      const { peer } = await openedHost();
+      const json = new FakeConnection('p1', 'control', { linkId: 'L1' }, 'json');
+      const unreliable = new FakeConnection('p1', 'assets', { linkId: 'L2' }, 'raw', false);
+      peer.emit('connection', json);
+      peer.emit('connection', unreliable);
+      expect(json.closed).toBe(true);
+      expect(unreliable.closed).toBe(true);
+    });
+
+    it('a second connection for the same link and channel', async () => {
+      const { peer } = await openedHost();
+      const first = new FakeConnection('p1', 'control', { linkId: 'L1' });
+      const again = new FakeConnection('p1', 'control', { linkId: 'L1' });
+      peer.emit('connection', first);
+      peer.emit('connection', again);
+      expect(again.closed).toBe(true);
+      expect(first.closed).toBe(false);
+    });
+
+    it('halves that come from different peers', async () => {
+      const { peer } = await openedHost();
+      const control = new FakeConnection('p1', 'control', { linkId: 'L1' });
+      const assets = new FakeConnection('p2', 'assets', { linkId: 'L1' });
+      peer.emit('connection', control);
+      peer.emit('connection', assets);
+      expect(control.closed).toBe(true);
+      expect(assets.closed).toBe(true);
+    });
+
+    it('more than 32 unpaired links at once', async () => {
+      const { peer } = await openedHost();
+      const kept = Array.from({ length: 32 }, (_, i) => new FakeConnection(`p${i}`, 'control', { linkId: `L${i}` }));
+      kept.forEach((connection) => peer.emit('connection', connection));
+      const extra = new FakeConnection('px', 'control', { linkId: 'LX' });
+      peer.emit('connection', extra);
+      expect(extra.closed).toBe(true);
+      expect(kept.some((connection) => connection.closed)).toBe(false);
+    });
   });
 });
