@@ -13,6 +13,9 @@
 @use '../src/app/support/issue-report';
 @use './native-tooltips';
 
+// Notices live outside any Atlas view, so this file is imported at the root, not in the scope below.
+@import '../src/app/online/ui/online-session.scss';
+
 // Registered so `atlas-scrollbar-while-scrolling` can fade the thumb. At-rules
 // must stay at the root: inside the scope block below they would be invalid.
 @property --atlas-scrollbar-thumb {

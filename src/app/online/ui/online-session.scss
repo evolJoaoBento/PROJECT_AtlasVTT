@@ -1,0 +1,35 @@
+@use '../../../../styles/tokens' as *;
+@use '../../../../styles/mixins' as *;
+
+.atlas-online-modal__status { @include atlas-help-text; margin: 0 0 $spacing-m; }
+.atlas-online-modal__error { margin: 0 0 $spacing-m; color: var(--text-error); font-size: $font-ui-small; }
+
+.atlas-online-modal__link {
+  @include atlas-flex-row($gap: $spacing-s);
+  margin-bottom: $spacing-m;
+  input { @include atlas-text-input; flex: 1; font-family: var(--font-monospace); font-size: $font-ui-smaller; }
+}
+
+.atlas-online-modal__players {
+  @include atlas-flex-col($gap: $spacing-xs);
+  list-style: none;
+  margin: 0 0 $spacing-m;
+  padding: 0;
+}
+
+.atlas-online-modal__player {
+  @include atlas-flex-row($gap: $spacing-s);
+  padding: $spacing-xs $spacing-s;
+  border-radius: $radius-m;
+  background: var(--background-secondary);
+}
+
+.atlas-online-modal__dot { display: flex; color: var(--text-faint); svg { width: $icon-xs; height: $icon-xs; } }
+.atlas-online-modal__player--admitted .atlas-online-modal__dot { color: var(--color-green); }
+.atlas-online-modal__name { @include atlas-truncate; flex: 1; font-weight: $font-weight-medium; }
+.atlas-online-modal__state { font-size: $font-ui-smaller; color: var(--text-muted); }
+.atlas-online-modal__footer { display: flex; justify-content: flex-end; }
+
+// The join request notice lives in Obsidian's notice container, outside any Atlas view.
+.atlas-online-request { @include atlas-flex-col($gap: $spacing-s); }
+.atlas-online-request__actions { @include atlas-flex-row($gap: $spacing-s); }
