@@ -16,6 +16,13 @@ export interface PeerLink {
   readonly remoteId: string;
   /** Sending on a closed link does nothing. */
   send(channel: Channel, data: string | ArrayBuffer): void;
+  /** Bytes sent on `channel` that have not left this side yet; 0 once closed. */
+  bufferedAmount(channel: Channel): number;
+  /**
+   * Calls `cb` each time `channel`'s buffer drains to `threshold` bytes or less
+   * (WebRTC's `bufferedamountlow`). One threshold per channel: the last call sets it.
+   */
+  onDrain(channel: Channel, threshold: number, cb: () => void): Unsubscribe;
   onMessage(cb: (channel: Channel, data: unknown) => void): Unsubscribe;
   /** Called once, when either end closes. */
   onClose(cb: () => void): Unsubscribe;

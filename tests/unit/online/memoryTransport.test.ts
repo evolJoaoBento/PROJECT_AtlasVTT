@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport';
+import { MemoryLink, MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport';
 import type { PeerLink } from '../../../src/app/online/transport/types';
 
 describe('MemoryTransport', () => {
@@ -76,5 +76,54 @@ describe('MemoryTransport', () => {
     const host = network.host('gm');
     host.close();
     await expect(network.client().connect('gm')).rejects.toMatchObject({ code: 'unreachable' });
+  });
+
+  it('holds a channel, counts what waits and signals the drain', async () => {
+    const network = new MemoryNetwork();
+    const host = network.host('gm');
+    const hostLinks: MemoryLink[] = [];
+    host.onConnection((link) => hostLinks.push(link as MemoryLink));
+    const client = await network.client().connect('gm');
+    const received: Array<[string, unknown]> = [];
+    client.onMessage((channel, data) => received.push([channel, data]));
+    const gmEnd = hostLinks[0]!;
+    let drains = 0;
+    gmEnd.onDrain('assets', 10, () => drains++);
+
+    gmEnd.hold('assets');
+    gmEnd.send('assets', new ArrayBuffer(8));
+    gmEnd.send('assets', 'abcdef');
+    gmEnd.send('control', 'now');
+    expect(received).toEqual([['control', 'now']]);
+    expect(gmEnd.bufferedAmount('assets')).toBe(14);
+    expect(gmEnd.bufferedAmount('control')).toBe(0);
+
+    gmEnd.flush('assets', 1);
+    expect(received).toHaveLength(2);
+    expect(gmEnd.bufferedAmount('assets')).toBe(6);
+    expect(drains).toBe(1);
+
+    gmEnd.release('assets');
+    expect(received.at(-1)).toEqual(['assets', 'abcdef']);
+    expect(drains).toBe(1); // it was under the threshold already
+    gmEnd.send('assets', 'x');
+    expect(received.at(-1)).toEqual(['assets', 'x']);
+  });
+
+  it('drops what waits when the link closes', async () => {
+    const network = new MemoryNetwork();
+    const host = network.host('gm');
+    const hostLinks: MemoryLink[] = [];
+    host.onConnection((link) => hostLinks.push(link as MemoryLink));
+    const client = await network.client().connect('gm');
+    const received: unknown[] = [];
+    client.onMessage((_channel, data) => received.push(data));
+    const gmEnd = hostLinks[0]!;
+    gmEnd.hold('assets');
+    gmEnd.send('assets', 'waiting');
+    gmEnd.close();
+    expect(gmEnd.bufferedAmount('assets')).toBe(0);
+    gmEnd.flush('assets');
+    expect(received).toEqual([]);
   });
 });

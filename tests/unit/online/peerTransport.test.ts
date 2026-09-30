@@ -9,13 +9,28 @@ class FakeEmitter {
   emit(event: string, ...args: unknown[]): void { (this.handlers.get(event) ?? []).forEach((h) => h(...args)); }
 }
 
+/** Just enough of RTCDataChannel for flushing and pacing. */
+class FakeDataChannel {
+  bufferedAmount = 0;
+  bufferedAmountLowThreshold = 0;
+  private readonly lowListeners = new Set<() => void>();
+  addEventListener(_type: 'bufferedamountlow', cb: () => void): void { this.lowListeners.add(cb); }
+  removeEventListener(_type: 'bufferedamountlow', cb: () => void): void { this.lowListeners.delete(cb); }
+  /** Drains to `amount`; like a browser, fires `bufferedamountlow` when it falls to the threshold from above. */
+  drainTo(amount: number): void {
+    const above = this.bufferedAmount > this.bufferedAmountLowThreshold;
+    this.bufferedAmount = amount;
+    if (above && amount <= this.bufferedAmountLowThreshold) [...this.lowListeners].forEach((cb) => cb());
+  }
+}
+
 class FakeConnection extends FakeEmitter {
   sent: unknown[] = [];
   closed = false;
   opened = false;
   /** PeerJS's own send queue, then the data channel's. */
   bufferSize = 0;
-  dataChannel: { bufferedAmount: number } | null = { bufferedAmount: 0 };
+  dataChannel: FakeDataChannel | null = new FakeDataChannel();
   constructor(
     public peer: string,
     public label: string,
@@ -420,5 +435,57 @@ describe('PeerTransport', () => {
       expect(extra.closed).toBe(true);
       expect(kept.some((connection) => connection.closed)).toBe(false);
     });
+  });
+});
+
+describe('PeerTransport pacing', () => {
+  async function openedClient(): Promise<{ control: FakeConnection; assets: FakeConnection; link: Awaited<ReturnType<ReturnType<typeof createPeerClient>['connect']>> }> {
+    const pending = createPeerClient({ iceServers: [] }).connect('gm-id');
+    const peer = peers[0]!;
+    peer.emit('open', 'me');
+    const [control, assets] = peer.connections as [FakeConnection, FakeConnection];
+    control.emit('open');
+    assets.emit('open');
+    return { control, assets, link: await pending };
+  }
+
+  it('reports the bytes waiting on each channel and calls back when one drains', async () => {
+    const { control, assets, link } = await openedClient();
+    assets.dataChannel!.bufferedAmount = 2_000_000;
+    control.dataChannel!.bufferedAmount = 5;
+    expect(link.bufferedAmount('assets')).toBe(2_000_000);
+    expect(link.bufferedAmount('control')).toBe(5);
+
+    let drained = 0;
+    const stop = link.onDrain('assets', 256 * 1024, () => drained++);
+    expect(assets.dataChannel!.bufferedAmountLowThreshold).toBe(256 * 1024);
+    assets.dataChannel!.drainTo(300_000);
+    expect(drained).toBe(0);
+    assets.dataChannel!.drainTo(100_000);
+    expect(drained).toBe(1);
+
+    stop();
+    assets.dataChannel!.bufferedAmount = 2_000_000;
+    assets.dataChannel!.drainTo(0);
+    expect(drained).toBe(1);
+  });
+
+  it('reports nothing buffered and no drains once closed', async () => {
+    vi.useFakeTimers();
+    const { assets, link } = await openedClient();
+    let drained = 0;
+    link.onDrain('assets', 10, () => drained++);
+    assets.dataChannel!.bufferedAmount = 50;
+    link.close();
+    expect(link.bufferedAmount('assets')).toBe(0);
+    assets.dataChannel!.drainTo(0);
+    expect(drained).toBe(0);
+  });
+
+  it('does without a data channel that has no events', async () => {
+    const { assets, link } = await openedClient();
+    (assets as unknown as { dataChannel: unknown }).dataChannel = { bufferedAmount: 7 };
+    expect(link.bufferedAmount('assets')).toBe(7);
+    expect(() => link.onDrain('assets', 1, () => {})()).not.toThrow();
   });
 });
