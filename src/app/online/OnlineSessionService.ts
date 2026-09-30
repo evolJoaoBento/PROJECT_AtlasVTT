@@ -1,9 +1,11 @@
-import type { App } from 'obsidian';
+import { Notice, type App } from 'obsidian';
+import { presentedScene } from '../services/PresentedScene';
 import type { SettingsService } from '../services/SettingsService';
 import { GmSession, type SessionPlayer } from './GmSession';
 import { buildJoinUrl, parseJoinFragment } from './joinLink';
 import { onlineSessionStore, resetOnlineSessionStore } from './onlineSessionStore';
 import { peerServerOptions } from './onlineSettings';
+import { SceneBroadcaster, type PresentedSceneSource } from './scene/SceneBroadcaster';
 import { createPeerHost, type PeerServerOptions } from './transport/PeerTransport';
 import type { HostTransport } from './transport/types';
 import { showJoinRequestNotice } from './ui/joinRequestNotice';
@@ -14,6 +16,8 @@ const RELAY_TOO_LONG = 'Your relay (TURN) settings are too long for a join link 
 interface Deps {
   createHost?: (options: PeerServerOptions) => Promise<HostTransport>;
   showRequest?: (player: SessionPlayer, answer: (allow: boolean) => void) => { hide(): void };
+  /** Which scene players see; the plugin's `presentedScene` unless a test passes its own. */
+  presented?: PresentedSceneSource;
 }
 
 function errorText(error: unknown): string {
@@ -28,6 +32,8 @@ export class OnlineSessionService {
   }
 
   private current: GmSession | null = null;
+  private broadcaster: SceneBroadcaster | null = null;
+  private readonly presented: PresentedSceneSource;
   private generation = 0;
   private unsubscribeErrors: (() => void) | null = null;
   private readonly notices = new Map<string, { hide(): void }>();
@@ -37,6 +43,7 @@ export class OnlineSessionService {
   constructor(private readonly app: App, private readonly settings: SettingsService, deps: Deps = {}) {
     this.createHost = deps.createHost ?? createPeerHost;
     this.showRequest = deps.showRequest ?? showJoinRequestNotice;
+    this.presented = deps.presented ?? presentedScene;
     OnlineSessionService.instances.set(app, this);
   }
 
@@ -87,6 +94,11 @@ export class OnlineSessionService {
       if (generation === this.generation) onlineSessionStore.setState({ error: error.message });
     });
     session.start();
+    // Sends the presented scene, including one presented before the session started.
+    this.broadcaster = new SceneBroadcaster({
+      session, presented: this.presented, settings: this.settings, notify: (message) => new Notice(message),
+    });
+    this.broadcaster.start();
     this.current = session;
     onlineSessionStore.setState({
       status: 'hosting', peerId: host.id, joinUrl, error: linkWorks ? null : RELAY_TOO_LONG,
@@ -97,6 +109,8 @@ export class OnlineSessionService {
     this.generation++;
     this.unsubscribeErrors?.();
     this.unsubscribeErrors = null;
+    this.broadcaster?.stop();
+    this.broadcaster = null;
     this.current?.stop();
     this.current = null;
     this.notices.forEach((notice) => notice.hide());

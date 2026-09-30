@@ -1,20 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createStore } from 'zustand/vanilla';
 import { OnlineSessionService } from '../../../src/app/online/OnlineSessionService';
 import { onlineSessionStore, resetOnlineSessionStore } from '../../../src/app/online/onlineSessionStore';
 import { MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport';
 import { DEFAULT_ONLINE_SETTINGS } from '../../../src/app/online/onlineSettings';
-import { encodeControl } from '../../../src/app/online/protocol';
+import { decodeControl, encodeControl } from '../../../src/app/online/protocol';
+import { PresentedScene } from '../../../src/app/services/PresentedScene';
+import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
+import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
 
 const app = { vault: { getName: () => 'My Vault' } } as never;
-const settings = { getOnlineSettings: () => DEFAULT_ONLINE_SETTINGS } as never;
+const settings = {
+  getOnlineSettings: () => DEFAULT_ONLINE_SETTINGS,
+  getLocalPlayerViewSettings: () => ({
+    showGrid: true, showTokenHP: false, showTokenStress: false, showTokenNameplates: false, showWidgets: true, showInitiative: true,
+  }),
+  onChange: () => () => {},
+} as never;
 
 afterEach(() => { resetOnlineSessionStore(); vi.useRealTimers(); });
 
-function service(network = new MemoryNetwork()) {
+function service(network = new MemoryNetwork(), presented = new PresentedScene()) {
   const host = network.host('gm-id');
   const notices: Array<{ name: string; answer: (allow: boolean) => void; hidden: boolean }> = [];
   const svc = new OnlineSessionService(app, settings, {
     createHost: async () => host,
+    presented,
     showRequest: (player, answer) => {
       const notice = { name: player.name, answer, hidden: false };
       notices.push(notice);
@@ -75,7 +86,7 @@ describe('OnlineSessionService', () => {
 
   it('keeps hosting but warns when the relay settings are too long for a link', async () => {
     const turnServers = Array.from({ length: 9 }, (_, i) => ({ urls: `turn:t${i}.example.com:3478`, username: 'u', credential: 'c' }));
-    const svc = new OnlineSessionService(app, { getOnlineSettings: () => ({ ...DEFAULT_ONLINE_SETTINGS, turnServers }) } as never, {
+    const svc = new OnlineSessionService(app, { ...(settings as object), getOnlineSettings: () => ({ ...DEFAULT_ONLINE_SETTINGS, turnServers }) } as never, {
       createHost: async () => new MemoryNetwork().host('gm-id'),
       showRequest: () => ({ hide: () => {} }),
     });
@@ -134,5 +145,35 @@ describe('OnlineSessionService', () => {
     reject(null);
     await started;
     expect(onlineSessionStore.getState().status).toBe('idle');
+  });
+
+  it('sends the presented scene to joining players, even one presented before the session started', async () => {
+    const presented = new PresentedScene();
+    const tabs = createTabMetaStore();
+    const tabId = tabs.getState().addTab('maps/tavern.atlasmap', 'Tavern');
+    const store = createStore(() => ({
+      background: null, grid: null, isMapLoading: false, widgetValues: {}, initiativeTrackerOpen: false,
+      initiative: createDefaultInitiativeState(),
+      widgetSettings: { widgets: {}, globalVisible: true, position: 'top', scale: 1 },
+      objects: {
+        tokens: { t: { id: 't', kind: 'token', x: 10, y: 10, imagePath: 'a.png' } },
+        fog: {}, pins: {}, texts: {}, drawings: {}, walls: {}, lights: {}, audios: {},
+      },
+    }));
+    presented.present({ tabMetaStore: tabs, atlasStore: store, register: () => {} } as never, tabId);
+    const { svc, notices, network } = service(new MemoryNetwork(), presented);
+    await svc.start();
+    const link = await network.client().connect('gm-id');
+    const received: string[] = [];
+    link.onMessage((_channel, data) => {
+      const decoded = decodeControl(data);
+      if (decoded.kind === 'message') received.push(decoded.message.type);
+    });
+    link.send('control', encodeControl({ v: 1, type: 'join', name: 'Anna', playerKey: 'k', client: { kind: 'web', version: '1' } }));
+    notices[0]!.answer(true);
+    expect(received).toContain('scene-snapshot');
+    svc.stop();
+    presented.clear();
+    expect(received.filter((type) => type === 'scene-clear')).toEqual([]);
   });
 });
