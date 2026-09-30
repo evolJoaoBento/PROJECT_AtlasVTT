@@ -71,20 +71,43 @@ describe('applyPatch', () => {
     expect(next).not.toHaveProperty('walls');
   });
 
-  it('is prototype-safe: __proto__ as id does not pollute or crash', () => {
+  it('is prototype-safe: __proto__ as id does not pollute', () => {
     const previous = playerScene({ tokens: {} });
-    const patch: ScenePatchBody = {
-      set: {},
-      upsert: { tokens: { __proto__: playerToken() as unknown as Record<string, unknown> } },
-      remove: { tokens: ['__proto__'] },
-    };
+    // Use JSON.parse to create "__proto__" as an own key (not a prototype setter).
+    const patch = JSON.parse(
+      '{"set":{},"upsert":{"tokens":{"__proto__":{"x":100,"y":100,"size":1,"rotation":0,"layer":0,"image":"a","ring":null,"conditions":[],"name":null,"hp":null,"stress":null}}},"remove":{}}'
+    ) as ScenePatchBody;
     const next = applyPatch(previous, patch);
-    // Verify no prototype pollution
-    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
-    // Verify the token was upserted then removed (removed wins)
-    expect(Object.keys(next.tokens)).toEqual([]);
-    // Verify round-trip: apply nothing should equal itself
-    const unchanged = applyPatch(next, { set: {}, upsert: {}, remove: {} });
-    expect(JSON.parse(JSON.stringify(unchanged))).toEqual(JSON.parse(JSON.stringify(next)));
+    // Verify no prototype pollution: empty object should not inherit x from __proto__.
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+    // Verify __proto__ is stored as an own key.
+    expect(Object.getPrototypeOf(next.tokens)).toBe(Object.prototype);
+    expect(Object.hasOwn(next.tokens, '__proto__')).toBe(true);
+    expect(Object.keys(next.tokens)).toContain('__proto__');
+  });
+
+  it('handles upsert + remove on same id: upserts apply after removals', () => {
+    const previous = playerScene({ tokens: { t1: playerToken() } });
+    const patch = JSON.parse(
+      '{"set":{},"upsert":{"tokens":{"t1":{"x":200,"y":200,"size":1,"rotation":0,"layer":0,"image":"a","ring":null,"conditions":[],"name":null,"hp":null,"stress":null}}},"remove":{"tokens":["t1"]}}'
+    ) as ScenePatchBody;
+    const next = applyPatch(previous, patch);
+    // Upsert should win: t1 should exist with the new x value.
+    expect(Object.hasOwn(next.tokens, 't1')).toBe(true);
+    expect((next.tokens.t1 as Record<string, unknown>).x).toBe(200);
+  });
+
+  it('round-trips scenes with __proto__ via diffScenes', () => {
+    // Build two scenes via JSON.parse with __proto__ as own keys.
+    const prev = JSON.parse(
+      '{"sceneId":"s1","map":{"asset":null,"width":0,"height":0,"cellSize":70},"grid":null,"tokens":{"__proto__":{"x":100,"y":100,"size":1,"rotation":0,"layer":0,"image":"a","ring":null,"conditions":[],"name":null,"hp":null,"stress":null}},"fog":{},"texts":{},"drawings":{},"widgets":[],"initiative":null}'
+    ) as PlayerScene;
+    const next = JSON.parse(
+      '{"sceneId":"s1","map":{"asset":null,"width":0,"height":0,"cellSize":70},"grid":null,"tokens":{"__proto__":{"x":200,"y":100,"size":1,"rotation":0,"layer":0,"image":"a","ring":null,"conditions":[],"name":null,"hp":null,"stress":null}},"fog":{},"texts":{},"drawings":{},"widgets":[],"initiative":null}'
+    ) as PlayerScene;
+    const patch = diffScenes(prev, next);
+    expect(patch).not.toBeNull();
+    const result = applyPatch(prev, patch!);
+    expect(sameValue(result, next)).toBe(true);
   });
 });

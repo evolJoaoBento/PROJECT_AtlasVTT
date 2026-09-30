@@ -6,6 +6,11 @@ import { SCENE_FIELD_KEYS, SCENE_RECORD_KEYS, type PlayerScene, type ScenePatchB
 
 type AnyRecord = Record<string, unknown>;
 
+/** Set an own property safely to prevent prototype pollution via special keys like "__proto__". */
+function setOwn(target: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
 /** Deep equality of JSON values. */
 export function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -24,7 +29,9 @@ export function sameValue(a: unknown, b: unknown): boolean {
 function diffRecord(before: AnyRecord, after: AnyRecord): { upsert: AnyRecord; remove: string[] } {
   const upsert: AnyRecord = {};
   for (const id of Object.keys(after)) {
-    if (!Object.hasOwn(before, id) || !sameValue(before[id], after[id])) upsert[id] = after[id];
+    if (!Object.hasOwn(before, id) || !sameValue(before[id], after[id])) {
+      setOwn(upsert, id, after[id]);
+    }
   }
   const remove = Object.keys(before).filter((id) => !Object.hasOwn(after, id));
   return { upsert, remove };
@@ -53,7 +60,7 @@ export function diffScenes(previous: PlayerScene, next: PlayerScene): ScenePatch
   return changed ? patch : null;
 }
 
-/** `scene` with `patch` applied, as a new object. Fields the patch carries that this version does not know are ignored. */
+/** `scene` with `patch` applied, as a new object. Fields the patch carries that this version does not know are ignored. Removals are applied first, then upserts. */
 export function applyPatch(scene: PlayerScene, patch: ScenePatchBody): PlayerScene {
   const next = { ...scene } as unknown as AnyRecord;
   for (const key of SCENE_FIELD_KEYS) {
@@ -61,16 +68,21 @@ export function applyPatch(scene: PlayerScene, patch: ScenePatchBody): PlayerSce
   }
   for (const key of SCENE_RECORD_KEYS) {
     const upsert = Object.hasOwn(patch.upsert, key) ? (patch.upsert as AnyRecord)[key] as AnyRecord : null;
-    const remove = Object.hasOwn(patch.remove, key) ? patch.remove[key] ?? [] : [];
-    if (!upsert && remove.length === 0) continue;
+    const removeList = Object.hasOwn(patch.remove, key) ? patch.remove[key] ?? [] : [];
+    if (!upsert && removeList.length === 0) continue;
     // Build a new record object safely to prevent prototype pollution.
     const record: AnyRecord = {};
     const currentRecord = next[key] as AnyRecord;
+    const removeSet = new Set(removeList);
+    // Copy existing records, excluding removed ids.
     for (const id of Object.keys(currentRecord)) {
-      if (!remove.includes(id)) record[id] = currentRecord[id];
+      if (!removeSet.has(id)) setOwn(record, id, currentRecord[id]);
     }
+    // Apply upserts (these can reinsert a removed id).
     if (upsert) {
-      for (const id of Object.keys(upsert)) record[id] = upsert[id];
+      for (const id of Object.keys(upsert)) {
+        setOwn(record, id, upsert[id]);
+      }
     }
     next[key] = record;
   }
