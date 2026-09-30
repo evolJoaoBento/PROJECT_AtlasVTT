@@ -1,3 +1,4 @@
+import { Notice } from 'obsidian';
 import type { SettingsService } from '../services/SettingsService';
 import { DEFAULT_ONLINE_SETTINGS, formatTurnServers, parseTurnServers } from '../online/onlineSettings';
 import type { AtlasSettingSection } from './settingSections';
@@ -64,9 +65,16 @@ export function onlineSettingsSection(settings: SettingsService): AtlasSettingSe
         name: 'Player page',
         desc: 'The web page players open to join. Change it if you publish the page yourself.',
         render: (setting) => {
-          setting.addText((text) => text
-            .setValue(settings.getOnlineSettings().playerPageUrl)
-            .onChange((url) => { if (isHttpUrl(url.trim())) settings.setOnlineSettings({ playerPageUrl: url.trim() }); }));
+          setting.addText((text) => {
+            text
+              .setValue(settings.getOnlineSettings().playerPageUrl)
+              .onChange((url) => { if (isHttpUrl(url.trim())) settings.setOnlineSettings({ playerPageUrl: url.trim() }); });
+            // Once, when the field is left with a changed value, not on every keystroke.
+            text.inputEl.addEventListener('change', () => {
+              const url = text.inputEl.value.trim();
+              if (url && !isHttpUrl(url)) new Notice("That isn't a web address; the player page was not changed.");
+            });
+          });
         },
       },
     ],

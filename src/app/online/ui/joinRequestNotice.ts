@@ -8,6 +8,8 @@ export function showJoinRequestNotice(player: SessionPlayer, answer: (allow: boo
   body.createDiv({ cls: 'atlas-online-request__text' }).setText(`${player.name} wants to join your online session.`);
   const actions = body.createDiv({ cls: 'atlas-online-request__actions' });
   const notice = new Notice(fragment, 0);
+  // Obsidian hides a notice on any click: only Allow and Deny may close this one.
+  body.addEventListener('click', (event) => event.stopPropagation());
   const reply = (allow: boolean) => (event: MouseEvent): void => {
     event.stopPropagation();
     answer(allow);

@@ -133,6 +133,14 @@ if (typeof Element !== 'undefined') {
   }
 }
 
+// Obsidian gives fragments (createFragment) the child-creating helpers too.
+if (typeof DocumentFragment !== 'undefined') {
+  const prototype = DocumentFragment.prototype as unknown as Record<string, unknown>;
+  for (const name of ['createEl', 'createDiv', 'createSpan']) {
+    if (!(name in prototype)) prototype[name] = helpers[name];
+  }
+}
+
 // Obsidian's `node.win` / `node.doc` point at the window and document a node lives in (popouts included).
 if (typeof Node !== 'undefined' && !('win' in Node.prototype)) {
   Object.defineProperties(Node.prototype, {
