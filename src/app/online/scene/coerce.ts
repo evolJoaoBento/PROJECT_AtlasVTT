@@ -10,12 +10,14 @@ import { SCENE_LIMITS, SCENE_RANGES, type PlayerResource } from './sceneTypes';
 export type NumberRange = readonly [min: number, max: number];
 
 function clamped(value: number, range: NumberRange | undefined): number {
-  return range ? Math.min(range[1], Math.max(range[0], value)) : value;
+  if (!range) return value;
+  return Number.isNaN(value) ? range[0] : Math.min(range[1], Math.max(range[0], value));
 }
 
 /**
  * A finite number, from a number or a numeric string; else `fallback`. With a
- * `range` the result (fallback included) is clamped into it.
+ * `range` the result (fallback included) is clamped into it; a NaN fallback
+ * becomes the range's minimum.
  */
 export function finiteOr(value: unknown, fallback: number, range?: NumberRange): number {
   const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;

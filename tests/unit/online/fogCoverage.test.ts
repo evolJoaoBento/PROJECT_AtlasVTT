@@ -50,6 +50,7 @@ describe('coerce', () => {
     expect(finiteOrNull(1e12, SCENE_RANGES.stroke)).toBe(SCENE_RANGES.stroke[1]);
     expect(positiveOrNull(1e6, SCENE_RANGES.fontSize)).toBe(SCENE_RANGES.fontSize[1]);
     expect(finiteOrNull('x', SCENE_RANGES.stroke)).toBeNull();
+    expect(finiteOr('x', Number.NaN, SCENE_RANGES.gridSize)).toBe(SCENE_RANGES.gridSize[0]);
   });
 });
 
@@ -154,5 +155,39 @@ describe('FogCoverage', () => {
     const broken = rect(Number.NaN, 0, 100, 100);
     const coverage = coverageOf(broken, rect(0, 0, 200, 200));
     expect(coverage.isCovered(box(50, 50, 50, 50))).toBe(true);
+  });
+
+  it('erases with far-away lasso points quickly and correctly', () => {
+    const started = performance.now();
+    const coverage = coverageOf(
+      rect(0, 0, 400, 400),
+      lasso([{ x: 200, y: -1e12 }, { x: 1e12, y: 1e12 }, { x: -1e12, y: 1e12 }], { isErasing: true }),
+    );
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(coverage.isCovered(box(100, 100, 50, 50))).toBe(false);
+    const outside = coverageOf(
+      rect(0, 0, 400, 400),
+      lasso([{ x: 1e9, y: 1e9 }, { x: 2e9, y: 1e9 }, { x: 2e9, y: 2e9 }], { isErasing: true }),
+    );
+    expect(outside.isCovered(box(100, 100, 50, 50))).toBe(true);
+  });
+
+  it('handles a huge brush with many points quickly and correctly', () => {
+    const points = Array.from({ length: 3000 }, (_, i) => ({ x: (i * 37) % 10_000, y: (i * 91) % 2_000 }));
+    const started = performance.now();
+    const erased = coverageOf(rect(0, 0, 10_000, 2_000), brush(points, 1e6, { isErasing: true }));
+    const painted = coverageOf(brush(points, 1e6));
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(erased.isCovered(box(100, 100, 50, 50))).toBe(false);
+    expect(painted.isCovered(box(100, 100, 50, 50))).toBe(true);
+    const far = coverageOf(rect(0, 0, 400, 400), brush([{ x: 5e6, y: 5e6 }, { x: 6e6, y: 5e6 }], 50, { isErasing: true }));
+    expect(far.isCovered(box(100, 100, 50, 50))).toBe(true);
+  });
+
+  it('keeps simplified brush strokes conservative', () => {
+    const wobble = Array.from({ length: 200 }, (_, i) => ({ x: i * 2, y: 100 + (i % 2) * 0.5 }));
+    const painted = coverageOf(brush(wobble, 20));
+    expect(painted.isCovered(box(40, 90, 300, 20))).toBe(true);
+    expect(painted.isCovered(box(40, 70, 300, 20))).toBe(false);
   });
 });

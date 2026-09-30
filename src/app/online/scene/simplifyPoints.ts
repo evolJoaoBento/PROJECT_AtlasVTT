@@ -67,8 +67,8 @@ const roundToTenth = (value: number): number => Math.round(value * 10) / 10;
 
 /**
  * Points ready to send: finite, moved by the offset, clamped to the wire's
- * coordinate range, simplified to 1 world pixel, rounded to 0.1 px and at most `SCENE_LIMITS.points` of them (the
- * tolerance doubles until they fit).
+ * coordinate range, simplified to 1 world pixel, rounded to 0.1 px and at
+ * most `SCENE_LIMITS.points` of them (the tolerance doubles until they fit).
  */
 export function wirePoints(points: unknown, offsetX = 0, offsetY = 0): ScenePoint[] {
   const finite = finitePoints(points, offsetX, offsetY).map((point) => ({ x: withinWorld(point.x), y: withinWorld(point.y) }));

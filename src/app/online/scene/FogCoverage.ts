@@ -10,7 +10,7 @@ import { calculateOperationBounds } from '../../pixi/fog/fogRenderUtils';
 import type { FogOperation } from '../../types/fogTypes';
 import { finiteOr } from './coerce';
 import { sortedByOrder, type ScenePoint } from './sceneTypes';
-import { distanceSqToSegment, finitePoints } from './simplifyPoints';
+import { distanceSqToSegment, finitePoints, simplifyPoints } from './simplifyPoints';
 
 export const FOG_CELL_SIZE = 8;
 /** Beyond this many cells the cell size doubles, so a huge fogged area stays cheap. */
@@ -124,10 +124,17 @@ export class FogCoverage {
    * radius of one segment; erase clears a cell whose centre lies within the
    * radius plus half a cell diagonal of any segment.
    */
-  private fillBrush(points: ScenePoint[], radius: number, value: number): void {
+  private fillBrush(rawPoints: ScenePoint[], brushRadius: number, value: number): void {
+    if (!(brushRadius > 0)) return;
+    // Simplifying moves the stroke by at most `tolerance`; paint gives that back and erase adds it, so the result stays conservative.
+    // The tolerance grows with the radius, which keeps the segments (each scanning about its own reach) proportional to the area painted.
+    const tolerance = brushRadius / 16;
+    const points = simplifyPoints(rawPoints, tolerance);
     const first = points[0];
-    if (!first || !(radius > 0)) return;
+    if (!first) return;
     const size = this.cellSize;
+    const slack = points.length < rawPoints.length ? tolerance : 0;
+    const radius = value === FOGGED ? brushRadius - slack : brushRadius + slack;
     const radiusSq = radius * radius;
     const reach = radius + (size * Math.SQRT2) / 2;
     const reachSq = reach * reach;
@@ -135,6 +142,11 @@ export class FogCoverage {
       ? [[first, first]]
       : points.slice(1).map((point, index): [ScenePoint, ScenePoint] => [points[index]!, point]);
     for (const [a, b] of segments) {
+      // A capsule is convex: when it holds the bitmap's corners it holds every cell, so a huge brush costs O(1) per segment.
+      if (value === FOGGED ? this.capsuleHoldsBitmap(a, b, radiusSq, 0) : this.capsuleHoldsBitmap(a, b, reachSq, size / 2)) {
+        this.cells.fill(value);
+        return;
+      }
       // Row by row, only the cells near the segment: a long diagonal stroke never scans its whole bounding box.
       const lastRow = Math.min(this.rows - 1, this.row(Math.max(a.y, b.y) + reach));
       for (let row = Math.max(0, this.row(Math.min(a.y, b.y) - reach)); row <= lastRow; row++) {
@@ -150,6 +162,16 @@ export class FogCoverage {
         });
       }
     }
+  }
+
+  /** True when all four corners of the bitmap, inset by `inset`, lie within `radiusSq` of segment ab. */
+  private capsuleHoldsBitmap(a: ScenePoint, b: ScenePoint, radiusSq: number, inset: number): boolean {
+    const left = this.originX + inset;
+    const top = this.originY + inset;
+    const right = this.originX + this.cols * this.cellSize - inset;
+    const bottom = this.originY + this.rows * this.cellSize - inset;
+    return [[left, top], [right, top], [left, bottom], [right, bottom]]
+      .every(([x, y]) => distanceSqToSegment({ x: x!, y: y! }, a, b) <= radiusSq);
   }
 
   /**
@@ -168,13 +190,16 @@ export class FogCoverage {
       const b = points[(index + 1) % points.length]!;
       top = Math.min(top, a.y);
       bottom = Math.max(bottom, a.y);
-      traverseCells(
+      // Only the part of the edge near the bitmap is walked, so far-away points cost nothing; winding below still sees the whole edge.
+      const clipped = clipToRect(
         (a.x - this.originX) / size, (a.y - this.originY) / size,
         (b.x - this.originX) / size, (b.y - this.originY) / size,
-        (col, row) => {
-          if (col >= 0 && row >= 0 && col < this.cols && row < this.rows) crossed.add(row * this.cols + col);
-        },
+        -1, -1, this.cols + 1, this.rows + 1,
       );
+      if (!clipped) continue;
+      traverseCells(clipped[0], clipped[1], clipped[2], clipped[3], (col, row) => {
+        if (col >= 0 && row >= 0 && col < this.cols && row < this.rows) crossed.add(row * this.cols + col);
+      });
     }
     const lastRow = Math.min(this.rows - 1, this.row(bottom));
     for (let row = Math.max(0, this.row(top)); row <= lastRow; row++) {
@@ -231,6 +256,28 @@ function insideSpans(points: readonly ScenePoint[], y: number): Array<[number, n
   return spans;
 }
 
+/** Liang-Barsky: the part of segment (ax, ay)-(bx, by) inside the rectangle, or null when none is. */
+function clipToRect(
+  ax: number, ay: number, bx: number, by: number, minX: number, minY: number, maxX: number, maxY: number,
+): [number, number, number, number] | null {
+  const dx = bx - ax;
+  const dy = by - ay;
+  let t0 = 0;
+  let t1 = 1;
+  const sides: Array<[number, number]> = [[-dx, ax - minX], [dx, maxX - ax], [-dy, ay - minY], [dy, maxY - ay]];
+  for (const [p, q] of sides) {
+    if (p === 0) {
+      if (q < 0) return null;
+    } else {
+      const t = q / p;
+      if (p < 0) t0 = Math.max(t0, t);
+      else t1 = Math.min(t1, t);
+      if (t0 > t1) return null;
+    }
+  }
+  return [ax + dx * t0, ay + dy * t0, ax + dx * t1, ay + dy * t1];
+}
+
 /** Every cell a segment passes through, in cell coordinates (Amanatides and Woo). */
 function traverseCells(ax: number, ay: number, bx: number, by: number, visit: (col: number, row: number) => void): void {
   let col = Math.floor(ax);
@@ -256,7 +303,11 @@ function traverseCells(ax: number, ay: number, bx: number, by: number, visit: (c
   }
 }
 
-/** The area the painting operations reach; erasing outside it changes nothing. */
+/**
+ * The area the painting operations reach; erasing outside it changes nothing.
+ * One far painted outlier stretches it and coarsens the cells (conservative:
+ * more objects are sent, never fewer).
+ */
 function paintedBounds(ops: readonly FogOperation[]): WorldBounds | null {
   let left = Infinity;
   let top = Infinity;
