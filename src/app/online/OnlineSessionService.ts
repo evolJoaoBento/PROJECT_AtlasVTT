@@ -95,10 +95,22 @@ export class OnlineSessionService {
     });
     session.start();
     // Sends the presented scene, including one presented before the session started.
-    this.broadcaster = new SceneBroadcaster({
+    const broadcaster = new SceneBroadcaster({
       session, presented: this.presented, settings: this.settings, notify: (message) => new Notice(message),
     });
-    this.broadcaster.start();
+    try {
+      broadcaster.start();
+    } catch (error) {
+      // No session may keep running without its broadcaster; `start` reports the error.
+      broadcaster.stop();
+      session.stop();
+      this.unsubscribeErrors?.();
+      this.unsubscribeErrors = null;
+      this.notices.forEach((notice) => notice.hide());
+      this.notices.clear();
+      throw error;
+    }
+    this.broadcaster = broadcaster;
     this.current = session;
     onlineSessionStore.setState({
       status: 'hosting', peerId: host.id, joinUrl, error: linkWorks ? null : RELAY_TOO_LONG,

@@ -126,6 +126,19 @@ describe('PresentedScene', () => {
     expect(scene.current()?.view).toBe(second.view);
   });
 
+  it('ignores a view that has closed: nothing would ever clear it', () => {
+    const scene = new PresentedScene();
+    const events = record(scene);
+    const open = fakeView();
+    const closed = fakeView();
+    scene.present(open.view, open.tavern);
+    (closed.view as { isClosed?: boolean }).isClosed = true;
+    scene.present(closed.view, closed.tavern);
+    expect(scene.current()?.view).toBe(open.view);
+    expect(closed.register).not.toHaveBeenCalled();
+    expect(events).toEqual([`presented:${open.tavern}`]);
+  });
+
   it('starts held when the view shows another tab', () => {
     const scene = new PresentedScene();
     const events = record(scene);

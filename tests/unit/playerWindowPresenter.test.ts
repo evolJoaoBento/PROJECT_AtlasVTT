@@ -121,6 +121,17 @@ describe('PlayerWindowPresenter', () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
+  test('does not present a view that closed while it was being prepared', async () => {
+    const { view } = createFakeView();
+    const tavern = view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');
+    view.isClosed = true;
+
+    await presentTabInPlayerWindow({} as any, view, tavern);
+
+    expect(serviceMock.openPlayerWindow).not.toHaveBeenCalled();
+    expect(presentedScene.current()).toBeNull();
+  });
+
   test('holds the frame while the DM browses another tab and releases it on return', async () => {
     const { view, canvas, atlasStore } = createFakeView();
     const tavern = view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');

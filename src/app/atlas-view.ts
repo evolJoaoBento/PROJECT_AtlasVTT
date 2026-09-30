@@ -187,6 +187,11 @@ export class AtlasView extends FileView {
     return this.store;
   }
 
+  /** True once Obsidian has closed the view (until it is opened again); a closed view cannot be presented. */
+  get isClosed(): boolean {
+    return this.isViewClosing;
+  }
+
   getTabMetaStore(): TabMetaStore {
     return this.tabMetaStore;
   }

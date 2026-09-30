@@ -13,7 +13,7 @@ export async function presentViewToPlayers(view: unknown): Promise<void> {
     return;
   }
   await whenMapLoaded(view.atlasStore);
-  if (view.tabMetaStore.getState().activeTabId !== tabId) return;
+  if (view.isClosed || view.tabMetaStore.getState().activeTabId !== tabId) return;
   presentedScene.present(view, tabId);
   const name = view.tabMetaStore.getState().tabs.find((tab) => tab.id === tabId)?.displayName;
   new Notice(`Players see ${name ?? 'this scene'}`);

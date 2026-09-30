@@ -51,6 +51,17 @@ describe('Present to players', () => {
     expect(presentedScene.current()?.tabId).toBe(tabId);
   });
 
+  it('does not present a view that closed while its scene was loading', async () => {
+    const { view, store } = fakeView();
+    store.setState({ isMapLoading: true });
+    const presenting = presentViewToPlayers(view);
+    await flush();
+    (view as { isClosed?: boolean }).isClosed = true;
+    store.setState({ isMapLoading: false });
+    await presenting;
+    expect(presentedScene.current()).toBeNull();
+  });
+
   it('does nothing without an open scene', async () => {
     await presentActiveTabToPlayers(fakeApp(null) as never);
     await presentViewToPlayers({ not: 'a view' });

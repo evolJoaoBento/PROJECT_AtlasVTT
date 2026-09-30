@@ -42,6 +42,7 @@ export async function presentTabInPlayerWindow(app: App, view: AtlasView, tabId:
     new Notice('No map canvas found. Please ensure a map is loaded.');
     return;
   }
+  if (view.isClosed) return;
 
   const service =
     PlayerWindowService.getInstance() ??

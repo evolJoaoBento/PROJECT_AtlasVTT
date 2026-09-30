@@ -14,6 +14,8 @@ export interface PresentedView {
   readonly tabMetaStore: TabMetaStore;
   readonly atlasStore: StoreApi<ViewAtlasState>;
   register(callback: () => void): void;
+  /** True once the view has closed; a closed view is never presented. */
+  readonly isClosed?: boolean;
   readonly renderer?: { getBackgroundSprite(): BackgroundSprite | null } | null;
 }
 
@@ -89,8 +91,10 @@ export class PresentedScene {
     return () => { this.listeners.delete(listener); };
   }
 
-  /** Present `tabId` of `view`. The caller has waited for its map to load. */
+  /** Present `tabId` of `view`. The caller has waited for its map to load. A closed view is ignored. */
   present(view: PresentedView, tabId: string): void {
+    // Its close callback already ran, so nothing would ever clear the scene.
+    if (view.isClosed) return;
     this.stopWatching?.();
     const scene: PresentedSceneInfo = { view, tabId, store: view.atlasStore, mapSize: () => loadedMapSize(view) };
     this.scene = scene;

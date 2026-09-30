@@ -109,6 +109,22 @@ describe('OnlineSessionService', () => {
     expect(svc.session).toBeNull();
   });
 
+  it('stops the session and reports the error when the scene broadcaster cannot start', async () => {
+    const network = new MemoryNetwork();
+    const host = network.host('gm-id');
+    const closeSpy = vi.spyOn(host, 'close');
+    const presented = new PresentedScene();
+    vi.spyOn(presented, 'subscribe').mockImplementation(() => { throw new Error('no scene source'); });
+    const svc = new OnlineSessionService(app, settings, { createHost: async () => host, presented, showRequest: () => ({ hide: () => {} }) });
+    await expect(svc.start()).resolves.toBeUndefined();
+    expect(onlineSessionStore.getState()).toMatchObject({ status: 'error', error: 'no scene source' });
+    expect(svc.session).toBeNull();
+    expect(closeSpy).toHaveBeenCalled();
+    await expect(network.client().connect('gm-id')).rejects.toBeDefined();
+    host.fail({ code: 'network', message: 'late' });
+    expect(onlineSessionStore.getState().error).toBe('no scene source');
+  });
+
   it('ignores signaling errors after stop', async () => {
     const { svc, host } = service();
     await svc.start();
