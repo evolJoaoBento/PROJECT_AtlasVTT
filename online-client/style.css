@@ -2,6 +2,8 @@
 :root { color-scheme: light dark; --bg: #f6f6f7; --card: #fff; --text: #1f2328; --muted: #5a6068; --accent: #7c5cff; --border: #d8dbe0; }
 @media (prefers-color-scheme: dark) { :root { --bg: #161719; --card: #202124; --text: #e8e8ea; --muted: #a0a4ab; --border: #33363b; } }
 * { box-sizing: border-box; }
+/* The display rules below would otherwise override the hidden attribute. */
+[hidden] { display: none !important; }
 body { margin: 0; min-height: 100vh; display: grid; place-items: center; gap: 16px; padding: 16px; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
 .card { width: min(420px, 100%); padding: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; display: grid; gap: 12px; }
 h1 { margin: 0; font-size: 20px; }

@@ -30,6 +30,7 @@ const REASONS: Record<string, string> = {
   ended: 'The session ended.',
   replaced: 'You joined from another tab.',
   unreachable: 'Couldn\'t connect. Check the link, or your GM may need to add a relay server in Atlas settings.',
+  'connection-lost': 'Lost the connection to your GM. Reload the page to try again.',
 };
 
 function render(state: PlayerSessionState): void {
@@ -55,19 +56,23 @@ if (!target) {
 } else {
   form.hidden = false;
   nameInput.value = stored('atlas-online:name', () => '');
+  let started = false;
   form.addEventListener('submit', (event) => {
     event.preventDefault();
+    if (started) return;
     const name = normalizePlayerName(nameInput.value);
     if (!name) {
       status.textContent = 'Enter a name of up to 40 characters.';
       return;
     }
     try { localStorage.setItem('atlas-online:name', name); } catch { /* private window */ }
+    started = true;
     form.hidden = true;
     new PlayerSession({
       hostId: target.hostId,
       name,
-      playerKey: stored('atlas-online:player-key', () => randomId()),
+      // One key per GM session, so different GMs cannot recognise or pose as the same player.
+      playerKey: stored(`atlas-online:player-key:${target.hostId}`, () => randomId()),
       clientVersion: VERSION,
       transport: createPeerClient(target.server),
       onChange: render,
