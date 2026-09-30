@@ -443,19 +443,53 @@ describe('SceneBroadcaster', () => {
     expect(h.notices).toEqual([]);
   });
 
-  it('tells the GM once when the fog has more operations than can be sent', async () => {
-    const h = setup();
-    const fog: Record<string, FogOperation> = {};
-    for (let i = 0; i <= SCENE_LIMITS.records; i++) {
-      fog[`f${i}`] = { id: `f${i}`, kind: 'fog', type: 'rectangle', timestamp: i, isErasing: false, x: 5000 + i, y: 5000, width: 1, height: 1 };
+  describe('fog with more operations than can be sent', () => {
+    /** `records` small operations and, last, one that covers the hero: the one a truncation would drop. */
+    function tooMuchFog(): Record<string, FogOperation> {
+      const fog: Record<string, FogOperation> = {};
+      for (let i = 0; i < SCENE_LIMITS.records; i++) {
+        fog[`f${i}`] = { id: `f${i}`, kind: 'fog', type: 'rectangle', timestamp: i, isErasing: false, x: 5000 + i, y: 5000, width: 1, height: 1 };
+      }
+      fog.cover = { id: 'cover', kind: 'fog', type: 'rectangle', timestamp: 1e9, isErasing: false, x: 0, y: 0, width: 500, height: 500 };
+      return fog;
     }
-    const { view, store, tavern } = fakeView(sceneState({ hero: character('hero', 140) }, fog));
-    h.presented.present(view, tavern);
-    await rawPlayer(h, 'raw');
-    expect(h.notices).toEqual([FOG_TRUNCATED_NOTICE]);
-    store.setState((state) => ({ objects: { ...state.objects, fog: { ...fog } } }));
-    await tick();
-    expect(h.notices).toEqual([FOG_TRUNCATED_NOTICE]);
+    const setFog = (store: StoreApi<SceneState>, fog: Record<string, FogOperation>): void =>
+      store.setState((state) => ({ objects: { ...state.objects, fog } }));
+
+    it('clears players instead of showing covered areas as clear, and tells the GM once', async () => {
+      const h = setup();
+      const fog = tooMuchFog();
+      const { view, store, tavern } = fakeView(sceneState({ hero: character('hero', 140) }, fog));
+      h.presented.present(view, tavern);
+      const raw = await rawPlayer(h, 'raw');
+      expect(sceneTypes(raw.received)).toEqual(['scene-clear']);
+      expect(h.broadcaster.currentProjection()).toBeNull();
+      expect(h.notices).toEqual([FOG_TRUNCATED_NOTICE]);
+      setFog(store, { ...fog });
+      moveToken(store, 'hero', 150);
+      await tick();
+      expect(sceneTypes(raw.received)).toEqual(['scene-clear']);
+      expect(h.notices).toEqual([FOG_TRUNCATED_NOTICE]);
+      expect(JSON.stringify(raw.received)).not.toContain('hero');
+    });
+
+    it('clears players who already have the scene when the fog grows past the limit, then resumes below it', async () => {
+      const h = setup();
+      const fog = tooMuchFog();
+      const small = Object.fromEntries(Object.entries(fog).filter(([id]) => id !== 'cover'));
+      const { view, store, tavern } = fakeView(sceneState({ hero: character('hero', 600) }, small));
+      h.presented.present(view, tavern);
+      const player = await join(h);
+      expect(player.scene?.tokens.hero).toBeDefined();
+      setFog(store, fog);
+      await tick();
+      expect(player.scene).toBeNull();
+      expect(h.notices).toEqual([FOG_TRUNCATED_NOTICE]);
+      setFog(store, small);
+      await tick();
+      expect(player.scene?.tokens.hero?.x).toBe(600);
+      expect(player.scene).toEqual(h.broadcaster.currentProjection());
+    });
   });
 
   it('gives a presentation that starts held a new scene id and clears admissions until it resumes', async () => {
@@ -463,10 +497,12 @@ describe('SceneBroadcaster', () => {
     const first = fakeView(sceneState({ hero: character('hero', 140) }));
     h.presented.present(first.view, first.tavern);
     const oldId = h.broadcaster.currentProjection()?.sceneId;
+    const before = await rawPlayer(h, 'before');
     const second = fakeView(sceneState({ dragon: character('dragon', 500) }));
     second.tabs.getState().setActiveTab(second.dungeon);
     h.presented.present(second.view, second.tavern);
     expect(h.broadcaster.currentProjection()).toBeNull();
+    expect(sceneTypes(before.received)).toEqual(['scene-snapshot', 'scene-clear']);
     const raw = await rawPlayer(h, 'raw');
     expect(sceneTypes(raw.received)).toEqual(['scene-clear']);
     second.tabs.getState().setActiveTab(second.tavern);
@@ -475,6 +511,60 @@ describe('SceneBroadcaster', () => {
     expect(resumed?.sceneId).not.toBe(oldId);
     expect(Object.keys(resumed?.tokens ?? {})).toEqual(['dragon']);
     expect(sceneTypes(raw.received)).toEqual(['scene-clear', 'scene-snapshot']);
+  });
+
+  describe('resync requests', () => {
+    const resync = (raw: { link: PeerLink }): void => raw.link.send('control', encodeControl({ v: 1, type: 'scene-resync', seq: 1 }));
+
+    it('are answered at most once per second per player; the rest wait for the window to end', async () => {
+      const h = setup();
+      const { view, tavern } = fakeView(sceneState({ hero: character('hero', 140) }));
+      h.presented.present(view, tavern);
+      const raw = await rawPlayer(h, 'raw');
+      resync(raw);
+      resync(raw);
+      resync(raw);
+      expect(sceneTypes(raw.received)).toEqual(['scene-snapshot', 'scene-snapshot']);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(sceneTypes(raw.received)).toEqual(['scene-snapshot', 'scene-snapshot']);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sceneTypes(raw.received)).toEqual(['scene-snapshot', 'scene-snapshot', 'scene-snapshot']);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(sceneTypes(raw.received)).toHaveLength(3);
+      resync(raw);
+      expect(sceneTypes(raw.received)).toHaveLength(4);
+    });
+
+    it('keep no timer for a player who left or after stop', async () => {
+      const h = setup();
+      const { view, tavern } = fakeView(sceneState({ hero: character('hero', 140) }));
+      h.presented.present(view, tavern);
+      const left = await rawPlayer(h, 'left');
+      const staying = await rawPlayer(h, 'staying');
+      const timers = vi.getTimerCount();
+      for (const raw of [left, staying]) { resync(raw); resync(raw); }
+      expect(vi.getTimerCount()).toBe(timers + 2);
+      left.link.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBe(timers + 1);
+      h.broadcaster.stop();
+      expect(vi.getTimerCount()).toBeLessThanOrEqual(timers);
+    });
+
+    it('forget the sequence numbers of players the session removed', async () => {
+      const h = setup();
+      const { view, tavern } = fakeView(sceneState({ hero: character('hero', 140) }));
+      h.presented.present(view, tavern);
+      await rawPlayer(h, 'kicked');
+      const kickedId = h.requests.at(-1)!.playerId;
+      await rawPlayer(h, 'staying');
+      const seqs = (h.broadcaster as unknown as { seqs: Map<string, number> }).seqs;
+      expect(seqs.has(kickedId)).toBe(true);
+      h.gm.kick(kickedId);
+      h.presented.clear();
+      expect([...seqs.keys()]).not.toContain(kickedId);
+      expect(seqs.size).toBe(1);
+    });
   });
 
   it('does not tell the GM about fog when every operation is sent', async () => {

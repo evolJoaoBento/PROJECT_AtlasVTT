@@ -13,6 +13,8 @@ import { randomId } from '../ids';
 import type { ControlMessage } from '../protocol';
 import { AssetRegistry } from './AssetRegistry';
 import type { FogCoverage } from './FogCoverage';
+import { RESYNC_MIN_INTERVAL_MS } from './PlayerSceneMirror';
+import { ResyncThrottle } from './ResyncThrottle';
 import { pickPlayerViewRules, samePlayerViewRules, type PlayerViewRules } from './playerViewRules';
 import { projectForPlayers } from './projectForPlayers';
 import { createProjectionMemo, type ProjectionMemo } from './projectRecords';
@@ -30,7 +32,7 @@ export type { PlayerViewSettingsSource, PresentedSceneSource, SceneBroadcasterOp
 export const SCENE_TICK_MS = 50;
 
 export const SCENE_TOO_LARGE_NOTICE = 'This scene is too large to send to online players.';
-export const FOG_TRUNCATED_NOTICE = 'This scene has too much fog to send all of it to online players.';
+export const FOG_TRUNCATED_NOTICE = 'This scene has too much fog to show to online players.';
 
 /** The presented scene while it is shown (not held). */
 interface LiveScene {
@@ -59,6 +61,7 @@ export class SceneBroadcaster implements SessionHandler {
   /** The presentation whose oversize the GM was told about, so the notice shows once. */
   private noticeShownFor: string | null = null;
   private fogNoticeShownFor: string | null = null;
+  private readonly resyncs = new ResyncThrottle(RESYNC_MIN_INTERVAL_MS);
 
   constructor(private readonly options: SceneBroadcasterOptions) {
     this.rules = pickPlayerViewRules(options.settings.getLocalPlayerViewSettings());
@@ -81,6 +84,7 @@ export class SceneBroadcaster implements SessionHandler {
 
   stop(): void {
     this.detach();
+    this.resyncs.clear();
     this.stops.splice(0).forEach((stop) => stop());
   }
 
@@ -96,7 +100,11 @@ export class SceneBroadcaster implements SessionHandler {
 
   onMessage(player: SessionPlayer, message: ControlMessage): void {
     // Players never send scene data; a resync is the only scene message the GM acts on.
-    if (message.type === 'scene-resync') this.sendCurrent(player.playerId);
+    if (message.type !== 'scene-resync') return;
+    const { playerId } = player;
+    this.resyncs.request(playerId, () => {
+      if (this.admitted().includes(playerId)) this.sendCurrent(playerId);
+    });
   }
 
   private showScene(scene: PresentedSceneInfo, resumed: boolean): void {
@@ -120,14 +128,17 @@ export class SceneBroadcaster implements SessionHandler {
   private holdScene(scene: PresentedSceneInfo): void {
     this.detach();
     if (this.shown === scene) return;
+    const hadScene = this.shown !== null;
     this.shown = null;
     this.sceneId = null;
     this.lastSent = null;
     this.snapshot = null;
+    if (hadScene) this.clearPlayers();
   }
 
   onGone(player: SessionPlayer): void {
     this.seqs.delete(player.playerId);
+    this.resyncs.forget(player.playerId);
   }
 
   private storeChanged(live: LiveScene, state: ViewAtlasState): void {
@@ -167,6 +178,10 @@ export class SceneBroadcaster implements SessionHandler {
     this.sceneId = null;
     this.lastSent = null;
     this.snapshot = null;
+    this.clearPlayers();
+  }
+
+  private clearPlayers(): void {
     for (const playerId of this.admitted()) this.sendSequenced(playerId, { v: 1, type: 'scene-clear' });
   }
 
@@ -188,7 +203,7 @@ export class SceneBroadcaster implements SessionHandler {
     if (!live || live.loading) return;
     const previous = this.lastSent;
     // Players who got a clear instead of an oversized scene need a snapshot, not a patch.
-    if (!previous || previous.sceneId !== live.sceneId || this.snapshotFailed(previous)) {
+    if (!previous || previous.sceneId !== live.sceneId || this.snapshotFailed(previous) || this.fogTruncated(live)) {
       this.broadcastSnapshot(live);
       return;
     }
@@ -205,8 +220,32 @@ export class SceneBroadcaster implements SessionHandler {
 
   private broadcastSnapshot(live: LiveScene): void {
     this.cancelTick();
+    if (this.fogTruncated(live)) {
+      this.clearForTruncatedFog(live);
+      return;
+    }
     this.lastSent = this.project(live);
     for (const playerId of this.admitted()) this.sendSnapshot(playerId);
+  }
+
+  /**
+   * The GM's fog has more operations than players can be sent, so what they would see is not
+   * what is covered: like an oversized scene, they get a clear until the fog fits again.
+   */
+  private fogTruncated(live: LiveScene): boolean {
+    return this.fogCache.get(live.scene.store.getState().objects?.fog ?? {}, this.memo).truncated;
+  }
+
+  private clearForTruncatedFog(live: LiveScene): void {
+    live.slice = sliceOf(live.scene.store.getState());
+    if (this.fogNoticeShownFor !== live.sceneId) {
+      this.fogNoticeShownFor = live.sceneId;
+      this.options.notify(FOG_TRUNCATED_NOTICE);
+    }
+    const hadScene = this.lastSent !== null;
+    this.lastSent = null;
+    this.snapshot = null;
+    if (hadScene) this.clearPlayers();
   }
 
   private project(live: LiveScene): PlayerScene {
@@ -215,21 +254,16 @@ export class SceneBroadcaster implements SessionHandler {
     return projectForPlayers(state, {
       sceneId: live.sceneId,
       rules: this.rules,
-      coverage: this.coverageOf(state.objects?.fog ?? {}, live.sceneId),
+      coverage: this.coverageOf(state.objects?.fog ?? {}),
       assets: this.assets,
       mapSize: live.scene.mapSize(),
       memo: this.memo,
     });
   }
 
-  /** Rebuilt only when the fog operations change; tells the GM once per presentation if fog is dropped. */
-  private coverageOf(fog: Readonly<Record<string, FogOperation>>, sceneId: string): FogCoverage {
-    const { coverage, truncated } = this.fogCache.get(fog, this.memo);
-    if (truncated && this.fogNoticeShownFor !== sceneId) {
-      this.fogNoticeShownFor = sceneId;
-      this.options.notify(FOG_TRUNCATED_NOTICE);
-    }
-    return coverage;
+  /** Rebuilt only when the fog operations change. */
+  private coverageOf(fog: Readonly<Record<string, FogOperation>>): FogCoverage {
+    return this.fogCache.get(fog, this.memo).coverage;
   }
 
   /** What players have, or a clear when they have nothing: never a new projection. */
@@ -273,7 +307,12 @@ export class SceneBroadcaster implements SessionHandler {
   }
 
   private admitted(): string[] {
-    return this.options.session.getPlayers()
+    const players = this.options.session.getPlayers();
+    // A kicked player never reports as gone: forget everyone the session no longer knows.
+    const known = new Set(players.map((player) => player.playerId));
+    for (const playerId of [...this.seqs.keys()]) if (!known.has(playerId)) this.seqs.delete(playerId);
+    this.resyncs.retain(known);
+    return players
       .filter((player) => player.status === 'admitted')
       .map((player) => player.playerId);
   }
