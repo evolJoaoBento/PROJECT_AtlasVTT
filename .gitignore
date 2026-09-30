@@ -74,3 +74,6 @@ party/
 
 # Also ignore a worktree dependency symlink.
 /node_modules
+
+# Online player page build output
+dist-online/

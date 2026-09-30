@@ -1,0 +1,26 @@
+<!-- online-client/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas VTT · Join</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Join the table</h1>
+    <form id="join" hidden>
+      <label for="name">Your name</label>
+      <input id="name" maxlength="40" autocomplete="nickname" required>
+      <button type="submit">Join</button>
+    </form>
+    <p id="status" role="status"></p>
+    <ul id="players" hidden></ul>
+  </main>
+  <footer>
+    Atlas VTT online play · <a href="https://github.com/evolJoaoBento/atlas-vtt" target="_blank" rel="noopener">Source code (AGPL-3.0)</a>
+  </footer>
+  <script type="module" src="./main.mts"></script>
+</body>
+</html>

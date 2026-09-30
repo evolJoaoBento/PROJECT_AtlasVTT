@@ -12,6 +12,7 @@
     "obsidian:console": "node scripts/obsidian-cli.js dev:console",
     "build": "cross-env COPY_ON_CHANGE=false vite build",
     "build:ci": "cross-env COPY_ON_CHANGE=false vite build",
+    "build:online": "vite build -c vite.online.config.mts",
     "postbuild": "node scripts/copy-plugin.js",
     "test": "vitest",
     "changelog:generate": "node scripts/changelog.js",
