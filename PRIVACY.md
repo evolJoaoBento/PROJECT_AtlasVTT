@@ -1,6 +1,6 @@
 # Privacy and network use
 
-Atlas VTT works offline. Maps, tokens, notes, audio and settings stay in your vault. Submitting an issue report is an optional network action. The other exception is online play, which you start yourself: while an online session runs, Atlas connects to a signaling server (the PeerJS cloud at `0.peerjs.com` unless you set your own), a STUN server (`stun.l.google.com`), any relay servers you add, and directly to the players you let in. The signaling and STUN servers see IP addresses and connection ids but no game data; data between you and your players is encrypted end to end. Stopping the session, or closing Obsidian, ends all of it. The join link you share carries your signaling and relay settings, including any relay (TURN) username and password from **Settings → Online play**, so players' browsers can use them.
+Atlas VTT works offline. Maps, tokens, notes, audio and settings stay in your vault. Submitting an issue report is an optional network action. Online play, which you start yourself, is the only other exception; see [Online play](#online-play).
 
 - No accounts, no telemetry, no analytics, no ads.
 - No code is downloaded or executed from the internet, and the plugin does not update itself.
@@ -8,6 +8,14 @@ Atlas VTT works offline. Maps, tokens, notes, audio and settings stay in your va
 ## Network access
 
 If you set a token or map background to an `http://` or `https://` image URL, or copy an image that a note embeds from an external URL, that image is downloaded from the address in question. Images stored in your vault cause no network traffic.
+
+## Online play
+
+While an online session you started runs, Atlas connects to a signaling server (the PeerJS cloud at `0.peerjs.com` unless you set your own), a STUN server (`stun.l.google.com`), any relay servers you add, and directly to the players you let in. The signaling and STUN servers see IP addresses and connection ids but no game data; data between you and your players is encrypted end to end. A relay (TURN) server, if you add one, forwards that still-encrypted traffic between you and a player. Stopping the session, or closing Obsidian, ends all of it.
+
+The join link you share carries your signaling and relay settings, including any relay username and password from **Settings → Online play**, so players' browsers can use them.
+
+Players open the join page from `evoljoaobento.github.io` (GitHub Pages) by default. Their browsers load it from there, so GitHub sees their IP address like for any web page. Atlas itself never contacts that address, it only builds links to it. You can change the address in **Settings → Online play**.
 
 ## Files outside the vault
 

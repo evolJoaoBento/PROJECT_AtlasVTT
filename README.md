@@ -31,8 +31,8 @@ Host a session from Atlas and your players join from a browser: run **Online ses
 
 - Connections are direct between your Atlas and each player (WebRTC), encrypted end to end.
 - To find each other, Atlas and the player page use the free PeerJS signaling server (`0.peerjs.com`) and a public STUN server (`stun.l.google.com`). They see your and your players' IP addresses, never game data. You can use your own peerjs-server instead in **Settings → Online play**.
-- Players on strict networks may need a relay (TURN) server, which you can add in the same settings. The join link carries your signaling and relay settings, including any TURN username and password, so your players' browsers can use them: share the link only with people you trust with those credentials.
-- The player page is published from this repository's `online-client/` folder.
+- Players on strict networks may need a relay (TURN) server, which you can add in the same settings. A relay forwards your traffic between you and a player; it stays encrypted. The join link carries your signaling and relay settings, including any TURN username and password, so your players' browsers can use them: share the link only with people you trust with those credentials.
+- Players open the join page from `evoljoaobento.github.io` (GitHub Pages, the default player page; published from this repository's `online-client/` folder). Their browsers load it from there, so GitHub sees their IP address like for any web page. Atlas itself never contacts that address, it only builds links to it. You can change the address in **Settings → Online play**.
 
 ## Your notes, right on the map
 
