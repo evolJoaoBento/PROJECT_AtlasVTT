@@ -1,17 +1,14 @@
 import { App, Notice } from 'obsidian';
-import type { StoreApi } from 'zustand';
 import type { LocalPlayerView } from '../local-player-view';
 import { AtlasView, ATLAS_VIEW_TYPE } from '../atlas-view';
-import type { ViewAtlasState } from '../storeFactory';
 import { playerWindowStore } from '../stores/playerWindowStore';
 import type { SceneTab } from '../types/sceneTabTypes';
 import { PlayerWindowService, type PlayerFrameSource } from './PlayerWindowService';
 import { getRenderedFrames } from '../pixi/RenderScheduler';
+import { presentedScene, whenMapLoaded } from './PresentedScene';
 
-/** Unsubscribes the tab watcher of the view whose tab is currently presented. */
-let stopWatchingPresentedTab: (() => void) | null = null;
-/** The view whose presented tab is being watched. */
-let watchedView: AtlasView | null = null;
+/** Set once the player window follows the presented scene; it starts with the first presentation through it. */
+let followingPresentedScene = false;
 
 /** Present the active view's current scene tab, opening the player window if needed. */
 export async function presentActiveTabInPlayerWindow(app: App): Promise<void> {
@@ -50,7 +47,8 @@ export async function presentTabInPlayerWindow(app: App, view: AtlasView, tabId:
   } else {
     await service.openPlayerWindow(source, tabId, tab.filePath);
   }
-  watchPresentedTab(view, service);
+  followPresentedScene();
+  presentedScene.present(view, tabId);
   new Notice(`Player view shows ${tab.displayName}`);
 }
 
@@ -75,7 +73,7 @@ export async function restorePlayerWindow(app: App, player: LocalPlayerView): Pr
     return;
   }
   const previousTabId = sourceView.tabMetaStore.getState().activeTabId;
-  await waitForMapLoaded(sourceView.atlasStore);
+  await whenMapLoaded(sourceView.atlasStore);
   if (player.isClosed) return;
   await sourceView.switchToTab(sourceTab.id);
   if (sourceView.tabMetaStore.getState().activeTabId !== sourceTab.id) {
@@ -96,51 +94,39 @@ export async function restorePlayerWindow(app: App, player: LocalPlayerView): Pr
   // Freeze before attaching so the first mirrored frame already uses the saved camera.
   if (session.frozen) service.freezeCamera(session.camera ?? source.getCamera?.());
   service.attachToView(player, source, sourceTab.id);
-  watchPresentedTab(sourceView, service);
+  followPresentedScene();
+  presentedScene.present(sourceView, sourceTab.id);
   if (previousTabId && previousTabId !== sourceTab.id) await sourceView.switchToTab(previousTabId);
 }
 
-/** Views that already release the player window when they close. */
-const viewsReleasingOnClose = new WeakSet<AtlasView>();
-
-function watchPresentedTab(view: AtlasView, service: PlayerWindowService): void {
-  stopWatchingPresentedTab?.();
-  if (!viewsReleasingOnClose.has(view)) {
-    viewsReleasingOnClose.add(view);
+/**
+ * The player window shows the presented scene: it holds its frame while the DM
+ * browses other tabs, resumes when the presented tab is back, follows a scene
+ * presented elsewhere ("Present to players") and lets go of a view that closes.
+ */
+function followPresentedScene(): void {
+  if (followingPresentedScene) return;
+  followingPresentedScene = true;
+  presentedScene.subscribe({
+    presented: (scene, resumed) => {
+      if (scene.view instanceof AtlasView) void showPresentedScene(scene.view, scene.tabId, resumed);
+    },
+    held: () => PlayerWindowService.getInstance()?.holdCurrentFrame(),
     // Closing the presented map must not leave its renderer and store reachable from the player window
-    view.register(() => {
-      if (watchedView === view) stopWatchingPresentedTab?.();
-      PlayerWindowService.getInstance()?.releaseSource(view.atlasStore);
-    });
-  }
-  watchedView = view;
-  // Release the view once the player window closes, otherwise this closure keeps a closed view alive.
-  const stopWatchingWindow = playerWindowStore.subscribe((state) => {
-    if (!state.presentedTabId) stopWatchingPresentedTab?.();
+    cleared: (previous) => PlayerWindowService.getInstance()?.releaseSource(previous.store),
   });
-  const stopWatchingTabs = view.tabMetaStore.subscribe((state, previous) => {
-    if (state.activeTabId === previous.activeTabId) return;
-    const { presentedTabId } = playerWindowStore.getState();
-    if (!presentedTabId) return;
-
-    if (state.activeTabId === presentedTabId) {
-      void resumePresentedTab(view, service, presentedTabId);
-    } else {
-      service.holdCurrentFrame();
-    }
-  });
-  stopWatchingPresentedTab = (): void => {
-    stopWatchingTabs();
-    stopWatchingWindow();
-    stopWatchingPresentedTab = null;
-    watchedView = null;
-  };
 }
 
-async function resumePresentedTab(view: AtlasView, service: PlayerWindowService, tabId: string): Promise<void> {
+/** Show the presented scene in an open player window: a held one coming back, or one presented elsewhere. */
+async function showPresentedScene(view: AtlasView, tabId: string, resumed: boolean): Promise<void> {
+  if (!PlayerWindowService.getInstance()?.isWindowOpen()) return;
+  if (!resumed && playerWindowStore.getState().presentedTabId === tabId) return;
   const source = await waitForRenderedFrameSource(view);
-  if (!source || view.tabMetaStore.getState().activeTabId !== tabId) return;
-  service.releaseHeldFrame(source);
+  const service = PlayerWindowService.getInstance();
+  if (!source || !service || view.tabMetaStore.getState().activeTabId !== tabId) return;
+  if (presentedScene.current()?.tabId !== tabId) return;
+  if (resumed) service.releaseHeldFrame(source);
+  else service.presentCanvas(source, tabId, findTab(view, tabId)?.filePath);
 }
 
 function findTab(view: AtlasView, tabId: string): SceneTab | undefined {
@@ -149,7 +135,7 @@ function findTab(view: AtlasView, tabId: string): SceneTab | undefined {
 
 /** Resolve the view's frame source after the current scene load has finished and been drawn. */
 async function waitForRenderedFrameSource(view: AtlasView): Promise<PlayerFrameSource | null> {
-  await waitForMapLoaded(view.atlasStore);
+  await whenMapLoaded(view.atlasStore);
   await nextAnimationFrames(2);
   const renderer = view.serviceManager.getRendererService().getRenderer();
   const canvas = renderer?.getAppInstance()?.canvas;
@@ -164,17 +150,6 @@ async function waitForRenderedFrameSource(view: AtlasView): Promise<PlayerFrameS
       return viewport ? { centerX: viewport.center.x, centerY: viewport.center.y, scale: viewport.scale.x } : undefined;
     },
   };
-}
-
-function waitForMapLoaded(store: StoreApi<ViewAtlasState>): Promise<void> {
-  if (!store.getState().isMapLoading) return Promise.resolve();
-  return new Promise((resolve) => {
-    const unsubscribe = store.subscribe((state) => {
-      if (state.isMapLoading) return;
-      unsubscribe();
-      resolve();
-    });
-  });
 }
 
 function nextAnimationFrames(count: number): Promise<void> {

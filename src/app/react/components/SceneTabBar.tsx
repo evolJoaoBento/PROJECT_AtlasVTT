@@ -4,7 +4,7 @@ import { useStore } from 'zustand';
 import { cn } from '../../../utils/cn';
 import { useSceneTabStore } from '../hooks/useSceneTabStore';
 import { useTabStripOverflow } from '../hooks/useTabStripOverflow';
-import { playerWindowStore } from '../../stores/playerWindowStore';
+import { usePresentedTabId } from '../hooks/usePresentedTabId';
 import type { SceneTab } from '../../types/sceneTabTypes';
 import { LabelTooltip, TooltipProvider } from '../../packages/components/primitives/tooltip';
 import './scene-tab-bar.scss';
@@ -52,8 +52,7 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
 
   const tabs = useStore(store, (s) => s.tabs);
   const activeTabId = useStore(store, (s) => s.activeTabId);
-  const presentedTabId = useStore(playerWindowStore, (s) => s.presentedTabId);
-  const isPlayerWindowOpen = useStore(playerWindowStore, (s) => s.isOpen);
+  const presentedTabId = usePresentedTabId(store);
   const [strip, setStrip] = useState<HTMLDivElement | null>(null);
   const { overflows, hiddenBefore, hiddenAfter } = useTabStripOverflow(strip, activeTabId);
 
@@ -74,7 +73,7 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
         >
           {tabs.map((tab: SceneTab) => {
             const isActive = tab.id === activeTabId;
-            const isPresented = isPlayerWindowOpen && tab.id === presentedTabId;
+            const isPresented = tab.id === presentedTabId;
             const stateClass = isActive
               ? 'atlas-scene-tab--active'
               : tab.isLoaded
@@ -108,7 +107,7 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
                 {tab.isDirty && <span className="atlas-scene-tab__dirty" />}
                 <TabActionButton
                   icon={Eye}
-                  label={isPresented ? `${tab.displayName} is shown on the player view` : `Show ${tab.displayName} on the player view`}
+                  label={isPresented ? `${tab.displayName} is shown to players` : `Show ${tab.displayName} on the player view`}
                   isActive={isPresented}
                   onClick={() => onPresentTab(tab.id)}
                 />

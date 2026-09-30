@@ -15,6 +15,7 @@ import { ImageDisplayService } from './src/app/services/ImageDisplayService';
 import { PlayerLootDisplay } from './src/app/services/PlayerLootDisplay';
 import { LootHistoryStore } from './src/app/loot/LootHistoryStore';
 import { PlayerWindowService } from './src/app/services/PlayerWindowService';
+import { presentedScene } from './src/app/services/PresentedScene';
 import { OnlineSessionService } from './src/app/online/OnlineSessionService';
 import { registerOnline } from './src/app/online/registerOnline';
 import { AssetService } from './src/app/services/AssetService';
@@ -129,6 +130,7 @@ export default class AtlasVTTPlugin extends Plugin {
     this.imageDisplayService?.destroy();
     PlayerLootDisplay.get().dispose();
     LootHistoryStore.flush(this.app);
+    presentedScene.clear();
     PlayerWindowService.getInstance()?.destroy(false);
     this.globalAssetManager?.close();
     CreatureIndex.release(this.app);
