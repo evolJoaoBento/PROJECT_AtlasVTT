@@ -153,4 +153,17 @@ describe('PresentedScene', () => {
     scene.clear();
     expect(events).toEqual([]);
   });
+
+  it('reports a closing view even when another scene is presented', () => {
+    const scene = new PresentedScene();
+    const closed: PresentedView[] = [];
+    scene.subscribe({ viewClosed: (view) => closed.push(view) });
+    const first = fakeView();
+    const second = fakeView();
+    scene.present(first.view, first.tavern);
+    scene.present(second.view, second.tavern);
+    first.close();
+    expect(closed).toEqual([first.view]);
+    expect(scene.current()?.view).toBe(second.view);
+  });
 });

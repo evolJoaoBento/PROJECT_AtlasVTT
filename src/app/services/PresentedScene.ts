@@ -33,6 +33,8 @@ export interface PresentedSceneListener {
   held?(scene: PresentedSceneInfo): void;
   /** Nothing is presented any more: stopped, the view closed, or its tab was closed. */
   cleared?(previous: PresentedSceneInfo): void;
+  /** A view that was presented has closed, whether or not it is still the presented one. */
+  viewClosed?(view: PresentedView): void;
 }
 
 /** Resolves once the store is not loading a map. */
@@ -149,6 +151,7 @@ export class PresentedScene {
     // A closed view must not stay reachable from the presented scene.
     view.register(() => {
       if (this.scene?.view === view) this.clear();
+      this.emit((listener) => listener.viewClosed?.(view));
     });
   }
 

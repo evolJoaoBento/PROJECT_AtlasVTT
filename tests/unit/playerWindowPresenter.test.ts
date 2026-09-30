@@ -12,6 +12,8 @@ vi.mock('../../src/app/atlas-view', () => ({
   ATLAS_VIEW_TYPE: 'atlas-vtt',
 }));
 
+const noService = vi.hoisted(() => ({ value: false }));
+
 const serviceMock = vi.hoisted(() => ({
   isWindowOpen: vi.fn(() => false),
   openPlayerWindow: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock('../../src/app/services/PlayerWindowService', async () => {
   const { playerWindowStore: store } = await import('../../src/app/stores/playerWindowStore');
   class PlayerWindowService {
     static getInstance(): PlayerWindowService {
+      if (noService.value) return null as unknown as PlayerWindowService;
       return new PlayerWindowService();
     }
     isWindowOpen = serviceMock.isWindowOpen;
@@ -85,13 +88,14 @@ function createFakeView(): FakeView {
 const frameSourceFor = (canvas: HTMLCanvasElement): PlayerFrameSource =>
   expect.objectContaining({ canvas, withPlayerSafeFrame: expect.any(Function) });
 
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('PlayerWindowPresenter', () => {
   beforeEach(() => {
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => cb(0), 0));
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => queueMicrotask(() => cb(0)));
     resetPlayerWindowStore();
     serviceMock.isWindowOpen.mockReturnValue(false);
+    noService.value = false;
     presentedScene.clear();
     Object.values(serviceMock).forEach((fn) => fn.mockClear());
   });
@@ -206,6 +210,7 @@ describe('PlayerWindowPresenter', () => {
     view.tabMetaStore.getState().setActiveTab(tavern);
     expect(serviceMock.holdCurrentFrame).not.toHaveBeenCalled();
   });
+
   test('follows a scene presented to online players while the window is open', async () => {
     const { view, canvas } = createFakeView();
     const tavern = view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');
@@ -219,5 +224,96 @@ describe('PlayerWindowPresenter', () => {
 
     expect(serviceMock.presentCanvas).toHaveBeenLastCalledWith(frameSourceFor(canvas), dungeon);
     expect(playerWindowStore.getState().presentedTabId).toBe(dungeon);
+  });
+
+  test('re-targets the window when the same tab is presented again after stopping', async () => {
+    const { view, canvas, atlasStore } = createFakeView();
+    const tavern = view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');
+    serviceMock.isWindowOpen.mockReturnValue(true);
+    await presentTabInPlayerWindow({} as any, view, tavern);
+    serviceMock.presentCanvas.mockClear();
+
+    presentedScene.clear();
+    expect(serviceMock.releaseSource).toHaveBeenCalledWith(atlasStore);
+    presentedScene.present(view, tavern);
+    await flush();
+
+    expect(serviceMock.presentCanvas).toHaveBeenCalledTimes(1);
+    expect(serviceMock.presentCanvas).toHaveBeenLastCalledWith(frameSourceFor(canvas), tavern);
+  });
+
+  test('re-targets after holding, stopping and coming back to the tab', async () => {
+    const { view, canvas } = createFakeView();
+    const tavern = view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');
+    const dungeon = view.tabMetaStore.getState().addTab('maps/dungeon.md', 'Dungeon');
+    serviceMock.isWindowOpen.mockReturnValue(true);
+    await presentTabInPlayerWindow({} as any, view, tavern);
+    view.tabMetaStore.getState().setActiveTab(dungeon);
+    presentedScene.clear();
+    view.tabMetaStore.getState().setActiveTab(tavern);
+    serviceMock.presentCanvas.mockClear();
+    serviceMock.releaseHeldFrame.mockClear();
+
+    presentedScene.present(view, tavern);
+    await flush();
+
+    expect(serviceMock.releaseHeldFrame).not.toHaveBeenCalled();
+    expect(serviceMock.presentCanvas).toHaveBeenLastCalledWith(frameSourceFor(canvas), tavern);
+  });
+
+  test('releases a streamed view that closes after another scene was presented, and re-targets on resume', async () => {
+    const first = createFakeView();
+    const second = createFakeView();
+    const tavern = first.view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');
+    const keep = second.view.tabMetaStore.getState().addTab('maps/keep.md', 'Keep');
+    const cellar = second.view.tabMetaStore.getState().addTab('maps/cellar.md', 'Cellar');
+    serviceMock.isWindowOpen.mockReturnValue(true);
+    await presentTabInPlayerWindow({} as any, first.view, tavern);
+    serviceMock.presentCanvas.mockClear();
+
+    second.view.tabMetaStore.getState().setActiveTab(keep);
+    presentedScene.present(second.view, keep);
+    second.view.tabMetaStore.getState().setActiveTab(cellar);
+    await flush();
+    expect(serviceMock.presentCanvas).not.toHaveBeenCalled();
+
+    const closeFirst = first.view.register.mock.calls[0][0] as () => void;
+    closeFirst();
+    expect(serviceMock.releaseSource).toHaveBeenCalledWith(first.atlasStore);
+
+    second.view.tabMetaStore.getState().setActiveTab(keep);
+    await flush();
+    expect(serviceMock.releaseHeldFrame).not.toHaveBeenCalled();
+    expect(serviceMock.presentCanvas).toHaveBeenLastCalledWith(frameSourceFor(second.canvas), keep);
+  });
+
+  test('releases the window when the presented tab is closed', async () => {
+    const { view, atlasStore } = createFakeView();
+    const tavern = view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');
+    serviceMock.isWindowOpen.mockReturnValue(true);
+    await presentTabInPlayerWindow({} as any, view, tavern);
+    view.tabMetaStore.getState().removeTab(tavern);
+    expect(serviceMock.releaseSource).toHaveBeenCalledWith(atlasStore);
+  });
+
+  test('does nothing to the window when there is none', async () => {
+    const { view } = createFakeView();
+    const tavern = view.tabMetaStore.getState().addTab('maps/tavern.md', 'Tavern');
+    const dungeon = view.tabMetaStore.getState().addTab('maps/dungeon.md', 'Dungeon');
+    serviceMock.isWindowOpen.mockReturnValue(true);
+    await presentTabInPlayerWindow({} as any, view, tavern);
+    Object.values(serviceMock).forEach((fn) => fn.mockClear());
+    noService.value = true;
+
+    expect(() => {
+      view.tabMetaStore.getState().setActiveTab(dungeon);
+      presentedScene.present(view, dungeon);
+      view.tabMetaStore.getState().setActiveTab(tavern);
+      presentedScene.clear();
+    }).not.toThrow();
+    await flush();
+
+    expect(serviceMock.presentCanvas).not.toHaveBeenCalled();
+    expect(serviceMock.releaseHeldFrame).not.toHaveBeenCalled();
   });
 });

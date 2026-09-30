@@ -1,6 +1,8 @@
 import { App, Notice } from 'obsidian';
+import type { StoreApi } from 'zustand';
 import type { LocalPlayerView } from '../local-player-view';
 import { AtlasView, ATLAS_VIEW_TYPE } from '../atlas-view';
+import type { ViewAtlasState } from '../storeFactory';
 import { playerWindowStore } from '../stores/playerWindowStore';
 import type { SceneTab } from '../types/sceneTabTypes';
 import { PlayerWindowService, type PlayerFrameSource } from './PlayerWindowService';
@@ -9,6 +11,8 @@ import { presentedScene, whenMapLoaded } from './PresentedScene';
 
 /** Set once the player window follows the presented scene; it starts with the first presentation through it. */
 let followingPresentedScene = false;
+/** The view store and tab the player window streams live, or null while it streams nothing. */
+let streamed: { store: StoreApi<ViewAtlasState>; tabId: string } | null = null;
 
 /** Present the active view's current scene tab, opening the player window if needed. */
 export async function presentActiveTabInPlayerWindow(app: App): Promise<void> {
@@ -47,6 +51,7 @@ export async function presentTabInPlayerWindow(app: App, view: AtlasView, tabId:
   } else {
     await service.openPlayerWindow(source, tabId, tab.filePath);
   }
+  streamed = { store: view.atlasStore, tabId };
   followPresentedScene();
   presentedScene.present(view, tabId);
   new Notice(`Player view shows ${tab.displayName}`);
@@ -94,6 +99,7 @@ export async function restorePlayerWindow(app: App, player: LocalPlayerView): Pr
   // Freeze before attaching so the first mirrored frame already uses the saved camera.
   if (session.frozen) service.freezeCamera(session.camera ?? source.getCamera?.());
   service.attachToView(player, source, sourceTab.id);
+  streamed = { store: sourceView.atlasStore, tabId: sourceTab.id };
   followPresentedScene();
   presentedScene.present(sourceView, sourceTab.id);
   if (previousTabId && previousTabId !== sourceTab.id) await sourceView.switchToTab(previousTabId);
@@ -112,21 +118,36 @@ function followPresentedScene(): void {
       if (scene.view instanceof AtlasView) void showPresentedScene(scene.view, scene.tabId, resumed);
     },
     held: () => PlayerWindowService.getInstance()?.holdCurrentFrame(),
-    // Closing the presented map must not leave its renderer and store reachable from the player window
-    cleared: (previous) => PlayerWindowService.getInstance()?.releaseSource(previous.store),
+    // Stopping presenting or closing the presented map must not leave its renderer and store reachable from the player window
+    cleared: (previous) => releaseStreamed(previous.store),
+    // A view the window still streams may close after another scene was presented
+    viewClosed: (view) => releaseStreamed(view.atlasStore),
   });
+}
+
+function isStreaming(view: AtlasView, tabId: string): boolean {
+  return streamed?.store === view.atlasStore && streamed.tabId === tabId;
+}
+
+/** Let go of `store`'s map in the player window, which then shows its last frame until a scene is presented. */
+function releaseStreamed(store: StoreApi<ViewAtlasState>): void {
+  PlayerWindowService.getInstance()?.releaseSource(store);
+  if (streamed?.store === store) streamed = null;
 }
 
 /** Show the presented scene in an open player window: a held one coming back, or one presented elsewhere. */
 async function showPresentedScene(view: AtlasView, tabId: string, resumed: boolean): Promise<void> {
   if (!PlayerWindowService.getInstance()?.isWindowOpen()) return;
-  if (!resumed && playerWindowStore.getState().presentedTabId === tabId) return;
+  if (!resumed && isStreaming(view, tabId) && playerWindowStore.getState().presentedTabId === tabId) return;
   const source = await waitForRenderedFrameSource(view);
   const service = PlayerWindowService.getInstance();
   if (!source || !service || view.tabMetaStore.getState().activeTabId !== tabId) return;
-  if (presentedScene.current()?.tabId !== tabId) return;
-  if (resumed) service.releaseHeldFrame(source);
+  const current = presentedScene.current();
+  if (current?.view !== view || current.tabId !== tabId) return;
+  // A held frame of this very scene goes live again; anything else re-targets the window.
+  if (resumed && isStreaming(view, tabId)) service.releaseHeldFrame(source);
   else service.presentCanvas(source, tabId, findTab(view, tabId)?.filePath);
+  streamed = { store: view.atlasStore, tabId };
 }
 
 function findTab(view: AtlasView, tabId: string): SceneTab | undefined {
