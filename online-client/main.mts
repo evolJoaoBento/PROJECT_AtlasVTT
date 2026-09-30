@@ -4,12 +4,21 @@ import { createPeerClient } from '../src/app/online/transport/PeerTransport';
 import { parseJoinFragment } from '../src/app/online/joinLink';
 import { normalizePlayerName } from '../src/app/online/protocol';
 import { randomId } from '../src/app/online/ids';
+import { initiativeLines, widgetLines } from '../src/app/online/preview/sceneSummary';
+import type { PlayerScene } from '../src/app/online/scene/sceneTypes';
+import { ScenePreview } from './preview.mts';
 
 const VERSION = '0.1.0';
 const form = document.getElementById('join') as HTMLFormElement;
 const nameInput = document.getElementById('name') as HTMLInputElement;
 const status = document.getElementById('status') as HTMLParagraphElement;
 const playerList = document.getElementById('players') as HTMLUListElement;
+const sceneSection = document.getElementById('scene') as HTMLElement;
+const widgetList = document.getElementById('widgets') as HTMLUListElement;
+const initiativeList = document.getElementById('initiative') as HTMLOListElement;
+const preview = new ScenePreview(document.getElementById('preview') as HTMLCanvasElement);
+let sessionState: PlayerSessionState | null = null;
+let scene: PlayerScene | null = null;
 
 /** localStorage can throw in private windows; the page still works without it. */
 function stored(key: string, fallback: () => string): string {
@@ -34,10 +43,13 @@ const REASONS: Record<string, string> = {
 };
 
 function render(state: PlayerSessionState): void {
+  sessionState = state;
   const text: Record<PlayerSessionState['status'], string> = {
     connecting: 'Connecting…',
     waiting: 'Waiting for the GM to let you in…',
-    admitted: `Connected to ${state.title ?? 'the table'}. Waiting for the GM to show a scene.`,
+    admitted: scene
+      ? `Connected to ${state.title ?? 'the table'}.`
+      : `Connected to ${state.title ?? 'the table'}. Waiting for the GM to show a scene.`,
     denied: REASONS[state.reason ?? 'denied'] ?? REASONS.denied!,
     lost: REASONS[state.reason ?? 'unreachable'] ?? REASONS.unreachable!,
   };
@@ -48,6 +60,27 @@ function render(state: PlayerSessionState): void {
     item.textContent = player.connected ? player.name : `${player.name} (away)`;
     return item;
   }));
+  renderScene();
+}
+
+function fillList(list: HTMLElement, lines: string[]): void {
+  list.hidden = lines.length === 0;
+  list.replaceChildren(...lines.map((line) => {
+    const item = document.createElement('li');
+    item.textContent = line;
+    return item;
+  }));
+}
+
+/** The preview and the widget and initiative lists, shown only while admitted with a scene. */
+function renderScene(): void {
+  const shown = sessionState?.status === 'admitted' ? scene : null;
+  sceneSection.hidden = shown === null;
+  preview.show(shown);
+  fillList(widgetList, shown ? widgetLines(shown.widgets) : []);
+  fillList(initiativeList, shown ? initiativeLines(shown.initiative) : []);
+  // Read-only, for checking in the developer tools what this page received.
+  (window as unknown as { atlasScene: PlayerScene | null }).atlasScene = scene;
 }
 
 const target = parseJoinFragment(location.hash);
@@ -76,6 +109,10 @@ if (!target) {
       clientVersion: VERSION,
       transport: createPeerClient(target.server),
       onChange: render,
+      onScene: (next) => {
+        scene = next;
+        if (sessionState) render(sessionState);
+      },
     }).start();
   });
 }
