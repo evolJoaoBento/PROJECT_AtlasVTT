@@ -1,4 +1,3 @@
-// src/app/online/scene/SceneBroadcaster.ts
 /**
  * Sends the presented scene to every admitted player: a snapshot on
  * presenting, on resume, on admission and on a player's resync; patches at
@@ -6,40 +5,32 @@
  * one projection per scene and everyone gets the same messages. It plugs into
  * `GmSession` through `session.use`, so the session never learns about maps.
  */
+import type { PresentedSceneInfo } from '../../services/PresentedScene';
+import type { ViewAtlasState } from '../../storeFactory';
+import type { FogOperation } from '../../types/fogTypes';
 import type { SessionHandler, SessionPlayer } from '../GmSession';
 import { randomId } from '../ids';
 import type { ControlMessage } from '../protocol';
-import type { PresentedSceneInfo } from '../../services/PresentedScene';
-import type { ViewAtlasState } from '../../storeFactory';
 import { AssetRegistry } from './AssetRegistry';
+import type { FogCoverage } from './FogCoverage';
 import { pickPlayerViewRules, samePlayerViewRules, type PlayerViewRules } from './playerViewRules';
 import { projectForPlayers } from './projectForPlayers';
 import { createProjectionMemo, type ProjectionMemo } from './projectRecords';
 import { diffScenes } from './sceneDiff';
-import type { FogCoverage } from './FogCoverage';
-import type { FogOperation } from '../../types/fogTypes';
 import { patchMessage, snapshotMessages, type SceneOutgoing } from './sceneMessages';
 import {
   FogCoverageCache, sameSlice, sliceOf, type Slice,
-  type PlayerViewSettingsSource, type PresentedSceneSource, type SceneSession,
+  type SceneBroadcasterOptions,
 } from './sceneSources';
 import type { PlayerScene } from './sceneTypes';
 
-export type { PlayerViewSettingsSource, PresentedSceneSource, SceneSession } from './sceneSources';
+export type { PlayerViewSettingsSource, PresentedSceneSource, SceneBroadcasterOptions, SceneSession } from './sceneSources';
 
 /** Changes are batched and sent at most this often. */
 export const SCENE_TICK_MS = 50;
 
 export const SCENE_TOO_LARGE_NOTICE = 'This scene is too large to send to online players.';
 export const FOG_TRUNCATED_NOTICE = 'This scene has too much fog to send all of it to online players.';
-
-export interface SceneBroadcasterOptions {
-  session: SceneSession;
-  presented: PresentedSceneSource;
-  settings: PlayerViewSettingsSource;
-  /** Tells the GM something; `OnlineSessionService` shows an Obsidian notice. */
-  notify(message: string): void;
-}
 
 /** The presented scene while it is shown (not held). */
 interface LiveScene {
@@ -57,6 +48,8 @@ export class SceneBroadcaster implements SessionHandler {
   private memo: ProjectionMemo = createProjectionMemo();
   private rules: PlayerViewRules;
   private live: LiveScene | null = null;
+  /** The presentation players were last shown, kept while it is held. */
+  private shown: PresentedSceneInfo | null = null;
   private sceneId: string | null = null;
   /** What players have: the last projection sent. Held scenes keep it; nothing re-projects it. */
   private lastSent: PlayerScene | null = null;
@@ -77,7 +70,7 @@ export class SceneBroadcaster implements SessionHandler {
       session.use(this),
       presented.subscribe({
         presented: (scene, resumed) => this.showScene(scene, resumed),
-        held: () => this.detach(),
+        held: (scene) => this.holdScene(scene),
         cleared: () => this.clearScene(),
       }),
       settings.onChange(() => this.settingsChanged()),
@@ -108,6 +101,7 @@ export class SceneBroadcaster implements SessionHandler {
 
   private showScene(scene: PresentedSceneInfo, resumed: boolean): void {
     this.detach();
+    this.shown = scene;
     const sceneId = resumed && this.sceneId !== null ? this.sceneId : randomId();
     if (sceneId !== this.sceneId) this.memo = createProjectionMemo();
     this.sceneId = sceneId;
@@ -120,6 +114,20 @@ export class SceneBroadcaster implements SessionHandler {
     };
     this.live = live;
     if (!live.loading) this.broadcastSnapshot(live);
+  }
+
+  /** A presentation that starts held is a new one: players must not see the old scene as its start. */
+  private holdScene(scene: PresentedSceneInfo): void {
+    this.detach();
+    if (this.shown === scene) return;
+    this.shown = null;
+    this.sceneId = null;
+    this.lastSent = null;
+    this.snapshot = null;
+  }
+
+  onGone(player: SessionPlayer): void {
+    this.seqs.delete(player.playerId);
   }
 
   private storeChanged(live: LiveScene, state: ViewAtlasState): void {
@@ -155,6 +163,7 @@ export class SceneBroadcaster implements SessionHandler {
 
   private clearScene(): void {
     this.detach();
+    this.shown = null;
     this.sceneId = null;
     this.lastSent = null;
     this.snapshot = null;

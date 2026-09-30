@@ -4,6 +4,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { GmSession, type SessionPlayer } from '../../../src/app/online/GmSession';
 import { PlayerSession } from '../../../src/app/online/PlayerSession';
 import { decodeControl, encodeControl, MAX_CONTROL_MESSAGE_BYTES, type ControlMessage } from '../../../src/app/online/protocol';
+import { SCENE_LIMITS } from '../../../src/app/online/scene/sceneTypes';
 import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
 import { FOG_TRUNCATED_NOTICE, SCENE_TICK_MS, SCENE_TOO_LARGE_NOTICE, SceneBroadcaster } from '../../../src/app/online/scene/SceneBroadcaster';
 import { patchMessage, snapshotMessages, splitParts } from '../../../src/app/online/scene/sceneMessages';
@@ -431,10 +432,24 @@ describe('SceneBroadcaster', () => {
     expect(sceneTypes(raw.received)).toEqual(['scene-snapshot']);
   });
 
-  it('coverage follows the fog players receive, and the GM is told once when fog is dropped', async () => {
+  it('does not hide a token under fog that is not sent (coverage follows what players receive)', async () => {
     const h = setup();
     const longId = 'x'.repeat(200);
-    const fog: Record<string, FogOperation> = { ...bigFog(1), [longId]: { ...bigFog(1).big0!, id: longId } };
+    const fog: Record<string, FogOperation> = {
+      [longId]: { id: longId, kind: 'fog', type: 'rectangle', timestamp: 1, isErasing: false, x: -1000, y: -1000, width: 5000, height: 5000 },
+    };
+    const { view, tavern } = fakeView(sceneState({ hero: character('hero', 140) }, fog));
+    h.presented.present(view, tavern);
+    expect(h.broadcaster.currentProjection()?.tokens.hero).toBeDefined();
+    expect(h.notices).toEqual([]);
+  });
+
+  it('tells the GM once when the fog has more operations than can be sent', async () => {
+    const h = setup();
+    const fog: Record<string, FogOperation> = {};
+    for (let i = 0; i <= SCENE_LIMITS.records; i++) {
+      fog[`f${i}`] = { id: `f${i}`, kind: 'fog', type: 'rectangle', timestamp: i, isErasing: false, x: 5000 + i, y: 5000, width: 1, height: 1 };
+    }
     const { view, store, tavern } = fakeView(sceneState({ hero: character('hero', 140) }, fog));
     h.presented.present(view, tavern);
     await rawPlayer(h, 'raw');
@@ -442,6 +457,25 @@ describe('SceneBroadcaster', () => {
     store.setState((state) => ({ objects: { ...state.objects, fog: { ...fog } } }));
     await tick();
     expect(h.notices).toEqual([FOG_TRUNCATED_NOTICE]);
+  });
+
+  it('gives a presentation that starts held a new scene id and clears admissions until it resumes', async () => {
+    const h = setup();
+    const first = fakeView(sceneState({ hero: character('hero', 140) }));
+    h.presented.present(first.view, first.tavern);
+    const oldId = h.broadcaster.currentProjection()?.sceneId;
+    const second = fakeView(sceneState({ dragon: character('dragon', 500) }));
+    second.tabs.getState().setActiveTab(second.dungeon);
+    h.presented.present(second.view, second.tavern);
+    expect(h.broadcaster.currentProjection()).toBeNull();
+    const raw = await rawPlayer(h, 'raw');
+    expect(sceneTypes(raw.received)).toEqual(['scene-clear']);
+    second.tabs.getState().setActiveTab(second.tavern);
+    await vi.advanceTimersByTimeAsync(0);
+    const resumed = h.broadcaster.currentProjection();
+    expect(resumed?.sceneId).not.toBe(oldId);
+    expect(Object.keys(resumed?.tokens ?? {})).toEqual(['dragon']);
+    expect(sceneTypes(raw.received)).toEqual(['scene-clear', 'scene-snapshot']);
   });
 
   it('does not tell the GM about fog when every operation is sent', async () => {

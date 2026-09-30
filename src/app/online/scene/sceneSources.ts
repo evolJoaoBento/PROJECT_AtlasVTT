@@ -7,6 +7,7 @@ import type { FogOperation } from '../../types/fogTypes';
 import { FogCoverage } from './FogCoverage';
 import type { PlayerViewRules } from './playerViewRules';
 import { projectFog, type ProjectionMemo } from './projectRecords';
+import { SCENE_LIMITS } from './sceneTypes';
 
 export interface SceneSession {
   use(handler: SessionHandler): () => void;
@@ -47,19 +48,18 @@ export function sameSlice(a: Slice, b: Slice): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-
 /** Coverage rasterised from the fog players receive, rebuilt only when the fog reference changes. */
 export class FogCoverageCache {
   private entry: { fog: Readonly<Record<string, FogOperation>>; coverage: FogCoverage; truncated: boolean } | null = null;
 
-  /** `truncated`: the GM's fog has operations the projection does not send. */
+  /** `truncated`: the GM's fog has more operations than the limit, so some are not sent. */
   get(fog: Readonly<Record<string, FogOperation>>, memo: ProjectionMemo): { coverage: FogCoverage; truncated: boolean } {
     if (this.entry?.fog !== fog) {
       const sent = projectFog(fog, memo);
       this.entry = {
         fog,
         coverage: FogCoverage.fromPlayerFog(sent),
-        truncated: Object.keys(sent).length < Object.keys(fog).length,
+        truncated: Object.keys(fog).length > SCENE_LIMITS.records,
       };
     }
     return this.entry;
