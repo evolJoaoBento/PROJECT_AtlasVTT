@@ -11,6 +11,7 @@ import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRu
 import { pickPlayerViewRules, samePlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
 import { createProjectionMemo, projectDrawings, projectFog, projectFogOp, projectRecord, projectTexts } from '../../../src/app/online/scene/projectRecords';
 import { isDrawingRecords, isFogRecords, isPlayerSceneBody } from '../../../src/app/online/scene/sceneValidation';
+import { coverageOfFog } from './sceneFixtures';
 import { projectInitiative, projectWidgets } from '../../../src/app/online/scene/projectPanels';
 
 const ALL_ON: PlayerViewRules = {
@@ -20,7 +21,7 @@ const ALL_OFF: PlayerViewRules = {
   showGrid: false, showTokenHP: false, showTokenStress: false, showTokenNameplates: false, showWidgets: false, showInitiative: false,
 };
 
-const fogBlock = (x: number, y: number, width: number, height: number): FogCoverage => FogCoverage.fromOperations({
+const fogBlock = (x: number, y: number, width: number, height: number): FogCoverage => coverageOfFog({
   f: { id: 'f', kind: 'fog', type: 'rectangle', timestamp: 1, isErasing: false, x, y, width, height },
 });
 
@@ -245,6 +246,5 @@ describe('coverage from the fog players receive', () => {
     expect(at(0)).toBe(true);
     expect(at(9000)).toBe(true);
     expect(at(20000)).toBe(false);
-    expect(FogCoverage.fromOperations({ a: { ...huge, brushRadius: 10000 } }).isCovered({ x: 20000, y: 0, width: 10, height: 10 })).toBe(false);
   });
 });

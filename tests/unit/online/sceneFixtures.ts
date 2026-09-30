@@ -1,3 +1,6 @@
+import type { FogOperation } from '../../../src/app/types/fogTypes';
+import { FogCoverage } from '../../../src/app/online/scene/FogCoverage';
+import { createProjectionMemo, projectFog } from '../../../src/app/online/scene/projectRecords';
 import type { PlayerFogOp, PlayerScene, PlayerSceneBody, PlayerToken } from '../../../src/app/online/scene/sceneTypes';
 
 export function playerToken(overrides: Partial<PlayerToken> = {}): PlayerToken {
@@ -9,6 +12,11 @@ export function playerToken(overrides: Partial<PlayerToken> = {}): PlayerToken {
 
 export function fogRect(order: number, overrides: Partial<Extract<PlayerFogOp, { type: 'rectangle' }>> = {}): PlayerFogOp {
   return { type: 'rectangle', erase: false, order, x: 0, y: 0, width: 100, height: 100, ...overrides };
+}
+
+/** Coverage built the way the app builds it: from the fog players receive. */
+export function coverageOfFog(fog: Readonly<Record<string, FogOperation>>): FogCoverage {
+  return FogCoverage.fromPlayerFog(projectFog(fog, createProjectionMemo()));
 }
 
 export function playerScene(overrides: Partial<PlayerScene> = {}): PlayerScene {

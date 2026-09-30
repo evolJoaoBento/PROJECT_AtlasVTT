@@ -9,6 +9,7 @@ import { FogCoverage } from '../../../src/app/online/scene/FogCoverage';
 import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
 import { projectForPlayers, type ProjectedState, type ProjectionContext } from '../../../src/app/online/scene/projectForPlayers';
 import { createProjectionMemo } from '../../../src/app/online/scene/projectRecords';
+import { coverageOfFog } from './sceneFixtures';
 
 const ALL_ON: PlayerViewRules = {
   showGrid: true, showTokenHP: true, showTokenStress: true, showTokenNameplates: true, showWidgets: true, showInitiative: true,
@@ -45,7 +46,7 @@ function hero(overrides: Partial<Character> = {}): Character {
     hp: { current: 7, max: 10 }, stress: 2, maxStress: 6, ringColor: '#3366ff', conditions: ['prone'], ...overrides,
   };
 }
-const fogOver = (x: number, y: number, width: number, height: number): FogCoverage => FogCoverage.fromOperations({
+const fogOver = (x: number, y: number, width: number, height: number): FogCoverage => coverageOfFog({
   f: { id: 'f', kind: 'fog', type: 'rectangle', timestamp: 1, isErasing: false, x, y, width, height } satisfies FogOperation,
 });
 
@@ -241,7 +242,7 @@ describe('projectForPlayers out-of-range numbers', () => {
 
   it('decides coverage on the raw position, not the clamped one', () => {
     const far = hero({ id: 'far', x: 1e12, y: 5 });
-    const covered = FogCoverage.fromOperations({
+    const covered = coverageOfFog({
       f: { id: 'f', kind: 'fog', type: 'rectangle', timestamp: 1, isErasing: false, x: 0, y: 0, width: 500, height: 500 } satisfies FogOperation,
     });
     // Clamped x (1e7) is still far from the fog, and so is the raw x: kept either way.

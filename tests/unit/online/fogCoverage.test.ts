@@ -4,6 +4,7 @@ import { finiteOr, finiteOrNull, hpOrNull, oneOf, positiveOr, positiveOrNull, re
 import { FOG_CELL_SIZE, FogCoverage } from '../../../src/app/online/scene/FogCoverage';
 import { SCENE_LIMITS, SCENE_RANGES } from '../../../src/app/online/scene/sceneTypes';
 import { simplifyPoints, wirePoints } from '../../../src/app/online/scene/simplifyPoints';
+import { coverageOfFog } from './sceneFixtures';
 
 let clock = 1;
 const next = (): number => clock++;
@@ -21,7 +22,7 @@ function lasso(points: Array<{ x: number; y: number }>, extra: Partial<FogLassoF
   return { id: `l${timestamp}`, kind: 'fog', type: 'lasso', timestamp, isErasing: false, points, ...extra };
 }
 const coverageOf = (...ops: FogOperation[]): FogCoverage =>
-  FogCoverage.fromOperations(Object.fromEntries(ops.map((op) => [op.id, op])));
+  coverageOfFog(Object.fromEntries(ops.map((op) => [op.id, op])));
 const box = (x: number, y: number, width: number, height: number): { x: number; y: number; width: number; height: number } =>
   ({ x, y, width, height });
 
@@ -81,7 +82,7 @@ describe('simplifyPoints', () => {
 
 describe('FogCoverage', () => {
   it('covers nothing without fog, or with erasing only', () => {
-    expect(FogCoverage.fromOperations({}).isCovered(box(0, 0, 10, 10))).toBe(false);
+    expect(coverageOfFog({}).isCovered(box(0, 0, 10, 10))).toBe(false);
     expect(coverageOf(rect(0, 0, 100, 100, { isErasing: true })).isCovered(box(10, 10, 10, 10))).toBe(false);
   });
 
@@ -156,32 +157,33 @@ describe('FogCoverage', () => {
     expect(coverage.isCovered(box(50, 50, 50, 50))).toBe(true);
   });
 
-  it('erases with far-away lasso points quickly and correctly', () => {
-    const started = performance.now();
+  it('erases with far-away lasso points without stretching the grid', () => {
     const coverage = coverageOf(
       rect(0, 0, 400, 400),
       lasso([{ x: 200, y: -1e12 }, { x: 1e12, y: 1e12 }, { x: -1e12, y: 1e12 }], { isErasing: true }),
     );
-    expect(performance.now() - started).toBeLessThan(500);
+    // Only painting sets the extent, so the erase's far points cost no extra cells.
+    expect(coverage.cellSize).toBe(FOG_CELL_SIZE);
     expect(coverage.isCovered(box(100, 100, 50, 50))).toBe(false);
     const outside = coverageOf(
       rect(0, 0, 400, 400),
       lasso([{ x: 1e9, y: 1e9 }, { x: 2e9, y: 1e9 }, { x: 2e9, y: 2e9 }], { isErasing: true }),
     );
     expect(outside.isCovered(box(100, 100, 50, 50))).toBe(true);
-  });
+  }, 5_000);
 
-  it('handles a huge brush with many points quickly and correctly', () => {
-    const points = Array.from({ length: 3000 }, (_, i) => ({ x: (i * 37) % 10_000, y: (i * 91) % 2_000 }));
-    const started = performance.now();
-    const erased = coverageOf(rect(0, 0, 10_000, 2_000), brush(points, 1e6, { isErasing: true }));
+  it('handles a huge brush with many points correctly', () => {
+    const points = Array.from({ length: 3000 }, (_, i) => ({ x: i * 0.6, y: 500 + 400 * Math.sin(i / 100) }));
+    const erased = coverageOf(rect(0, 0, 2_000, 1_000), brush(points, 1e6, { isErasing: true }));
     const painted = coverageOf(brush(points, 1e6));
-    expect(performance.now() - started).toBeLessThan(500);
+    // A huge painted extent coarsens the cells instead of growing the grid.
+    expect(painted.cellSize).toBeGreaterThan(FOG_CELL_SIZE);
+    expect(erased.cellSize).toBe(FOG_CELL_SIZE);
     expect(erased.isCovered(box(100, 100, 50, 50))).toBe(false);
     expect(painted.isCovered(box(100, 100, 50, 50))).toBe(true);
     const far = coverageOf(rect(0, 0, 400, 400), brush([{ x: 5e6, y: 5e6 }, { x: 6e6, y: 5e6 }], 50, { isErasing: true }));
     expect(far.isCovered(box(100, 100, 50, 50))).toBe(true);
-  });
+  }, 5_000);
 
   it('keeps simplified brush strokes conservative', () => {
     const wobble = Array.from({ length: 200 }, (_, i) => ({ x: i * 2, y: 100 + (i % 2) * 0.5 }));

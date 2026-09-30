@@ -5,11 +5,8 @@
  * only cells it covers whole and erase clears every cell it touches, so an
  * object counts as covered only when no part of it can show.
  */
-import type { FogOperation } from '../../types/fogTypes';
-import { finiteOr } from './coerce';
 import { CLEAR, FOGGED, fillBrush, fillLasso, fillRect, type CellGrid } from './fogRaster';
 import { sortedByOrder, type PlayerFogOp, type ScenePoint } from './sceneTypes';
-import { finitePoints } from './simplifyPoints';
 
 export const FOG_CELL_SIZE = 8;
 /** Beyond this many cells the cell size doubles, so a huge fogged area stays cheap. */
@@ -33,10 +30,6 @@ export class FogCoverage {
     private readonly originY: number,
     readonly cellSize: number,
   ) {}
-
-  static fromOperations(fog: Readonly<Record<string, FogOperation>>): FogCoverage {
-    return FogCoverage.fromShapes(sortedByOrder(fog, (op) => finiteOr(op.timestamp, 0)).flatMap(([, op]) => shapeOfOperation(op)));
-  }
 
   /** From exactly the fog players receive, so what the GM withholds matches what players can see. */
   static fromPlayerFog(fog: Readonly<Record<string, PlayerFogOp>>): FogCoverage {
@@ -100,22 +93,6 @@ type FogShape =
   | { type: 'rectangle'; erase: boolean; x: number; y: number; width: number; height: number }
   | { type: 'brush'; erase: boolean; points: ScenePoint[]; radius: number }
   | { type: 'lasso'; erase: boolean; points: ScenePoint[] };
-
-function shapeOfOperation(op: FogOperation): FogShape[] {
-  const dx = finiteOr(op.offsetX, 0);
-  const dy = finiteOr(op.offsetY, 0);
-  // Truthy erases, as on the GM canvas.
-  const erase = Boolean(op.isErasing);
-  if (op.type === 'rectangle') {
-    return [{
-      type: 'rectangle', erase, x: finiteOr(op.x, Number.NaN) + dx, y: finiteOr(op.y, Number.NaN) + dy,
-      width: finiteOr(op.width, Number.NaN), height: finiteOr(op.height, Number.NaN),
-    }];
-  }
-  if (op.type === 'brush') return [{ type: 'brush', erase, points: finitePoints(op.points, dx, dy), radius: finiteOr(op.brushRadius, 0) }];
-  if (op.type === 'lasso') return [{ type: 'lasso', erase, points: finitePoints(op.points, dx, dy) }];
-  return [];
-}
 
 function shapeOfPlayerOp(op: PlayerFogOp): FogShape {
   if (op.type === 'rectangle') return { type: 'rectangle', erase: op.erase, x: op.x, y: op.y, width: op.width, height: op.height };
