@@ -173,12 +173,13 @@ describe('FogCoverage', () => {
   }, 5_000);
 
   it('handles a huge brush with many points correctly', () => {
-    const points = Array.from({ length: 3000 }, (_, i) => ({ x: i * 0.6, y: 500 + 400 * Math.sin(i / 100) }));
-    const erased = coverageOf(rect(0, 0, 2_000, 1_000), brush(points, 1e6, { isErasing: true }));
+    const points = Array.from({ length: 3000 }, (_, i) => ({ x: (i * 37) % 10_000, y: (i * 91) % 2_000 }));
+    const erased = coverageOf(rect(0, 0, 10_000, 2_000), brush(points, 1e6, { isErasing: true }));
     const painted = coverageOf(brush(points, 1e6));
-    // A huge painted extent coarsens the cells instead of growing the grid.
+    // A huge brush coarsens the cells, which bounds the replay time whatever the points do.
     expect(painted.cellSize).toBeGreaterThan(FOG_CELL_SIZE);
-    expect(erased.cellSize).toBe(FOG_CELL_SIZE);
+    expect(erased.cellSize).toBeGreaterThan(FOG_CELL_SIZE);
+    expect(coverageOf(brush(points, 100)).cellSize).toBe(FOG_CELL_SIZE);
     expect(erased.isCovered(box(100, 100, 50, 50))).toBe(false);
     expect(painted.isCovered(box(100, 100, 50, 50))).toBe(true);
     const far = coverageOf(rect(0, 0, 400, 400), brush([{ x: 5e6, y: 5e6 }, { x: 6e6, y: 5e6 }], 50, { isErasing: true }));

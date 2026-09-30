@@ -19,6 +19,13 @@ type Objects = SceneState['objects'];
 /** Everything the GM keeps that must never leave the GM's machine carries one of these. */
 const SECRETS = ['SECRET', 'secret/', 'notes/', '.md', 'art/', 'maps/', 'dmNote', 'statblock'];
 
+/** No raw message that reached a player may hold a secret; the scan runs at the end of every flow. */
+function expectNoSecrets(wire: readonly string[]): void {
+  expect(wire.length).toBeGreaterThan(3);
+  const everything = wire.join('\n');
+  for (const secret of SECRETS) expect(everything.includes(secret), secret).toBe(false);
+}
+
 function tavernObjects(): Objects {
   // The DM-only fields (notes, statblocks, tags, hidden) are not all on the public token type.
   const tokens = {
@@ -181,6 +188,7 @@ describe('scene sync end to end', () => {
     w.presented.clear();
     expect([early.scene, late.scene]).toEqual([null, null]);
     expect(w.notices).toEqual([]);
+    expectNoSecrets(w.wire);
     w.finish();
   });
 
@@ -228,6 +236,7 @@ describe('scene sync end to end', () => {
 
     w.presented.clear();
     expect([second.scene, other.scene, joinedWhileHeld.scene]).toEqual([null, null, null]);
+    expectNoSecrets(w.wire);
     w.finish();
   });
 
@@ -240,9 +249,7 @@ describe('scene sync end to end', () => {
     addFog(w.store, 'e1', { type: 'rectangle', timestamp: 3, isErasing: true, x: 950, y: 950, width: 200, height: 200 });
     await w.tick();
     w.presented.clear();
-    expect(w.wire.length).toBeGreaterThan(3);
-    const everything = w.wire.join('\n');
-    for (const secret of SECRETS) expect(everything.includes(secret), secret).toBe(false);
+    expectNoSecrets(w.wire);
     w.finish();
   });
 });

@@ -11,6 +11,8 @@ import { sortedByOrder, type PlayerFogOp, type ScenePoint } from './sceneTypes';
 export const FOG_CELL_SIZE = 8;
 /** Beyond this many cells the cell size doubles, so a huge fogged area stays cheap. */
 export const MAX_FOG_CELLS = 4_000_000;
+/** A brush scans about this many cells across per segment; bigger brushes coarsen the cells, which bounds the replay time. */
+export const MAX_BRUSH_CELLS = 64;
 
 export interface WorldBounds {
   x: number;
@@ -40,7 +42,8 @@ export class FogCoverage {
     const bounds = paintedBounds(shapes);
     if (!bounds) return FogCoverage.EMPTY;
     let cellSize = FOG_CELL_SIZE;
-    while ((bounds.width / cellSize + 2) * (bounds.height / cellSize + 2) > MAX_FOG_CELLS) cellSize *= 2;
+    const widest = Math.max(0, ...shapes.map((shape) => (shape.type === 'brush' && Number.isFinite(shape.radius) ? shape.radius : 0)));
+    while ((bounds.width / cellSize + 2) * (bounds.height / cellSize + 2) > MAX_FOG_CELLS || widest / cellSize > MAX_BRUSH_CELLS) cellSize *= 2;
     const originX = Math.floor(bounds.x / cellSize) * cellSize;
     const originY = Math.floor(bounds.y / cellSize) * cellSize;
     const cols = Math.ceil((bounds.x + bounds.width - originX) / cellSize) + 1;
