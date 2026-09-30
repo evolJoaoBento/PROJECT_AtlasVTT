@@ -1,4 +1,3 @@
-// tests/unit/online/sceneBroadcaster.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { GmSession, type SessionPlayer } from '../../../src/app/online/GmSession';

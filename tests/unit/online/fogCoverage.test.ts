@@ -1,4 +1,3 @@
-// tests/unit/online/fogCoverage.test.ts
 import { describe, expect, it } from 'vitest';
 import type { FogBrushStroke, FogLassoFill, FogOperation, FogRectangleFill } from '../../../src/app/types/fogTypes';
 import { finiteOr, finiteOrNull, hpOrNull, oneOf, positiveOr, positiveOrNull, resourceOrNull, textOr, textOrNull, unitOr } from '../../../src/app/online/scene/coerce';

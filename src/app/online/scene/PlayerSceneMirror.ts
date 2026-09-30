@@ -1,4 +1,3 @@
-// src/app/online/scene/PlayerSceneMirror.ts
 /**
  * The player's copy of the presented scene, built from scene messages. Shared
  * with the web player page, so it imports nothing from Obsidian. A snapshot is

@@ -1,4 +1,3 @@
-// src/app/online/scene/coerce.ts
 /**
  * Wire values from GM records. Older or hand-edited map files may hold any
  * shape (a string HP, a missing font size, NaN), and one bad value would make

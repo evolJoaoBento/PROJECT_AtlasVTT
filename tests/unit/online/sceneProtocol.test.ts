@@ -1,4 +1,3 @@
-// tests/unit/online/sceneProtocol.test.ts
 import { describe, expect, it } from 'vitest';
 import { decodeControl, encodeControl, type ControlMessage } from '../../../src/app/online/protocol';
 import { SCENE_LIMITS, sortedByOrder } from '../../../src/app/online/scene/sceneTypes';

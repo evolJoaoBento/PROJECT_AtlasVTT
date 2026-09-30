@@ -1,4 +1,3 @@
-// src/app/online/scene/projectForPlayers.ts
 /**
  * The only place that decides what leaves the GM's machine: the presented
  * scene as online players may see it, exactly what the local player window

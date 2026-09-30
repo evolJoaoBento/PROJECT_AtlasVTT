@@ -1,4 +1,3 @@
-// src/app/online/scene/playerViewRules.ts
 import type { AtlasSettings } from '../../services/SettingsService';
 
 /** The `localPlayerView` settings online players follow. */

@@ -1,4 +1,3 @@
-// src/app/online/scene/simplifyPoints.ts
 import { SCENE_LIMITS, SCENE_RANGES, type ScenePoint } from './sceneTypes';
 
 /** Fog and drawing points are simplified to this many world pixels. */

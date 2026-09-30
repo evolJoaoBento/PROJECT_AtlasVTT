@@ -1,4 +1,3 @@
-// src/app/online/scene/AssetRegistry.ts
 import { randomId } from '../ids';
 
 /**

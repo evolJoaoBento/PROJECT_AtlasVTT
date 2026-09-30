@@ -1,4 +1,3 @@
-// tests/unit/online/playerSceneMirror.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlayerSceneMirror, RESYNC_MIN_INTERVAL_MS } from '../../../src/app/online/scene/PlayerSceneMirror';
 import type { PlayerScene } from '../../../src/app/online/scene/sceneTypes';

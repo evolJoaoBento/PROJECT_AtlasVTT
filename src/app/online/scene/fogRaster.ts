@@ -1,4 +1,3 @@
-// src/app/online/scene/fogRaster.ts
 /**
  * Pure rasterising of one fog operation onto a coarse cell grid. Conservative
  * by construction: paint fogs only cells the shape covers whole, erase clears

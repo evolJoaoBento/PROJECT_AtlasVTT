@@ -1,4 +1,3 @@
-// tests/unit/online/projectForPlayers.test.ts
 import { describe, expect, it } from 'vitest';
 import type { Character, Token } from '../../../src/app/types';
 import type { FogOperation } from '../../../src/app/types/fogTypes';

@@ -1,4 +1,3 @@
-// tests/unit/online/gmSession.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GmSession, SESSION_LIMITS, type SessionPlayer } from '../../../src/app/online/GmSession';
 import { MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport';

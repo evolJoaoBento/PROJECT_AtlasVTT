@@ -1,4 +1,3 @@
-// tests/unit/online/sceneFixtures.ts
 import type { PlayerFogOp, PlayerScene, PlayerSceneBody, PlayerToken } from '../../../src/app/online/scene/sceneTypes';
 
 export function playerToken(overrides: Partial<PlayerToken> = {}): PlayerToken {

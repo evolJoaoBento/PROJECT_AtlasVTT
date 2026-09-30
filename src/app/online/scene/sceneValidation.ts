@@ -1,4 +1,3 @@
-// src/app/online/scene/sceneValidation.ts
 /**
  * Checks for scene messages. Shared with the web player page, so this file
  * imports only the wire types. Records are read by their own keys only, and

@@ -1,4 +1,3 @@
-// src/app/online/scene/FogCoverage.ts
 /**
  * Where the fog of war lies, coarsely, to decide what players may receive.
  * Replays the fog operations like `FogCanvasCompositor` (in order, erase

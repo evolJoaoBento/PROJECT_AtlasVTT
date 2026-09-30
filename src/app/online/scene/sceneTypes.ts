@@ -1,4 +1,3 @@
-// src/app/online/scene/sceneTypes.ts
 /**
  * What online players receive of the presented scene. Shared with the web
  * player page, so this file imports nothing. Every field is `T | null`, never

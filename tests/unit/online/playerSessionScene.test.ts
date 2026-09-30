@@ -1,4 +1,3 @@
-// tests/unit/online/playerSessionScene.test.ts
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GmSession, type SessionPlayer } from '../../../src/app/online/GmSession';
 import { PlayerSession } from '../../../src/app/online/PlayerSession';

@@ -1,4 +1,3 @@
-// online-client/preview.mts
 /**
  * Draws the scene preview on a 2D canvas: a thin layer over the tested shape builders.
  * Everything drawn comes from the network, so text goes only through `fillText` and

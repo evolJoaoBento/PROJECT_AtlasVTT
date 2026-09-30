@@ -1,4 +1,3 @@
-// src/app/online/scene/projectRecords.ts
 /**
  * Fog operations, texts and drawings as players receive them. Every object is
  * built field by field from the GM record, never spread, so a field this file

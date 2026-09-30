@@ -1,4 +1,3 @@
-// src/app/online/scene/sceneMessages.ts
 /** Scene messages before each player's `seq` is set, kept under the control channel's size limit. */
 import { MAX_CONTROL_MESSAGE_BYTES, type ControlMessage } from '../protocol';
 import { sortedByOrder, type PlayerScene, type ScenePatchBody } from './sceneTypes';

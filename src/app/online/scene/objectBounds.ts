@@ -1,4 +1,3 @@
-// src/app/online/scene/objectBounds.ts
 /** World-space bounds of scene objects, to test them against the fog coverage. */
 import { tokenDiameterInCells } from '../../pixi/token-renderer/tokenSizing';
 import type { TextElement } from '../../types';

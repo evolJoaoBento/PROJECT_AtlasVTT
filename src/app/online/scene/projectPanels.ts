@@ -1,4 +1,3 @@
-// src/app/online/scene/projectPanels.ts
 /**
  * The widget bar and initiative tracker as players receive them, following the
  * same rules as `PlayerWidgetBar` and `PlayerInitiativePanel` in the local window.
