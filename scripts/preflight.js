@@ -87,7 +87,7 @@ if (!exists('dist/main.js')) {
   for (const [label, pattern] of Object.entries(blocking)) if (pattern.test(bundle)) errors.push(`dist/main.js contains ${label}`);
   for (const [label, pattern] of Object.entries(scorecard)) if (pattern.test(bundle)) warnings.push(`dist/main.js contains ${label}`);
   const hosts = [...new Set((bundle.match(/https?:\/\/[a-z0-9.-]+\.[a-z]{2,}/gi) || []))]
-    .filter((host) => !/w3\.org|reactjs\.org|react\.dev|github\.com|mozilla\.org|pixijs\.(com|download|io)|radix-ui\.com|lucide\.dev|fb\.me|feross\.org|howlerjs\.com|goldfirestudios\.com|motion\.dev|example\.com|bit\.ly|stuartk\.com|stuk\.github\.io/.test(host));
+    .filter((host) => !/w3\.org|reactjs\.org|react\.dev|github\.com|mozilla\.org|pixijs\.(com|download|io)|radix-ui\.com|lucide\.dev|fb\.me|feross\.org|howlerjs\.com|goldfirestudios\.com|motion\.dev|example\.com|bit\.ly|stuartk\.com|stuk\.github\.io|peerjs\.com|stun\.l\.google\.com/.test(host));
   if (hosts.length) warnings.push(`dist/main.js references hosts that must be disclosed in README: ${hosts.join(', ')}`);
   if (Buffer.byteLength(bundle) > 5 * 1024 * 1024) warnings.push('dist/main.js is larger than 5 MB');
 }

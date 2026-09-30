@@ -1,6 +1,6 @@
 # Privacy and network use
 
-Atlas VTT works offline. Maps, tokens, notes, audio and settings stay in your vault. Submitting an issue report is an optional network action.
+Atlas VTT works offline. Maps, tokens, notes, audio and settings stay in your vault. Submitting an issue report is an optional network action. The other exception is online play, which you start yourself: while an online session runs, Atlas connects to a signaling server (the PeerJS cloud at `0.peerjs.com` unless you set your own), a STUN server (`stun.l.google.com`), any relay servers you add, and directly to the players you let in. The signaling and STUN servers see IP addresses and connection ids but no game data; data between you and your players is encrypted end to end. Stopping the session, or closing Obsidian, ends all of it. The join link you share carries your signaling and relay settings, including any relay (TURN) username and password from **Settings → Online play**, so players' browsers can use them.
 
 - No accounts, no telemetry, no analytics, no ads.
 - No code is downloaded or executed from the internet, and the plugin does not update itself.

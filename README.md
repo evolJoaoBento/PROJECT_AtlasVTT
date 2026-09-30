@@ -25,6 +25,15 @@ AtlasVTT is desktop only for now
 - **Dice and initiative:** Roll dice, review the roll log, track turns, and keep counters and timers close at hand.
 - **Music and controls:** Play audio from your vault, customise map hotkeys, and undo or redo map edits.
 
+## Online play (preview)
+
+Host a session from Atlas and your players join from a browser: run **Online session…**, share the link, and approve each player who joins. Nothing is sent before you start a session, and nothing but who is connected is sent yet; showing scenes to online players is coming. Run **Stop online session** to end it.
+
+- Connections are direct between your Atlas and each player (WebRTC), encrypted end to end.
+- To find each other, Atlas and the player page use the free PeerJS signaling server (`0.peerjs.com`) and a public STUN server (`stun.l.google.com`). They see your and your players' IP addresses, never game data. You can use your own peerjs-server instead in **Settings → Online play**.
+- Players on strict networks may need a relay (TURN) server, which you can add in the same settings. The join link carries your signaling and relay settings, including any TURN username and password, so your players' browsers can use them: share the link only with people you trust with those credentials.
+- The player page is published from this repository's `online-client/` folder.
+
 ## Your notes, right on the map
 
 Pin an Obsidian markdown note or even another Atlas map to a location, then read and edit it in a floating panel without leaving the map. Keep room descriptions, session prep, and character details close at hand, with Obsidian's familiar note linking built in.
@@ -68,7 +77,7 @@ Download `main.js`, `manifest.json`, and `styles.css` from a [GitHub release](ht
 
 Atlas works offline with files in your vault. It has no accounts, telemetry, or ads. Scenes are saved as `.atlasmap` files; asset tags and thumbnails live in the vault's hidden `.atlas-data` folder.
 
-If you use an external image URL for a token or map background, or copy an externally hosted image from a note, Atlas downloads that image from the supplied address. Vault images require no network access. When you explicitly submit an issue report, Atlas sends it to `https://srv1871379.hstgr.cloud/atlas/reports`, which creates a public GitHub issue. See [PRIVACY.md](PRIVACY.md) for details.
+If you use an external image URL for a token or map background, or copy an externally hosted image from a note, Atlas downloads that image from the supplied address. Vault images require no network access. Online play connects to a signaling server, a STUN server and your players only while a session you started is running (see above). When you explicitly submit an issue report, Atlas sends it to `https://srv1871379.hstgr.cloud/atlas/reports`, which creates a public GitHub issue. See [PRIVACY.md](PRIVACY.md) for details.
 
 ## Help and contributing
 

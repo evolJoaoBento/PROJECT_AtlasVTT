@@ -2,6 +2,11 @@
   "version": "0.5.0-beta.1",
   "releases": [
     {
+      "version": "0.5.0-beta.1",
+      "title": "Coming in 0.5.0",
+      "markdown": "## New\n\n**Online Play (preview)**\n- Host an online session: run **Online session…**, share the link, and approve each player who joins from their browser. You see who is connected, and can remove anyone. Nothing goes online until you start a session."
+    },
+    {
       "version": "0.4.2",
       "date": "2026-09-29",
       "title": "Faster imports with progress bars, a toolbar that fits small windows, and scene and map fixes",
