@@ -191,3 +191,19 @@ export function sortedByOrder<T>(records: Readonly<Record<string, T>>, orderOf: 
     return idA < idB ? -1 : idA > idB ? 1 : 0;
   });
 }
+
+type Range = readonly [min: number, max: number];
+
+/** Inclusive numeric bounds both sides hold scene values to, so no value can stall a renderer. */
+export const SCENE_RANGES = {
+  gridSize: [1, 10_000],
+  cellSize: [1, 10_000],
+  mapSize: [0, 200_000],
+  coordinate: [-10_000_000, 10_000_000],
+  stroke: [0, 10_000],
+  fontSize: [1, 1_000],
+  textScale: [0.01, 100],
+  tokenSize: [0.05, 100],
+  textBox: [0, 200_000],
+  opacity: [0, 1],
+} as const satisfies Record<string, Range>;

@@ -95,3 +95,119 @@ describe('scene messages', () => {
     expect(sortedByOrder(records, (record) => record.order).map(([id]) => id)).toEqual(['c', 'a', 'b']);
   });
 });
+
+describe('scene value bounds', () => {
+  const snapshot = (scene: unknown): ReturnType<typeof decodeControl> =>
+    decodeRaw({ v: 1, type: 'scene-snapshot', seq: 1, scene, fogParts: 0, drawingParts: 0 });
+  const body = sceneBody(playerScene());
+  const withGrid = (overrides: object): unknown => ({ ...body, grid: { ...body.grid, ...overrides } });
+  const withMap = (overrides: object): unknown => ({ ...body, map: { ...body.map, ...overrides } });
+  const withToken = (overrides: object): unknown => ({ ...body, tokens: { t1: { ...playerToken(), ...overrides } } });
+  const withText = (overrides: object): unknown => ({ ...body, texts: { x1: { ...body.texts.x1, ...overrides } } });
+  const valid = (result: ReturnType<typeof decodeControl>): boolean => result.kind === 'message';
+
+  it('holds numbers to their ranges, just inside and just outside', () => {
+    expect(valid(snapshot(withGrid({ size: 1 })))).toBe(true);
+    expect(valid(snapshot(withGrid({ size: 10_000 })))).toBe(true);
+    expect(valid(snapshot(withGrid({ size: 0.999 })))).toBe(false);
+    expect(valid(snapshot(withGrid({ size: 1e-300 })))).toBe(false);
+    expect(valid(snapshot(withGrid({ size: 10_001 })))).toBe(false);
+    expect(valid(snapshot(withMap({ cellSize: 1 })))).toBe(true);
+    expect(valid(snapshot(withMap({ cellSize: 0.5 })))).toBe(false);
+    expect(valid(snapshot(withMap({ cellSize: 10_001 })))).toBe(false);
+    expect(valid(snapshot(withMap({ width: 200_000 })))).toBe(true);
+    expect(valid(snapshot(withMap({ width: 200_001 })))).toBe(false);
+    expect(valid(snapshot(withToken({ x: 10_000_000 })))).toBe(true);
+    expect(valid(snapshot(withToken({ x: -10_000_001 })))).toBe(false);
+    expect(valid(snapshot(withToken({ size: 0.05 })))).toBe(true);
+    expect(valid(snapshot(withToken({ size: 0.04 })))).toBe(false);
+    expect(valid(snapshot(withToken({ size: 100.5 })))).toBe(false);
+    expect(valid(snapshot(withText({ fontSize: 1 })))).toBe(true);
+    expect(valid(snapshot(withText({ fontSize: 0.5 })))).toBe(false);
+    expect(valid(snapshot(withText({ fontSize: 1001 })))).toBe(false);
+    expect(valid(snapshot(withText({ scale: 0.01 })))).toBe(true);
+    expect(valid(snapshot(withText({ scale: 0.009 })))).toBe(false);
+    expect(valid(snapshot(withText({ scale: 101 })))).toBe(false);
+    expect(valid(snapshot(withText({ opacity: 1 })))).toBe(true);
+    expect(valid(snapshot(withText({ opacity: 1.1 })))).toBe(false);
+    expect(valid(snapshot(withText({ width: 200_001 })))).toBe(false);
+    expect(valid(snapshot(withGrid({ opacity: -0.1 })))).toBe(false);
+    expect(valid(snapshot(withGrid({ lineWidth: 10_001 })))).toBe(false);
+  });
+
+  it('refuses points, fog and drawings out of range', () => {
+    const far = { x: 10_000_001, y: 0 };
+    const brush = { type: 'brush', erase: false, order: 1, radius: 10_001, points: [{ x: 0, y: 0 }] };
+    expect(decodeRaw({ v: 1, type: 'scene-fog', seq: 1, part: 0, records: { a: brush } }).kind).toBe('invalid');
+    const lasso = { type: 'lasso', erase: false, order: 1, points: [far, { x: 0, y: 0 }, { x: 1, y: 1 }] };
+    expect(decodeRaw({ v: 1, type: 'scene-fog', seq: 1, part: 0, records: { a: lasso } }).kind).toBe('invalid');
+    const pen = { type: 'pen', order: 1, points: [far], color: '#000000', width: 1, opacity: 1, icon: null };
+    expect(decodeRaw({ v: 1, type: 'scene-drawings', seq: 1, part: 0, records: { a: pen } }).kind).toBe('invalid');
+    const wide = { ...pen, points: [{ x: 1, y: 1 }], width: 10_001 };
+    expect(decodeRaw({ v: 1, type: 'scene-drawings', seq: 1, part: 0, records: { a: wide } }).kind).toBe('invalid');
+  });
+
+  it('refuses numbers that parse to Infinity', () => {
+    const raw = JSON.stringify({ v: 1, type: 'scene-snapshot', seq: 1, scene: body, fogParts: 0, drawingParts: 0 })
+      .replace('"cellSize":70', '"cellSize":1e999');
+    expect(raw).toContain('1e999');
+    expect(decodeControl(raw)).toEqual({ kind: 'invalid', reason: 'bad-scene-snapshot' });
+    const rect = JSON.stringify(fogRect(1)).replace('"x":0', '"x":1e999');
+    expect(decodeControl(`{"v":1,"type":"scene-fog","seq":1,"part":0,"records":{"a":${rect}}}`).kind).toBe('invalid');
+  });
+
+  it('tolerates keys it does not know, so newer GMs can add fields', () => {
+    expect(valid(snapshot(withToken({ isHidden: true })))).toBe(true);
+  });
+});
+
+describe('scene limits', () => {
+  const body = sceneBody(playerScene());
+
+  it('refuses ids that assignment treats specially in snapshots and patches', () => {
+    const snapshot = JSON.stringify({ v: 1, type: 'scene-snapshot', seq: 1, scene: body, fogParts: 0, drawingParts: 0 });
+    const patch = JSON.stringify({
+      v: 1, type: 'scene-patch', seq: 2, set: {}, remove: {}, upsert: { tokens: { t1: playerToken() } },
+    });
+    for (const id of ['__proto__', 'constructor', 'prototype']) {
+      expect(decodeControl(snapshot).kind).toBe('message');
+      expect(decodeControl(snapshot.replace('"t1"', `"${id}"`))).toEqual({ kind: 'invalid', reason: 'bad-scene-snapshot' });
+      expect(decodeControl(snapshot.replace('"x1"', `"${id}"`))).toEqual({ kind: 'invalid', reason: 'bad-scene-snapshot' });
+      expect(decodeControl(patch.replace('"t1"', `"${id}"`))).toEqual({ kind: 'invalid', reason: 'bad-scene-patch' });
+    }
+  });
+
+  it('refuses too many records, oversize ids and oversize strings', () => {
+    const many: Record<string, unknown> = {};
+    for (let i = 0; i <= SCENE_LIMITS.records; i++) many[`f${i}`] = fogRect(i);
+    expect(decodeRaw({ v: 1, type: 'scene-fog', seq: 1, part: 0, records: many }).kind).toBe('invalid');
+    const long = { ['i'.repeat(SCENE_LIMITS.idLength + 1)]: fogRect(1) };
+    expect(decodeRaw({ v: 1, type: 'scene-fog', seq: 1, part: 0, records: long }).kind).toBe('invalid');
+    const okId = { ['i'.repeat(SCENE_LIMITS.idLength)]: fogRect(1) };
+    expect(decodeRaw({ v: 1, type: 'scene-fog', seq: 1, part: 0, records: okId }).kind).toBe('message');
+    const scene = { ...body, tokens: { t1: playerToken({ name: 'n'.repeat(SCENE_LIMITS.stringLength + 1) }) } };
+    expect(decodeRaw({ v: 1, type: 'scene-snapshot', seq: 1, scene, fogParts: 0, drawingParts: 0 }))
+      .toEqual({ kind: 'invalid', reason: 'bad-scene-snapshot' });
+  });
+
+  it('refuses part counts above the limit', () => {
+    const tooMany = SCENE_LIMITS.records + 1;
+    expect(decodeRaw({ v: 1, type: 'scene-snapshot', seq: 1, scene: body, fogParts: tooMany, drawingParts: 0 }).kind).toBe('invalid');
+    expect(decodeRaw({ v: 1, type: 'scene-snapshot', seq: 1, scene: body, fogParts: 0, drawingParts: tooMany }).kind).toBe('invalid');
+    expect(decodeRaw({ v: 1, type: 'scene-fog', seq: 1, part: tooMany, records: {} }).kind).toBe('invalid');
+    expect(decodeRaw({ v: 1, type: 'scene-drawings', seq: 1, part: tooMany, records: {} }).kind).toBe('invalid');
+  });
+
+  it('refuses too many widgets and initiative entries', () => {
+    const widget = { id: 'w', type: 'counter', label: 'L', icon: 'i', value: 1 };
+    const widgets = Array.from({ length: SCENE_LIMITS.widgets + 1 }, () => widget);
+    const patch = { v: 1, type: 'scene-patch', seq: 2, upsert: {}, remove: {} };
+    expect(decodeRaw({ ...patch, set: { widgets } }).kind).toBe('invalid');
+    expect(decodeRaw({ ...patch, set: { widgets: widgets.slice(1) } }).kind).toBe('message');
+    const entry = { id: 'e', tokenId: 't', initiative: 1, name: null, hp: null, isActive: false };
+    const entries = Array.from({ length: SCENE_LIMITS.initiativeEntries + 1 }, () => entry);
+    expect(decodeRaw({ ...patch, set: { initiative: { round: 1, active: true, entries } } }).kind).toBe('invalid');
+    const fits = { round: 1, active: true, entries: entries.slice(1) };
+    expect(decodeRaw({ ...patch, set: { initiative: fits } }).kind).toBe('message');
+  });
+});

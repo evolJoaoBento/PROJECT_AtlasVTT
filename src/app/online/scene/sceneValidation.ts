@@ -7,7 +7,7 @@
  */
 import {
   PLAYER_DRAWING_TYPES, PLAYER_GRID_LINES, PLAYER_GRID_TYPES, PLAYER_HEX_NUMBERS, PLAYER_TEXT_ALIGNS, PLAYER_WIDGET_TYPES,
-  SCENE_FIELD_KEYS, SCENE_LIMITS, SCENE_RECORD_KEYS, type SceneFieldKey, type SceneRecordKey,
+  SCENE_FIELD_KEYS, SCENE_LIMITS, SCENE_RANGES, SCENE_RECORD_KEYS, type SceneFieldKey, type SceneRecordKey,
 } from './sceneTypes';
 
 type Fields = Record<string, unknown>;
@@ -21,9 +21,13 @@ function isFields(value: unknown): value is Fields {
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
-function isPositive(value: unknown): value is number {
-  return isNumber(value) && value > 0;
+type Range = readonly [number, number];
+function inRange(range: Range): (value: unknown) => value is number {
+  return (value): value is number => isNumber(value) && value >= range[0] && value <= range[1];
 }
+const isCoordinate = inRange(SCENE_RANGES.coordinate);
+const isStroke = inRange(SCENE_RANGES.stroke);
+const isOpacity = inRange(SCENE_RANGES.opacity);
 function isText(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.length <= max;
 }
@@ -56,7 +60,7 @@ export function isSceneCount(value: unknown): value is number {
 }
 
 function isPoint(value: unknown): boolean {
-  return isFields(value) && isNumber(value.x) && isNumber(value.y);
+  return isFields(value) && isCoordinate(value.x) && isCoordinate(value.y);
 }
 function isPoints(value: unknown, min: number): boolean {
   return Array.isArray(value) && value.length >= min && value.length <= SCENE_LIMITS.points
@@ -70,19 +74,20 @@ function isCondition(value: unknown): boolean {
 }
 
 function isPlayerMap(value: unknown): boolean {
-  return isFields(value) && nullable(isString)(value.asset) && isNumber(value.width) && isNumber(value.height)
-    && isPositive(value.cellSize);
+  return isFields(value) && nullable(isString)(value.asset) && inRange(SCENE_RANGES.mapSize)(value.width)
+    && inRange(SCENE_RANGES.mapSize)(value.height) && inRange(SCENE_RANGES.cellSize)(value.cellSize);
 }
 
 function isPlayerGrid(value: unknown): boolean {
-  return isFields(value) && oneOf(PLAYER_GRID_TYPES)(value.type) && isPositive(value.size)
-    && isNumber(value.offsetX) && isNumber(value.offsetY) && nullable(isString)(value.color) && isNumber(value.opacity)
-    && oneOf(PLAYER_GRID_LINES)(value.lineType) && isNumber(value.lineWidth)
-    && nullable(oneOf(PLAYER_HEX_NUMBERS))(value.hexNumbers) && nullable(isNumber)(value.hexNumberOpacity);
+  return isFields(value) && oneOf(PLAYER_GRID_TYPES)(value.type) && inRange(SCENE_RANGES.gridSize)(value.size)
+    && isCoordinate(value.offsetX) && isCoordinate(value.offsetY) && nullable(isString)(value.color) && isOpacity(value.opacity)
+    && oneOf(PLAYER_GRID_LINES)(value.lineType) && isStroke(value.lineWidth)
+    && nullable(oneOf(PLAYER_HEX_NUMBERS))(value.hexNumbers) && nullable(isOpacity)(value.hexNumberOpacity);
 }
 
 function isPlayerToken(value: unknown): boolean {
-  return isFields(value) && isNumber(value.x) && isNumber(value.y) && isNumber(value.size) && isNumber(value.rotation)
+  return isFields(value) && isCoordinate(value.x) && isCoordinate(value.y) && inRange(SCENE_RANGES.tokenSize)(value.size)
+    && isNumber(value.rotation)
     && isNumber(value.layer) && nullable(isString)(value.image) && nullable(isString)(value.ring)
     && Array.isArray(value.conditions) && value.conditions.length <= SCENE_LIMITS.conditions
     && value.conditions.every((condition) => isCondition(condition))
@@ -92,25 +97,26 @@ function isPlayerToken(value: unknown): boolean {
 function isPlayerFogOp(value: unknown): boolean {
   if (!isFields(value) || !isBoolean(value.erase) || !isNumber(value.order)) return false;
   switch (value.type) {
-    case 'brush': return isPositive(value.radius) && isPoints(value.points, 1);
+    case 'brush': return isStroke(value.radius) && value.radius > 0 && isPoints(value.points, 1);
     case 'lasso': return isPoints(value.points, 3);
-    case 'rectangle': return isNumber(value.x) && isNumber(value.y) && isNumber(value.width) && isNumber(value.height);
+    case 'rectangle': return isCoordinate(value.x) && isCoordinate(value.y) && isCoordinate(value.width) && isCoordinate(value.height);
     default: return false;
   }
 }
 
 function isPlayerText(value: unknown): boolean {
-  return isFields(value) && isNumber(value.x) && isNumber(value.y) && isText(value.text, SCENE_LIMITS.textLength)
-    && isNumber(value.fontSize) && isString(value.fontFamily) && isString(value.color)
-    && nullable(isString)(value.backgroundColor) && isNumber(value.padding) && isNumber(value.borderRadius)
-    && isNumber(value.opacity) && nullable(isNumber)(value.width) && nullable(isNumber)(value.height)
+  return isFields(value) && isCoordinate(value.x) && isCoordinate(value.y) && isText(value.text, SCENE_LIMITS.textLength)
+    && inRange(SCENE_RANGES.fontSize)(value.fontSize) && isString(value.fontFamily) && isString(value.color)
+    && nullable(isString)(value.backgroundColor) && isStroke(value.padding) && isStroke(value.borderRadius)
+    && isOpacity(value.opacity) && nullable(inRange(SCENE_RANGES.textBox))(value.width)
+    && nullable(inRange(SCENE_RANGES.textBox))(value.height)
     && oneOf(PLAYER_TEXT_ALIGNS)(value.align) && isBoolean(value.bold) && isBoolean(value.italic)
-    && isNumber(value.rotation) && isNumber(value.scale);
+    && isNumber(value.rotation) && inRange(SCENE_RANGES.textScale)(value.scale);
 }
 
 function isPlayerDrawing(value: unknown): boolean {
   return isFields(value) && oneOf(PLAYER_DRAWING_TYPES)(value.type) && isNumber(value.order) && isPoints(value.points, 1)
-    && isString(value.color) && isNumber(value.width) && isNumber(value.opacity) && nullable(isString)(value.icon);
+    && isString(value.color) && isStroke(value.width) && isOpacity(value.opacity) && nullable(isString)(value.icon);
 }
 
 function isPlayerWidget(value: unknown): boolean {
