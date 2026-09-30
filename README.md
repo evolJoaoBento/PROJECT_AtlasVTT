@@ -27,7 +27,9 @@ AtlasVTT is desktop only for now
 
 ## Online play (preview)
 
-Host a session from Atlas and your players join from a browser: run **Online session…**, share the link, and approve each player who joins. Nothing is sent before you start a session, and nothing but who is connected is sent yet; showing scenes to online players is coming. Run **Stop online session** to end it.
+Host a session from Atlas and your players join from a browser: run **Online session…**, share the link, and approve each player who joins. Nothing is sent before you start a session. Run **Present to players** (also in a map's **More options** menu) to show the current scene to everyone in the session without opening the player window; **Send current map to player view** presents it too. Players who join later get it when you let them in, and **Stop presenting** hides it again. Run **Stop online session** to end the session.
+
+Players get what the player window shows and nothing more: no hidden tokens, pins, notes or statblocks, nothing completely under fog of war, and grid, HP, stress, names, widgets and initiative as your player view settings say. The join page shows a simple live preview for now (the grid, fog, and a marker per token); map and token images come in a later version, and file paths are never sent.
 
 - Connections are direct between your Atlas and each player (WebRTC), encrypted end to end.
 - To find each other, Atlas and the player page use the free PeerJS signaling server (`0.peerjs.com`) and a public STUN server (`stun.l.google.com`). They see your and your players' IP addresses, never game data. You can use your own peerjs-server instead in **Settings → Online play**.

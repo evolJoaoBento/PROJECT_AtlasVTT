@@ -13,7 +13,7 @@ If you set a token or map background to an `http://` or `https://` image URL, or
 
 While an online session you started runs, Atlas connects to a signaling server (the PeerJS cloud at `0.peerjs.com` unless you set your own), a STUN server (`stun.l.google.com`), any relay servers you add, and directly to the players you let in. The signaling and STUN servers see IP addresses and connection ids but no game data; data between you and your players is encrypted end to end. A relay (TURN) server, if you add one, forwards that still-encrypted traffic between you and a player. Stopping the session, or closing Obsidian, ends all of it.
 
-The join link you share carries your signaling and relay settings, including any relay username and password from **Settings → Online play**, so players' browsers can use them.
+The join link you share carries your signaling and relay settings, including any relay username and password from **Settings → Online play**, so players' browsers can use them. The players you let in receive the scene you present: what your player window shows, filtered on your computer before it is sent, with file paths replaced by random ids.
 
 Players open the join page from `evoljoaobento.github.io` (GitHub Pages) by default. Their browsers load it from there, so GitHub sees their IP address like for any web page. Atlas itself never contacts that address, it only builds links to it. You can change the address in **Settings → Online play**.
 
