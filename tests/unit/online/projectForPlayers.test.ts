@@ -249,3 +249,30 @@ describe('projectForPlayers out-of-range numbers', () => {
     expect(Object.keys(projectForPlayers(withTokens({ far }), context({ coverage: covered })).tokens)).toEqual(['far']);
   });
 });
+
+describe('projectForPlayers fix round 1', () => {
+  it('names from the statblock only when one is linked', () => {
+    const unlinked = hero({ name: '', statblockName: 'Goblin boss' });
+    expect(projectForPlayers(withTokens({ hero: unlinked }), context()).tokens.hero?.name).toBeNull();
+    const linked = hero({ name: '', statblockPath: 'b.md' });
+    expect(projectForPlayers(withTokens({ hero: linked }), context()).tokens.hero?.name).toBe('Unknown Creature');
+  });
+
+  it('sends no conditions for plain tokens', () => {
+    const plain = { id: 'rock', kind: 'token', x: 0, y: 0, imagePath: 'rock.png', conditions: ['prone'] } as unknown as Token;
+    expect(projectForPlayers(withTokens({ rock: plain }), context()).tokens.rock?.conditions).toEqual([]);
+  });
+
+  it('drops the initiative entry of a fogged token', () => {
+    const initiative = {
+      ...createDefaultInitiativeState(),
+      entries: [
+        { id: 'e1', tokenId: 'a', name: 'A', initiative: 15, initiativeModifier: 0, hp: { current: 1, max: 1 }, imagePath: '', isActive: false, isDefeated: false, isNPC: false, order: 0 },
+        { id: 'e2', tokenId: 'b', name: 'B', initiative: 9, initiativeModifier: 0, hp: { current: 1, max: 1 }, imagePath: '', isActive: false, isDefeated: false, isNPC: false, order: 1 },
+      ],
+    };
+    const state = { ...withTokens({ a: hero({ id: 'a', x: 200, y: 200 }), b: hero({ id: 'b', x: 800, y: 200 }) }), initiative, initiativeTrackerOpen: true };
+    const scene = projectForPlayers(state, context({ coverage: fogOver(0, 0, 500, 500) }));
+    expect(scene.initiative?.entries.map((entry) => entry.tokenId)).toEqual(['b']);
+  });
+});

@@ -104,7 +104,7 @@ function projectToken(token: TokenEntity, context: ProjectionContext, cellSize: 
     layer: finiteOr(token.layer, 0),
     image: context.assets.idFor(token.imagePath),
     ring: token.showRing === false ? null : textOr(token.ringColor, DEFAULT_RING),
-    conditions: projectConditions(token),
+    conditions: character ? projectConditions(token) : [],
     name: character && rules.showTokenNameplates ? displayName(character) : null,
     hp: character && rules.showTokenHP ? hpOrNull(tokenHp(character)) : null,
     stress: character && rules.showTokenStress ? resourceOrNull(tokenStress(character)) : null,
@@ -113,7 +113,7 @@ function projectToken(token: TokenEntity, context: ProjectionContext, cellSize: 
 
 /** The nameplate text `TokenUIRenderer` shows: the name, the statblock's name, or a placeholder for a statblock. */
 function displayName(token: Character): string | null {
-  return textOrNull(token.name) ?? textOrNull(token.statblockName) ?? (token.statblockPath ? 'Unknown Creature' : null);
+  return textOrNull(token.name) ?? (token.statblockPath ? textOrNull(token.statblockName) ?? 'Unknown Creature' : null);
 }
 
 function projectConditions(token: TokenEntity): PlayerCondition[] {
