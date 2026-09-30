@@ -1,0 +1,45 @@
+// tests/unit/online/sceneFixtures.ts
+import type { PlayerFogOp, PlayerScene, PlayerSceneBody, PlayerToken } from '../../../src/app/online/scene/sceneTypes';
+
+export function playerToken(overrides: Partial<PlayerToken> = {}): PlayerToken {
+  return {
+    x: 100, y: 100, size: 1, rotation: 0, layer: 0, image: 'asset-1', ring: '#ffffff',
+    conditions: [], name: null, hp: null, stress: null, ...overrides,
+  };
+}
+
+export function fogRect(order: number, overrides: Partial<Extract<PlayerFogOp, { type: 'rectangle' }>> = {}): PlayerFogOp {
+  return { type: 'rectangle', erase: false, order, x: 0, y: 0, width: 100, height: 100, ...overrides };
+}
+
+export function playerScene(overrides: Partial<PlayerScene> = {}): PlayerScene {
+  return {
+    sceneId: 'scene-1',
+    map: { asset: 'map-asset', width: 1000, height: 800, cellSize: 70 },
+    grid: {
+      type: 'square', size: 70, offsetX: 0, offsetY: 0, color: null, opacity: 0.5,
+      lineType: 'solid', lineWidth: 1, hexNumbers: null, hexNumberOpacity: null,
+    },
+    tokens: { t1: playerToken() },
+    fog: { f1: fogRect(1) },
+    texts: {
+      x1: {
+        x: 50, y: 50, text: 'Tavern', fontSize: 24, fontFamily: 'serif', color: '#000000', backgroundColor: null,
+        padding: 4, borderRadius: 0, opacity: 1, width: null, height: null, align: 'center',
+        bold: false, italic: false, rotation: 0, scale: 1,
+      },
+    },
+    drawings: {
+      d1: { type: 'pen', order: 1, points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], color: '#ff0000', width: 4, opacity: 1, icon: null },
+    },
+    widgets: [{ id: 'w1', type: 'counter', label: 'Torches', icon: 'flame', value: 3 }],
+    initiative: { round: 1, active: true, entries: [{ id: 'e1', tokenId: 't1', initiative: 15, name: null, hp: null, isActive: true }] },
+    ...overrides,
+  };
+}
+
+/** The scene as a snapshot carries it: everything but the fog and the drawings. */
+export function sceneBody(scene: PlayerScene): PlayerSceneBody {
+  const { fog: _fog, drawings: _drawings, ...body } = scene;
+  return body;
+}

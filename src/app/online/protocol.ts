@@ -1,7 +1,11 @@
 /**
  * The online play wire format. Shared with the web player page, so this file
- * imports nothing: no Obsidian, no PIXI, no PeerJS.
+ * imports nothing but the scene wire format beside it: no Obsidian, no PIXI, no PeerJS.
  */
+import type { PlayerDrawing, PlayerFogOp, PlayerSceneBody, ScenePatchBody } from './scene/sceneTypes';
+import {
+  isDrawingRecords, isFogRecords, isLastSeq, isPlayerSceneBody, isSceneCount, isScenePatchBody, isSceneSeq,
+} from './scene/sceneValidation';
 export const PROTOCOL_VERSION = 1;
 export const MAX_CONTROL_MESSAGE_BYTES = 256 * 1024;
 export const MAX_PLAYER_NAME_LENGTH = 40;
@@ -22,7 +26,16 @@ export type ControlMessage =
   | { v: 1; type: 'presence'; players: PresencePlayer[] }
   | { v: 1; type: 'ping'; t: number }
   | { v: 1; type: 'pong'; t: number }
-  | { v: 1; type: 'bye'; reason: string };
+  | { v: 1; type: 'bye'; reason: string }
+  | { v: 1; type: 'scene-snapshot'; seq: number; scene: PlayerSceneBody; fogParts: number; drawingParts: number }
+  | { v: 1; type: 'scene-fog'; seq: number; part: number; records: Record<string, PlayerFogOp> }
+  | { v: 1; type: 'scene-drawings'; seq: number; part: number; records: Record<string, PlayerDrawing> }
+  | {
+    v: 1; type: 'scene-patch'; seq: number;
+    set: ScenePatchBody['set']; upsert: ScenePatchBody['upsert']; remove: ScenePatchBody['remove'];
+  }
+  | { v: 1; type: 'scene-clear'; seq: number }
+  | { v: 1; type: 'scene-resync'; seq: number };
 
 export type Decoded =
   | { kind: 'message'; message: ControlMessage }
@@ -47,6 +60,13 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   ping: (m) => isNumber(m.t),
   pong: (m) => isNumber(m.t),
   bye: (m) => isString(m.reason, 200),
+  'scene-snapshot': (m) => isSceneSeq(m.seq) && isSceneCount(m.fogParts) && isSceneCount(m.drawingParts)
+    && isPlayerSceneBody(m.scene),
+  'scene-fog': (m) => isSceneSeq(m.seq) && isSceneCount(m.part) && isFogRecords(m.records),
+  'scene-drawings': (m) => isSceneSeq(m.seq) && isSceneCount(m.part) && isDrawingRecords(m.records),
+  'scene-patch': (m) => isSceneSeq(m.seq) && isScenePatchBody(m),
+  'scene-clear': (m) => isSceneSeq(m.seq),
+  'scene-resync': (m) => isLastSeq(m.seq),
 };
 
 export function encodeControl(message: ControlMessage): string {

@@ -1,0 +1,178 @@
+// src/app/online/scene/sceneValidation.ts
+/**
+ * Checks for scene messages. Shared with the web player page, so this file
+ * imports only the wire types. Records are read by their own keys only, and
+ * ids that assignment treats specially are refused, so applying a validated
+ * patch can never reach an object's prototype.
+ */
+import {
+  PLAYER_DRAWING_TYPES, PLAYER_GRID_LINES, PLAYER_GRID_TYPES, PLAYER_HEX_NUMBERS, PLAYER_TEXT_ALIGNS, PLAYER_WIDGET_TYPES,
+  SCENE_FIELD_KEYS, SCENE_LIMITS, SCENE_RECORD_KEYS, type SceneFieldKey, type SceneRecordKey,
+} from './sceneTypes';
+
+type Fields = Record<string, unknown>;
+type Check = (value: unknown) => boolean;
+
+const FORBIDDEN_IDS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+
+function isFields(value: unknown): value is Fields {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+function isPositive(value: unknown): value is number {
+  return isNumber(value) && value > 0;
+}
+function isText(value: unknown, max: number): value is string {
+  return typeof value === 'string' && value.length <= max;
+}
+function isString(value: unknown): value is string {
+  return isText(value, SCENE_LIMITS.stringLength);
+}
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+function nullable(check: Check): Check {
+  return (value) => value === null || check(value);
+}
+function oneOf(values: readonly string[]): Check {
+  return (value) => typeof value === 'string' && values.includes(value);
+}
+
+/** A record key or entity id: short, and never one assignment treats specially. */
+export function isSceneId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= SCENE_LIMITS.idLength && !FORBIDDEN_IDS.has(value);
+}
+export function isSceneSeq(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 1;
+}
+/** The `seq` a player last applied: 0 before its first message. */
+export function isLastSeq(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+export function isSceneCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= SCENE_LIMITS.records;
+}
+
+function isPoint(value: unknown): boolean {
+  return isFields(value) && isNumber(value.x) && isNumber(value.y);
+}
+function isPoints(value: unknown, min: number): boolean {
+  return Array.isArray(value) && value.length >= min && value.length <= SCENE_LIMITS.points
+    && value.every((point) => isPoint(point));
+}
+function isResource(value: unknown): boolean {
+  return isFields(value) && isNumber(value.current) && isNumber(value.max);
+}
+function isCondition(value: unknown): boolean {
+  return isFields(value) && isText(value.id, SCENE_LIMITS.idLength) && (value.value === null || isNumber(value.value));
+}
+
+function isPlayerMap(value: unknown): boolean {
+  return isFields(value) && nullable(isString)(value.asset) && isNumber(value.width) && isNumber(value.height)
+    && isPositive(value.cellSize);
+}
+
+function isPlayerGrid(value: unknown): boolean {
+  return isFields(value) && oneOf(PLAYER_GRID_TYPES)(value.type) && isPositive(value.size)
+    && isNumber(value.offsetX) && isNumber(value.offsetY) && nullable(isString)(value.color) && isNumber(value.opacity)
+    && oneOf(PLAYER_GRID_LINES)(value.lineType) && isNumber(value.lineWidth)
+    && nullable(oneOf(PLAYER_HEX_NUMBERS))(value.hexNumbers) && nullable(isNumber)(value.hexNumberOpacity);
+}
+
+function isPlayerToken(value: unknown): boolean {
+  return isFields(value) && isNumber(value.x) && isNumber(value.y) && isNumber(value.size) && isNumber(value.rotation)
+    && isNumber(value.layer) && nullable(isString)(value.image) && nullable(isString)(value.ring)
+    && Array.isArray(value.conditions) && value.conditions.length <= SCENE_LIMITS.conditions
+    && value.conditions.every((condition) => isCondition(condition))
+    && nullable(isString)(value.name) && nullable(isResource)(value.hp) && nullable(isResource)(value.stress);
+}
+
+function isPlayerFogOp(value: unknown): boolean {
+  if (!isFields(value) || !isBoolean(value.erase) || !isNumber(value.order)) return false;
+  switch (value.type) {
+    case 'brush': return isPositive(value.radius) && isPoints(value.points, 1);
+    case 'lasso': return isPoints(value.points, 3);
+    case 'rectangle': return isNumber(value.x) && isNumber(value.y) && isNumber(value.width) && isNumber(value.height);
+    default: return false;
+  }
+}
+
+function isPlayerText(value: unknown): boolean {
+  return isFields(value) && isNumber(value.x) && isNumber(value.y) && isText(value.text, SCENE_LIMITS.textLength)
+    && isNumber(value.fontSize) && isString(value.fontFamily) && isString(value.color)
+    && nullable(isString)(value.backgroundColor) && isNumber(value.padding) && isNumber(value.borderRadius)
+    && isNumber(value.opacity) && nullable(isNumber)(value.width) && nullable(isNumber)(value.height)
+    && oneOf(PLAYER_TEXT_ALIGNS)(value.align) && isBoolean(value.bold) && isBoolean(value.italic)
+    && isNumber(value.rotation) && isNumber(value.scale);
+}
+
+function isPlayerDrawing(value: unknown): boolean {
+  return isFields(value) && oneOf(PLAYER_DRAWING_TYPES)(value.type) && isNumber(value.order) && isPoints(value.points, 1)
+    && isString(value.color) && isNumber(value.width) && isNumber(value.opacity) && nullable(isString)(value.icon);
+}
+
+function isPlayerWidget(value: unknown): boolean {
+  return isFields(value) && isText(value.id, SCENE_LIMITS.idLength) && oneOf(PLAYER_WIDGET_TYPES)(value.type)
+    && isString(value.label) && isString(value.icon) && isNumber(value.value);
+}
+function isPlayerWidgets(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= SCENE_LIMITS.widgets && value.every((widget) => isPlayerWidget(widget));
+}
+
+function isInitiativeEntry(value: unknown): boolean {
+  return isFields(value) && isText(value.id, SCENE_LIMITS.idLength) && isText(value.tokenId, SCENE_LIMITS.idLength)
+    && isNumber(value.initiative) && nullable(isString)(value.name) && nullable(isResource)(value.hp)
+    && isBoolean(value.isActive);
+}
+function isPlayerInitiative(value: unknown): boolean {
+  return isFields(value) && isNumber(value.round) && isBoolean(value.active) && Array.isArray(value.entries)
+    && value.entries.length <= SCENE_LIMITS.initiativeEntries && value.entries.every((entry) => isInitiativeEntry(entry));
+}
+
+function isRecordOf(value: unknown, check: Check): boolean {
+  if (!isFields(value)) return false;
+  const ids = Object.keys(value);
+  return ids.length <= SCENE_LIMITS.records && ids.every((id) => isSceneId(id) && check(value[id]));
+}
+function isIdList(value: unknown): boolean {
+  return Array.isArray(value) && value.length <= SCENE_LIMITS.records && value.every((id) => isSceneId(id));
+}
+
+const FIELD_CHECKS: Record<SceneFieldKey, Check> = {
+  map: isPlayerMap,
+  grid: nullable(isPlayerGrid),
+  widgets: isPlayerWidgets,
+  initiative: nullable(isPlayerInitiative),
+};
+const RECORD_CHECKS: Record<SceneRecordKey, Check> = {
+  tokens: isPlayerToken,
+  fog: isPlayerFogOp,
+  texts: isPlayerText,
+  drawings: isPlayerDrawing,
+};
+
+/** A snapshot's scene: fog and drawings come in their own parts. */
+export function isPlayerSceneBody(value: unknown): boolean {
+  return isFields(value) && isSceneId(value.sceneId)
+    && SCENE_FIELD_KEYS.every((key) => Object.hasOwn(value, key) && FIELD_CHECKS[key](value[key]))
+    && isRecordOf(value.tokens, isPlayerToken) && isRecordOf(value.texts, isPlayerText);
+}
+
+export function isFogRecords(value: unknown): boolean {
+  return isRecordOf(value, isPlayerFogOp);
+}
+
+export function isDrawingRecords(value: unknown): boolean {
+  return isRecordOf(value, isPlayerDrawing);
+}
+
+/** `set`, `upsert` and `remove` of a patch; fields a newer GM adds are ignored, not refused. */
+export function isScenePatchBody(message: Fields): boolean {
+  const { set, upsert, remove } = message;
+  if (!isFields(set) || !isFields(upsert) || !isFields(remove)) return false;
+  return SCENE_FIELD_KEYS.every((key) => !Object.hasOwn(set, key) || FIELD_CHECKS[key](set[key]))
+    && SCENE_RECORD_KEYS.every((key) => !Object.hasOwn(upsert, key) || isRecordOf(upsert[key], RECORD_CHECKS[key]))
+    && SCENE_RECORD_KEYS.every((key) => !Object.hasOwn(remove, key) || isIdList(remove[key]));
+}
