@@ -6,11 +6,10 @@
  * only cells it covers whole and erase clears every cell it touches, so an
  * object counts as covered only when no part of it can show.
  */
-import { calculateOperationBounds } from '../../pixi/fog/fogRenderUtils';
 import type { FogOperation } from '../../types/fogTypes';
 import { finiteOr } from './coerce';
 import { CLEAR, FOGGED, fillBrush, fillLasso, fillRect, type CellGrid } from './fogRaster';
-import { sortedByOrder } from './sceneTypes';
+import { sortedByOrder, type PlayerFogOp, type ScenePoint } from './sceneTypes';
 import { finitePoints } from './simplifyPoints';
 
 export const FOG_CELL_SIZE = 8;
@@ -37,8 +36,16 @@ export class FogCoverage {
   ) {}
 
   static fromOperations(fog: Readonly<Record<string, FogOperation>>): FogCoverage {
-    const ops = sortedByOrder(fog, (op) => finiteOr(op.timestamp, 0)).map(([, op]) => op);
-    const bounds = paintedBounds(ops);
+    return FogCoverage.fromShapes(sortedByOrder(fog, (op) => finiteOr(op.timestamp, 0)).flatMap(([, op]) => shapeOfOperation(op)));
+  }
+
+  /** From exactly the fog players receive, so what the GM withholds matches what players can see. */
+  static fromPlayerFog(fog: Readonly<Record<string, PlayerFogOp>>): FogCoverage {
+    return FogCoverage.fromShapes(sortedByOrder(fog, (op) => op.order).map(([, op]) => shapeOfPlayerOp(op)));
+  }
+
+  private static fromShapes(shapes: readonly FogShape[]): FogCoverage {
+    const bounds = paintedBounds(shapes);
     if (!bounds) return FogCoverage.EMPTY;
     let cellSize = FOG_CELL_SIZE;
     while ((bounds.width / cellSize + 2) * (bounds.height / cellSize + 2) > MAX_FOG_CELLS) cellSize *= 2;
@@ -47,7 +54,7 @@ export class FogCoverage {
     const cols = Math.ceil((bounds.x + bounds.width - originX) / cellSize) + 1;
     const rows = Math.ceil((bounds.y + bounds.height - originY) / cellSize) + 1;
     const coverage = new FogCoverage(new Uint8Array(cols * rows), cols, rows, originX, originY, cellSize);
-    for (const op of ops) coverage.apply(op);
+    for (const shape of shapes) coverage.apply(shape);
     return coverage;
   }
 
@@ -81,41 +88,68 @@ export class FogCoverage {
     return { cells: this.cells, cols: this.cols, rows: this.rows, originX: this.originX, originY: this.originY, cellSize: this.cellSize };
   }
 
-  private apply(op: FogOperation): void {
-    const dx = finiteOr(op.offsetX, 0);
-    const dy = finiteOr(op.offsetY, 0);
-    const value = op.isErasing ? CLEAR : FOGGED;
-    if (op.type === 'rectangle') {
-      fillRect(this.grid, finiteOr(op.x, Number.NaN) + dx, finiteOr(op.y, Number.NaN) + dy,
-        finiteOr(op.width, Number.NaN), finiteOr(op.height, Number.NaN), value);
-    } else if (op.type === 'brush') {
-      fillBrush(this.grid, finitePoints(op.points, dx, dy), finiteOr(op.brushRadius, 0), value);
-    } else if (op.type === 'lasso') {
-      fillLasso(this.grid, finitePoints(op.points, dx, dy), value);
-    }
+  private apply(shape: FogShape): void {
+    const value = shape.erase ? CLEAR : FOGGED;
+    if (shape.type === 'rectangle') fillRect(this.grid, shape.x, shape.y, shape.width, shape.height, value);
+    else if (shape.type === 'brush') fillBrush(this.grid, shape.points, shape.radius, value);
+    else fillLasso(this.grid, shape.points, value);
   }
 }
 
+/** A fog operation reduced to what the raster needs, offsets applied. */
+type FogShape =
+  | { type: 'rectangle'; erase: boolean; x: number; y: number; width: number; height: number }
+  | { type: 'brush'; erase: boolean; points: ScenePoint[]; radius: number }
+  | { type: 'lasso'; erase: boolean; points: ScenePoint[] };
+
+function shapeOfOperation(op: FogOperation): FogShape[] {
+  const dx = finiteOr(op.offsetX, 0);
+  const dy = finiteOr(op.offsetY, 0);
+  // Truthy erases, as on the GM canvas.
+  const erase = Boolean(op.isErasing);
+  if (op.type === 'rectangle') {
+    return [{
+      type: 'rectangle', erase, x: finiteOr(op.x, Number.NaN) + dx, y: finiteOr(op.y, Number.NaN) + dy,
+      width: finiteOr(op.width, Number.NaN), height: finiteOr(op.height, Number.NaN),
+    }];
+  }
+  if (op.type === 'brush') return [{ type: 'brush', erase, points: finitePoints(op.points, dx, dy), radius: finiteOr(op.brushRadius, 0) }];
+  if (op.type === 'lasso') return [{ type: 'lasso', erase, points: finitePoints(op.points, dx, dy) }];
+  return [];
+}
+
+function shapeOfPlayerOp(op: PlayerFogOp): FogShape {
+  if (op.type === 'rectangle') return { type: 'rectangle', erase: op.erase, x: op.x, y: op.y, width: op.width, height: op.height };
+  if (op.type === 'brush') return { type: 'brush', erase: op.erase, points: [...op.points], radius: op.radius };
+  return { type: 'lasso', erase: op.erase, points: [...op.points] };
+}
+
 /**
- * The area the painting operations reach; erasing outside it changes nothing.
+ * The area the painting shapes reach; erasing outside it changes nothing.
  * One far painted outlier stretches it and coarsens the cells (conservative:
  * more objects are sent, never fewer).
  */
-function paintedBounds(ops: readonly FogOperation[]): WorldBounds | null {
+function paintedBounds(shapes: readonly FogShape[]): WorldBounds | null {
   let left = Infinity;
   let top = Infinity;
   let right = -Infinity;
   let bottom = -Infinity;
-  for (const op of ops) {
-    if (op.isErasing) continue;
-    const bounds = calculateOperationBounds(op);
-    const xs = [bounds.x, bounds.x + bounds.width];
-    const ys = [bounds.y, bounds.y + bounds.height];
-    if (![...xs, ...ys].every(Number.isFinite)) continue;
-    left = Math.min(left, ...xs);
-    right = Math.max(right, ...xs);
-    top = Math.min(top, ...ys);
-    bottom = Math.max(bottom, ...ys);
+  const reach = (x: number, y: number, pad: number): void => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    left = Math.min(left, x - pad);
+    right = Math.max(right, x + pad);
+    top = Math.min(top, y - pad);
+    bottom = Math.max(bottom, y + pad);
+  };
+  for (const shape of shapes) {
+    if (shape.erase) continue;
+    if (shape.type === 'rectangle') {
+      reach(shape.x, shape.y, 0);
+      reach(shape.x + shape.width, shape.y + shape.height, 0);
+    } else {
+      const pad = shape.type === 'brush' ? Math.max(0, shape.radius) : 0;
+      for (const point of shape.points) reach(point.x, point.y, pad);
+    }
   }
   return left < right && top < bottom ? { x: left, y: top, width: right - left, height: bottom - top } : null;
 }

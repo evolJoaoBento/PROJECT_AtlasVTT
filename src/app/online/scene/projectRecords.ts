@@ -50,6 +50,24 @@ export function projectRecord<G, P>(records: Readonly<Record<string, G>> | undef
   return result;
 }
 
+/**
+ * A rectangle's extent on one axis as `[start, length]` inside the validator's ranges. The
+ * edges are clamped, not the length, so the area only loses what lies beyond the coordinate
+ * range; a span longer than the range keeps its start. NaN when a value is missing.
+ */
+function clampedSpan(start: unknown, length: unknown, offset: number): [number, number] {
+  const from = finiteOrNull(start);
+  const size = finiteOrNull(length);
+  if (from === null || size === null) return [Number.NaN, Number.NaN];
+  const a = from + offset;
+  const b = a + size;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return [Number.NaN, Number.NaN];
+  const max = SCENE_RANGES.coordinate[1];
+  const left = finiteOr(Math.min(a, b), 0, SCENE_RANGES.coordinate);
+  const right = finiteOr(Math.max(a, b), 0, SCENE_RANGES.coordinate);
+  return [left, Math.min(right - left, max)];
+}
+
 /** A fog operation with its drag offset applied; null when it has nothing to draw. */
 export function projectFogOp(op: FogOperation): PlayerFogOp | null {
   const dx = finiteOr(op.offsetX, 0);
@@ -59,17 +77,9 @@ export function projectFogOp(op: FogOperation): PlayerFogOp | null {
   const order = finiteOr(op.timestamp, 0);
   switch (op.type) {
     case 'rectangle': {
-      // A missing value drops the record; finiteness is checked before clamping into the player validator's range.
-      const x = finiteOrNull(op.x);
-      const y = finiteOrNull(op.y);
-      const width = finiteOrNull(op.width, SCENE_RANGES.coordinate);
-      const height = finiteOrNull(op.height, SCENE_RANGES.coordinate);
-      if (x === null || y === null || width === null || height === null) return null;
-      return {
-        type: 'rectangle', erase, order, width, height,
-        x: finiteOr(x + dx, 0, SCENE_RANGES.coordinate),
-        y: finiteOr(y + dy, 0, SCENE_RANGES.coordinate),
-      };
+      const [left, width] = clampedSpan(op.x, op.width, dx);
+      const [top, height] = clampedSpan(op.y, op.height, dy);
+      return Number.isNaN(left + width + top + height) ? null : { type: 'rectangle', erase, order, x: left, y: top, width, height };
     }
     case 'brush': {
       const points = wirePoints(op.points, dx, dy);
@@ -101,8 +111,8 @@ export function projectText(text: TextElement, coverage: FogCoverage): PlayerTex
     fontFamily: textOr(text.fontFamily, 'sans-serif'),
     color: textOr(text.color, '#000000'),
     backgroundColor: textOrNull(text.backgroundColor),
-    padding: finiteOr(Math.max(0, finiteOr(text.padding, 0)), 0, SCENE_RANGES.stroke),
-    borderRadius: finiteOr(Math.max(0, finiteOr(text.borderRadius, 0)), 0, SCENE_RANGES.stroke),
+    padding: Math.max(0, finiteOr(text.padding, 0, SCENE_RANGES.stroke)),
+    borderRadius: Math.max(0, finiteOr(text.borderRadius, 0, SCENE_RANGES.stroke)),
     opacity: unitOr(text.opacity, 1),
     width: positiveOrNull(text.width, SCENE_RANGES.textBox),
     height: positiveOrNull(text.height, SCENE_RANGES.textBox),

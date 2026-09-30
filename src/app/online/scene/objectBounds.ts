@@ -2,14 +2,14 @@
 /** World-space bounds of scene objects, to test them against the fog coverage. */
 import { tokenDiameterInCells } from '../../pixi/token-renderer/tokenSizing';
 import type { TextElement } from '../../types';
-import { finiteOr, positiveOr, positiveOrNull, textOr } from './coerce';
+import { finiteOr, positiveOr, positiveOrNull, textOr, textOrNull } from './coerce';
 import type { WorldBounds } from './FogCoverage';
 import type { PlayerDrawing } from './sceneTypes';
 
 export const DEFAULT_GRID_SIZE = 70;
 export const DEFAULT_FONT_SIZE = 16;
-/** Average glyph width and line height in font sizes: the GM side estimates text boxes, it does not measure them. */
-export const TEXT_CHAR_WIDTH = 0.6;
+/** Widest glyph width and line height in font sizes: the GM side over-estimates text boxes (never smaller than drawn), it does not measure them. */
+export const TEXT_CHAR_WIDTH = 1;
 export const TEXT_LINE_HEIGHT = 1.25;
 
 /** A token's footprint: its cells (at least one) times the grid size, centred on the token. */
@@ -24,12 +24,14 @@ export function tokenBounds(token: { x: number; y: number; size: number }, gridS
  */
 export function textBounds(text: TextElement): WorldBounds {
   const fontSize = positiveOr(text.fontSize, DEFAULT_FONT_SIZE);
-  const padding = Math.max(0, finiteOr(text.padding, 0));
+  // `TextRenderer` draws a background with `padding || 8`, and none without one.
+  const hasBackground = textOrNull(text.backgroundColor) !== null;
+  const padding = hasBackground ? Math.max(0, finiteOr(text.padding, 0)) || 8 : Math.max(0, finiteOr(text.padding, 0));
   const scale = positiveOr(text.scale, 1);
   const lines = textOr(text.text, '').split('\n');
   const longest = lines.reduce((max, line) => Math.max(max, line.length), 1);
-  const width = ((positiveOrNull(text.width) ?? longest * fontSize * TEXT_CHAR_WIDTH) + 2 * padding) * scale;
-  const height = ((positiveOrNull(text.height) ?? lines.length * fontSize * TEXT_LINE_HEIGHT) + 2 * padding) * scale;
+  const width = (Math.max(positiveOrNull(text.width) ?? 0, longest * fontSize * TEXT_CHAR_WIDTH) + 2 * padding) * scale;
+  const height = (Math.max(positiveOrNull(text.height) ?? 0, lines.length * fontSize * TEXT_LINE_HEIGHT) + 2 * padding) * scale;
   const rotated = finiteOr(text.rotation, 0) % 360 !== 0;
   const boxWidth = rotated ? Math.hypot(width, height) : width;
   const boxHeight = rotated ? boxWidth : height;

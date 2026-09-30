@@ -9,7 +9,7 @@ import { FogCoverage } from '../../../src/app/online/scene/FogCoverage';
 import { drawingBounds, textBounds, tokenBounds } from '../../../src/app/online/scene/objectBounds';
 import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
 import { pickPlayerViewRules, samePlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
-import { createProjectionMemo, projectDrawings, projectFog, projectFogOp, projectTexts } from '../../../src/app/online/scene/projectRecords';
+import { createProjectionMemo, projectDrawings, projectFog, projectFogOp, projectRecord, projectTexts } from '../../../src/app/online/scene/projectRecords';
 import { isDrawingRecords, isFogRecords, isPlayerSceneBody } from '../../../src/app/online/scene/sceneValidation';
 import { projectInitiative, projectWidgets } from '../../../src/app/online/scene/projectPanels';
 
@@ -54,6 +54,8 @@ describe('AssetRegistry', () => {
     expect(new AssetRegistry().idFor('atlas-vtt/assets/secret-lair.png')).not.toBe(id);
     expect(assets.idFor(null)).toBeNull();
     expect(assets.idFor('')).toBeNull();
+    expect(assets.idFor('__proto__')).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(assets.idFor('constructor')).not.toBe(assets.idFor('__proto__'));
   });
 });
 
@@ -61,9 +63,11 @@ describe('object bounds', () => {
   it('measures token footprints, estimated text boxes and drawings', () => {
     expect(tokenBounds({ x: 100, y: 100, size: 1 }, 70)).toEqual({ x: 65, y: 65, width: 70, height: 70 });
     expect(tokenBounds({ x: 0, y: 0, size: 2 }, 70)).toEqual({ x: -105, y: -105, width: 210, height: 210 });
-    expect(textBounds(text({ x: 0, y: 0, padding: 5 }))).toEqual({ x: -35, y: -17.5, width: 70, height: 35 });
+    expect(textBounds(text({ x: 0, y: 0, padding: 5 }))).toEqual({ x: -55, y: -17.5, width: 110, height: 35 });
     const rotated = textBounds(text({ x: 0, y: 0, rotation: 45 }));
-    expect(rotated.width).toBeCloseTo(Math.hypot(60, 25));
+    expect(rotated.width).toBeCloseTo(Math.hypot(100, 25));
+    expect(textBounds(text({ x: 0, y: 0, width: 300, backgroundColor: '#fff' })).width).toBe(300 + 16);
+    expect(textBounds(text({ x: 0, y: 0, width: 10 })).width).toBe(100);
     expect(drawingBounds({ points: [{ x: 10, y: 10 }, { x: 30, y: 20 }], width: 4 })).toEqual({ x: 6, y: 6, width: 28, height: 18 });
   });
 });
@@ -197,8 +201,8 @@ describe('wire ranges', () => {
     );
     const big: FogOperation = { id: 'r', kind: 'fog', type: 'rectangle', timestamp: 1, isErasing: false, x: 1e12, y: 0, width: 1e9 * 1e9, height: 5, offsetX: 1e12 };
     const brush: FogOperation = {
-      id: 'b', kind: 'brush', type: 'brush', timestamp: 2, isErasing: false, brushRadius: 1e9, points: [{ x: 1e12, y: 0 }],
-    } as unknown as FogOperation;
+      id: 'b', kind: 'fog', type: 'brush', timestamp: 2, isErasing: false, brushRadius: 1e9, points: [{ x: 1e12, y: 0 }],
+    };
     const fog = projectFog({ r: big, b: brush }, createProjectionMemo());
     expect(Object.keys(fog)).toEqual(['r', 'b']);
     expect(isPlayerSceneBody({
@@ -206,5 +210,41 @@ describe('wire ranges', () => {
     })).toBe(true);
     expect(isDrawingRecords(drawings)).toBe(true);
     expect(isFogRecords(fog)).toBe(true);
+  });
+});
+
+describe('fog rectangle clamping', () => {
+  it('clamps edges, so the sent area keeps what lies inside the coordinate range', () => {
+    const op: FogOperation = { id: 'r', kind: 'fog', type: 'rectangle', timestamp: 1, isErasing: false, x: -2e7, y: 0, width: 3e7, height: 10 };
+    const sent = projectFogOp(op);
+    expect(sent).toMatchObject({ x: -1e7, width: 1e7 });
+    const flipped = projectFogOp({ ...op, x: 100, y: 50, width: -40, height: -10 });
+    expect(flipped).toMatchObject({ x: 60, y: 40, width: 40, height: 10 });
+    expect(projectFogOp({ ...op, x: 1e308, width: 1e308 })).toBeNull();
+  });
+});
+
+describe('projectRecord keys', () => {
+  it('skips prototype-polluting ids from parsed JSON', () => {
+    const parsed = JSON.parse('{"__proto__":{"a":1},"constructor":{"a":2},"ok":{"a":3}}') as Record<string, { a: number }>;
+    const result = projectRecord(parsed, (record) => record.a);
+    expect(Object.keys(result)).toEqual(['ok']);
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+  });
+});
+
+describe('coverage from the fog players receive', () => {
+  it('matches the projected set even when projection clamps or drops operations', () => {
+    const huge: FogOperation = { id: 'a', kind: 'fog', type: 'brush', timestamp: 1, isErasing: false, brushRadius: 50000, points: [{ x: 0, y: 0 }] };
+    const fog = { a: huge, ['long-id-'.repeat(40)]: huge };
+    const sent = projectFog(fog, createProjectionMemo());
+    expect(Object.keys(sent)).toEqual(['a']);
+    expect(sent.a).toMatchObject({ radius: 10000 });
+    const coverage = FogCoverage.fromPlayerFog(sent);
+    const at = (x: number): boolean => coverage.isCovered({ x, y: 0, width: 10, height: 10 });
+    expect(at(0)).toBe(true);
+    expect(at(9000)).toBe(true);
+    expect(at(20000)).toBe(false);
+    expect(FogCoverage.fromOperations({ a: { ...huge, brushRadius: 10000 } }).isCovered({ x: 20000, y: 0, width: 10, height: 10 })).toBe(false);
   });
 });
