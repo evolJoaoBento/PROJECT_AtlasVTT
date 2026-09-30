@@ -126,6 +126,8 @@ Today, presenting a scene opens the local player window. This piece extracts
   commands keep their behaviour (presenting also opens the local window).
 - A new command and view-actions item, **Present to players**, presents the
   active scene without opening the local window. "Stop presenting" clears it.
+- The scene tab bar's "presented" marker follows `PresentedScene`, so a scene
+  presented only to online players shows it too.
 
 While held, players keep the last scene they received (as the local window
 keeps its last frame). When the presented tab comes back and its map has
@@ -153,17 +155,22 @@ Messages (control channel, protocol v1, validated on both sides):
 
 | Type | Direction | Fields |
 | --- | --- | --- |
-| `scene-snapshot` | GM → player | `seq`, `scene` (a `PlayerScene` without `fog`), `fogParts` (how many `scene-fog` messages follow) |
-| `scene-fog` | GM → player | `seq`, `part`, `ops` (a batch of fog operations) |
+| `scene-snapshot` | GM → player | `seq`, `scene` (a `PlayerScene` without `fog` and `drawings`), `fogParts` and `drawingParts` (how many `scene-fog` and `scene-drawings` messages follow) |
+| `scene-fog` | GM → player | `seq`, `part`, `records` (a batch of fog operations) |
+| `scene-drawings` | GM → player | `seq`, `part`, `records` (a batch of drawings) |
 | `scene-patch` | GM → all | `seq`, `set` (changed top-level fields), `upsert` and `remove` per record type |
 | `scene-clear` | GM → all | `seq` |
 | `scene-resync` | player → GM | `seq` (the last it applied) |
 
 `seq` increases by one per message to a player. A player that sees a gap, or a
 patch before a snapshot, discards it and sends `scene-resync`; the GM answers
-that player with a snapshot. A snapshot's fog is split into `scene-fog` parts
-so no message exceeds the 256 KB limit; a patch that would exceed it is
-replaced by a snapshot.
+that player with a snapshot. A snapshot's fog and drawings are split into `scene-fog` and `scene-drawings`
+parts so no message exceeds the 256 KB limit; the player applies the snapshot
+only once all its parts have arrived (a missing or out-of-order part triggers a
+`scene-resync`). A patch that would exceed the limit is replaced by a snapshot.
+If the snapshot without fog and drawings still exceeds it, players get
+`scene-clear` and the GM sees a notice once: "This scene is too large to send
+to online players."
 
 ## Player side
 
