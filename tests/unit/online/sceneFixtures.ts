@@ -50,3 +50,16 @@ export function sceneBody(scene: PlayerScene): PlayerSceneBody {
   const { fog: _fog, drawings: _drawings, ...body } = scene;
   return body;
 }
+
+/** A valid fingerprint made up from a number, for tests that need many different ones. */
+export function fingerprint(n: number): string {
+  return String(n).padStart(43, 'A');
+}
+
+/** A scene whose map and tokens (`t0`, `t1`, ...) show these images; null for none. */
+export function sceneWithImages(mapAsset: string | null, tokenImages: ReadonlyArray<string | null>): PlayerScene {
+  return playerScene({
+    map: { asset: mapAsset, width: 1000, height: 800, cellSize: 70 },
+    tokens: Object.fromEntries(tokenImages.map((image, index) => [`t${index}`, playerToken({ image })])),
+  });
+}
