@@ -13,7 +13,10 @@ export interface PlayerSessionState {
   playerId: string | null;
   title: string | null;
   players: PresencePlayer[];
-  /** Why the session is denied or lost: a deny reason, `ended` or `unreachable`. */
+  /**
+   * Why the session is denied or lost: a deny reason, `ended`, `replaced`,
+   * `unreachable` (never got in) or `connection-lost` (was in, retrying gave up).
+   */
   reason: string | null;
 }
 
@@ -118,7 +121,7 @@ export class PlayerSession {
     }
     if (this.attempt === 0) this.droppedAt = Date.now();
     if (Date.now() - this.droppedAt >= RECONNECT_GIVE_UP_MS) {
-      this.finish('lost', 'unreachable');
+      this.finish('lost', 'connection-lost');
       return;
     }
     const delay = RECONNECT_DELAYS_MS[Math.min(this.attempt, RECONNECT_DELAYS_MS.length - 1)]!;

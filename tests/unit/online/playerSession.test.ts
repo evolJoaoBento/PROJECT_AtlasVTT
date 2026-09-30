@@ -92,7 +92,7 @@ describe('PlayerSession', () => {
     await vi.advanceTimersByTimeAsync(RECONNECT_GIVE_UP_MS - 1000);
     expect(player.state.status).toBe('connecting');
     await vi.advanceTimersByTimeAsync(20_000);
-    expect(player.state).toMatchObject({ status: 'lost', reason: 'unreachable' });
+    expect(player.state).toMatchObject({ status: 'lost', reason: 'connection-lost' });
   });
 
   describe('with a hand-written transport', () => {
@@ -142,6 +142,24 @@ describe('PlayerSession', () => {
       await vi.advanceTimersByTimeAsync(60_000);
       expect(player.state).toMatchObject({ status: 'denied', reason: 'denied' });
       expect(state.calls).toBe(1);
+    });
+
+    it('tells a drop before admission (unreachable) from a lost connection after it', async () => {
+      const before = fake();
+      before.player.start();
+      await flush();
+      before.links[0]!.drop();
+      expect(before.player.state).toMatchObject({ status: 'lost', reason: 'unreachable' });
+      expect(before.state.calls).toBe(1);
+
+      const after = fake();
+      after.player.start();
+      await flush();
+      after.admit(after.links[0]!);
+      after.state.fail = true;
+      after.links[0]!.drop();
+      await vi.advanceTimersByTimeAsync(RECONNECT_GIVE_UP_MS + 20_000);
+      expect(after.player.state).toMatchObject({ status: 'lost', reason: 'connection-lost' });
     });
 
     it('ignores messages after stop() and says goodbye', async () => {
