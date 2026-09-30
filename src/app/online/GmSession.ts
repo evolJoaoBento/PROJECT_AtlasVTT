@@ -48,6 +48,8 @@ interface Entry {
 interface LinkState {
   entry: Entry | null;
   invalid: number;
+  /** A rejected message was logged for this connection already. */
+  warned: boolean;
   joinTimer: number | null;
   unsubscribe: Unsubscribe[];
 }
@@ -141,7 +143,7 @@ export class GmSession {
       link.close();
       return;
     }
-    const state: LinkState = { entry: null, invalid: 0, joinTimer: null, unsubscribe: [] };
+    const state: LinkState = { entry: null, invalid: 0, warned: false, joinTimer: null, unsubscribe: [] };
     state.joinTimer = window.setTimeout(() => link.close(), SESSION_LIMITS.joinTimeoutMs);
     state.unsubscribe.push(
       link.onMessage((channel, data) => { if (channel === 'control') this.receive(link, state, data); }),
@@ -154,10 +156,12 @@ export class GmSession {
     const decoded = decodeControl(data);
     if (decoded.kind === 'ignored') return;
     if (decoded.kind === 'version') {
+      this.logRejected(state, 'protocol version mismatch');
       this.refuse(link, 'version');
       return;
     }
     if (decoded.kind === 'invalid' || (!state.entry && decoded.message.type !== 'join')) {
+      this.logRejected(state, decoded.kind === 'invalid' ? decoded.reason : `${decoded.message.type} before join`);
       if (++state.invalid >= SESSION_LIMITS.maxInvalidMessages) link.close();
       return;
     }
@@ -282,6 +286,13 @@ export class GmSession {
     if (state) state.entry = null;
     entry.link = null;
     return link;
+  }
+
+  /** Once per connection, and never the message itself: it comes from a stranger. */
+  private logRejected(state: LinkState, reason: string): void {
+    if (state.warned) return;
+    state.warned = true;
+    console.warn(`[Atlas online] Rejected a message from a player connection: ${reason}. Later ones from it are not logged.`);
   }
 
   private refuse(link: PeerLink | null, reason: DenyReason): void {

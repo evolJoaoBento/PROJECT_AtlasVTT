@@ -166,6 +166,30 @@ describe('GmSession', () => {
     expect(old.closed()).toBe(true);
   });
 
+  it('logs a rejected message once per connection, without its contents, and not ignored types', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { network } = setup();
+      const quiet = await player(network);
+      quiet.link.send('control', JSON.stringify({ v: 1, type: 'from-the-future' }));
+      expect(warn).not.toHaveBeenCalled();
+
+      const noisy = await player(network);
+      noisy.link.send('control', 'secret-payload');
+      noisy.link.send('control', '{}');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toContain('not-json');
+      expect(String(warn.mock.calls[0]![0])).not.toContain('secret-payload');
+
+      const old = await player(network);
+      old.link.send('control', JSON.stringify({ v: 2, type: 'join' }));
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(String(warn.mock.calls[1]![0])).toContain('version');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('rejects a name that is only whitespace', async () => {
     const { network, requests } = setup();
     const blank = await player(network);
