@@ -42,7 +42,8 @@ export class FogCoverage {
     const bounds = paintedBounds(shapes);
     if (!bounds) return FogCoverage.EMPTY;
     let cellSize = FOG_CELL_SIZE;
-    const widest = Math.max(0, ...shapes.map((shape) => (shape.type === 'brush' && Number.isFinite(shape.radius) ? shape.radius : 0)));
+    // Only paint brushes need coarse cells; erase clears every cell it touches at any size (and a huge one fills in O(1)).
+    const widest = Math.max(0, ...shapes.map((shape) => (shape.type === 'brush' && !shape.erase && Number.isFinite(shape.radius) ? shape.radius : 0)));
     while ((bounds.width / cellSize + 2) * (bounds.height / cellSize + 2) > MAX_FOG_CELLS || widest / cellSize > MAX_BRUSH_CELLS) cellSize *= 2;
     const originX = Math.floor(bounds.x / cellSize) * cellSize;
     const originY = Math.floor(bounds.y / cellSize) * cellSize;

@@ -558,7 +558,7 @@ describe('SceneBroadcaster', () => {
       await rawPlayer(h, 'kicked');
       const kickedId = h.requests.at(-1)!.playerId;
       await rawPlayer(h, 'staying');
-      const seqs = (h.broadcaster as unknown as { seqs: Map<string, number> }).seqs;
+      const seqs = (h.broadcaster as unknown as { channels: { seqs: Map<string, number> } }).channels.seqs;
       expect(seqs.has(kickedId)).toBe(true);
       h.gm.kick(kickedId);
       h.presented.clear();

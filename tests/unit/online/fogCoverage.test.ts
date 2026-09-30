@@ -178,7 +178,8 @@ describe('FogCoverage', () => {
     const painted = coverageOf(brush(points, 1e6));
     // A huge brush coarsens the cells, which bounds the replay time whatever the points do.
     expect(painted.cellSize).toBeGreaterThan(FOG_CELL_SIZE);
-    expect(erased.cellSize).toBeGreaterThan(FOG_CELL_SIZE);
+    // Erasing is conservative at any size, so a huge erase brush alone keeps the fine cells.
+    expect(erased.cellSize).toBe(FOG_CELL_SIZE);
     expect(coverageOf(brush(points, 100)).cellSize).toBe(FOG_CELL_SIZE);
     expect(erased.isCovered(box(100, 100, 50, 50))).toBe(false);
     expect(painted.isCovered(box(100, 100, 50, 50))).toBe(true);

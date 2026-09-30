@@ -98,20 +98,15 @@ export class OnlineSessionService {
     const broadcaster = new SceneBroadcaster({
       session, presented: this.presented, settings: this.settings, notify: (message) => new Notice(message),
     });
+    this.broadcaster = broadcaster;
+    this.current = session;
     try {
       broadcaster.start();
     } catch (error) {
       // No session may keep running without its broadcaster; `start` reports the error.
-      broadcaster.stop();
-      session.stop();
-      this.unsubscribeErrors?.();
-      this.unsubscribeErrors = null;
-      this.notices.forEach((notice) => notice.hide());
-      this.notices.clear();
+      this.teardown();
       throw error;
     }
-    this.broadcaster = broadcaster;
-    this.current = session;
     onlineSessionStore.setState({
       status: 'hosting', peerId: host.id, joinUrl, error: linkWorks ? null : RELAY_TOO_LONG,
     });
@@ -119,6 +114,12 @@ export class OnlineSessionService {
 
   stop(): void {
     this.generation++;
+    this.teardown();
+    resetOnlineSessionStore();
+  }
+
+  /** Releases everything a hosted session holds; the store is left to the caller. */
+  private teardown(): void {
     this.unsubscribeErrors?.();
     this.unsubscribeErrors = null;
     this.broadcaster?.stop();
@@ -127,7 +128,6 @@ export class OnlineSessionService {
     this.current = null;
     this.notices.forEach((notice) => notice.hide());
     this.notices.clear();
-    resetOnlineSessionStore();
   }
 
   allow(playerId: string): void { this.current?.allow(playerId); }
