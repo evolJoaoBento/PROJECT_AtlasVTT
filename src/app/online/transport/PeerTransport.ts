@@ -12,6 +12,12 @@ const MAX_PENDING_LINKS = 32;
 const MAX_BUFFERED_MESSAGES = 64;
 /** Delays before re-registering with a signaling server that dropped us; the last repeats. */
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15_000];
+/** How often a closing link checks whether what it sent has left. */
+export const FLUSH_POLL_MS = 50;
+/** Extra wait after the send buffers are empty, for the last bytes on the wire. */
+export const FLUSH_GRACE_MS = 100;
+/** Longest a closing link (or host) waits before tearing the connection down anyway. */
+export const FLUSH_CAP_MS = 1500;
 
 /**
  * Collects what arrives on a link's connections from the moment they exist, so a
@@ -42,13 +48,52 @@ function listen(connection: DataConnection, channel: Channel, inbox: Inbox): voi
   connection.on('data', (data: unknown) => inbox.push(channel, data));
 }
 
-/** Closes a connection now, or as soon as it opens (closing one that is still opening does nothing). */
+/**
+ * Tears a connection down, opened or not: PeerJS closes the RTCPeerConnection either
+ * way, and one that never opened will not open later (it just emits no 'close').
+ */
 function refuse(connection: DataConnection): void {
   connection.close();
-  connection.on('open', () => connection.close());
 }
 
-/** A player's two data connections as one link. */
+/** Nothing queued in PeerJS or the data channel: what was sent has left this side. */
+function drained(connection: DataConnection): boolean {
+  if (!connection.open) return true;
+  const queued = (connection as { bufferSize?: number }).bufferSize ?? 0;
+  const channel = connection.dataChannel as RTCDataChannel | null | undefined;
+  return queued === 0 && (channel?.bufferedAmount ?? 0) === 0;
+}
+
+/**
+ * Closes connections once what was sent on them has left, bounded by FLUSH_CAP_MS.
+ * PeerJS closes the RTCPeerConnection in the same tick as close(), which would drop
+ * a message sent just before (a refusal, a bye). Never closes in the calling tick.
+ */
+function closeAfterFlush(connections: DataConnection[]): Promise<void> {
+  return new Promise((resolve) => {
+    let waited = 0;
+    const finish = (): void => {
+      connections.forEach((connection) => connection.close());
+      resolve();
+    };
+    const check = (): void => {
+      if (waited >= FLUSH_CAP_MS) { finish(); return; }
+      if (connections.every(drained)) {
+        window.setTimeout(finish, Math.min(FLUSH_GRACE_MS, FLUSH_CAP_MS - waited));
+        return;
+      }
+      waited += FLUSH_POLL_MS;
+      window.setTimeout(check, FLUSH_POLL_MS);
+    };
+    window.setTimeout(check, 0);
+  });
+}
+
+/**
+ * A player's two data connections as one link. Closing it is immediate for the
+ * sessions (no more sends or messages, close listeners fire), while the
+ * connections themselves close once what was sent has been flushed.
+ */
 class PeerJsLink implements PeerLink {
   private closed = false;
   private readonly closeListeners = new Set<() => void>();
@@ -57,11 +102,13 @@ class PeerJsLink implements PeerLink {
     readonly remoteId: string,
     private readonly channels: Record<Channel, DataConnection>,
     private readonly inbox: Inbox,
-    private readonly onClosed: () => void,
+    /** Told once the link closes: null when its connections closed already, else when they will have. */
+    private readonly onClosed: (released: Promise<void> | null) => void,
   ) {
+    // The other end went away: nothing to flush, tear down now.
     for (const connection of Object.values(channels)) {
-      connection.on('close', () => this.close());
-      connection.on('error', () => this.close());
+      connection.on('close', () => this.shut(false));
+      connection.on('error', () => this.shut(false));
     }
   }
 
@@ -70,7 +117,7 @@ class PeerJsLink implements PeerLink {
   }
 
   onMessage(cb: (channel: Channel, data: unknown) => void): Unsubscribe {
-    return this.inbox.subscribe(cb);
+    return this.inbox.subscribe((channel, data) => { if (!this.closed) cb(channel, data); });
   }
 
   onClose(cb: () => void): Unsubscribe {
@@ -79,12 +126,19 @@ class PeerJsLink implements PeerLink {
   }
 
   close(): void {
+    this.shut(true);
+  }
+
+  private shut(flush: boolean): void {
     if (this.closed) return;
     this.closed = true;
-    Object.values(this.channels).forEach((connection) => connection.close());
+    const connections = Object.values(this.channels);
+    let released: Promise<void> | null = null;
+    if (flush) released = closeAfterFlush(connections);
+    else connections.forEach((connection) => connection.close());
     this.closeListeners.forEach((cb) => cb());
     this.closeListeners.clear();
-    this.onClosed();
+    this.onClosed(released);
   }
 }
 
@@ -116,6 +170,8 @@ function openHost(options: PeerServerOptions): Promise<HostTransport> {
     const connectionListeners = new Set<(link: PeerLink) => void>();
     const errorListeners = new Set<(error: TransportError) => void>();
     const halves = new Map<string, HalfLink>();
+    /** Links still flushing what was sent before they closed. */
+    const flushing = new Set<Promise<void>>();
     let open = false;
     let closed = false;
     let timedOut = false;
@@ -155,16 +211,27 @@ function openHost(options: PeerServerOptions): Promise<HostTransport> {
         onConnection: (cb) => { connectionListeners.add(cb); return () => connectionListeners.delete(cb); },
         onError: (cb) => { errorListeners.add(cb); return () => errorListeners.delete(cb); },
         close: () => {
+          if (closed) return;
           closed = true;
           clearReconnect();
           [...halves.keys()].forEach(dropHalf);
-          peer.destroy();
+          // Destroying the peer closes every connection at once: let closing links flush first.
+          let destroyed = false;
+          const destroy = (): void => {
+            if (destroyed) return;
+            destroyed = true;
+            window.clearTimeout(cap);
+            peer.destroy();
+          };
+          if (flushing.size === 0) { peer.destroy(); return; }
+          const cap = window.setTimeout(destroy, FLUSH_CAP_MS);
+          void Promise.all([...flushing]).then(destroy);
         },
       });
     });
 
     peer.on('error', (error: unknown) => {
-      if (timedOut) return;
+      if (timedOut || closed) return;
       const failure = asError(error);
       if (!open) {
         window.clearTimeout(openTimer);
@@ -226,7 +293,11 @@ function openHost(options: PeerServerOptions): Promise<HostTransport> {
         if (!control || !assets || pair.opened.size < 2) return;
         window.clearTimeout(pair.timer);
         halves.delete(linkId);
-        const link = new PeerJsLink(connection.peer, { control, assets }, pair.inbox, () => {});
+        const link = new PeerJsLink(connection.peer, { control, assets }, pair.inbox, (released) => {
+          if (!released) return;
+          flushing.add(released);
+          void released.then(() => flushing.delete(released));
+        });
         connectionListeners.forEach((cb) => cb(link));
       });
     });
@@ -265,7 +336,10 @@ export function createPeerClient(options: PeerServerOptions): ClientTransport {
           if (settled || ++opened < 2) return;
           settled = true;
           window.clearTimeout(timer);
-          resolve(new PeerJsLink(hostId, { control, assets }, inbox, () => peer.destroy()));
+          resolve(new PeerJsLink(hostId, { control, assets }, inbox, (released) => {
+            if (released) void released.then(() => peer.destroy());
+            else peer.destroy();
+          }));
         };
         for (const connection of connections) {
           connection.on('open', onOpen);

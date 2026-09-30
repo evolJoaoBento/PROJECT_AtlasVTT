@@ -13,6 +13,9 @@ class FakeConnection extends FakeEmitter {
   sent: unknown[] = [];
   closed = false;
   opened = false;
+  /** PeerJS's own send queue, then the data channel's. */
+  bufferSize = 0;
+  dataChannel: { bufferedAmount: number } | null = { bufferedAmount: 0 };
   constructor(
     public peer: string,
     public label: string,
@@ -24,11 +27,13 @@ class FakeConnection extends FakeEmitter {
     if (event === 'open') this.opened = true;
     super.emit(event, ...args);
   }
+  get open(): boolean { return this.opened && !this.closed; }
   send(data: unknown): void { this.sent.push(data); }
   /** Like PeerJS: closing a connection that never opened emits nothing. */
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.dataChannel = null;
     if (this.opened) this.emit('close');
   }
 }
@@ -50,7 +55,7 @@ class FakePeer extends FakeEmitter {
 
 vi.mock('peerjs', () => ({ Peer: FakePeer }));
 
-const { createPeerHost, createPeerClient, LINK_OPEN_TIMEOUT_MS } = await import('../../../src/app/online/transport/PeerTransport');
+const { createPeerHost, createPeerClient, LINK_OPEN_TIMEOUT_MS, FLUSH_CAP_MS, FLUSH_GRACE_MS, FLUSH_POLL_MS } = await import('../../../src/app/online/transport/PeerTransport');
 const { peerHostId, peerOptions, PEER_ID_PATTERN } = await import('../../../src/app/online/transport/peerOptions');
 
 afterEach(() => { peers.length = 0; vi.useRealTimers(); });
@@ -234,6 +239,145 @@ describe('PeerTransport', () => {
     expect(received).toEqual([['control', 'join']]);
     control.emit('data', 'next');
     expect(received).toEqual([['control', 'join'], ['control', 'next']]);
+  });
+
+  describe('closing flushes what was sent first', () => {
+    async function clientLink(): Promise<{ peer: FakePeer; control: FakeConnection; assets: FakeConnection; link: Awaited<ReturnType<ReturnType<typeof createPeerClient>['connect']>> }> {
+      const pending = createPeerClient({ iceServers: [] }).connect('gm-id');
+      const peer = peers[0]!;
+      peer.emit('open', 'me');
+      const [control, assets] = peer.connections as [FakeConnection, FakeConnection];
+      control.emit('open');
+      assets.emit('open');
+      return { peer, control, assets, link: await pending };
+    }
+
+    async function hostLink(): Promise<{ peer: FakePeer; host: Awaited<ReturnType<typeof createPeerHost>>; control: FakeConnection; assets: FakeConnection; link: import('../../../src/app/online/transport/types').PeerLink }> {
+      const { peer, host } = await openedHost();
+      const links: import('../../../src/app/online/transport/types').PeerLink[] = [];
+      host.onConnection((link) => links.push(link));
+      const control = new FakeConnection('p1', 'control', { linkId: 'L1' });
+      const assets = new FakeConnection('p1', 'assets', { linkId: 'L1' });
+      peer.emit('connection', control);
+      peer.emit('connection', assets);
+      control.emit('open');
+      assets.emit('open');
+      return { peer, host, control, assets, link: links[0]! };
+    }
+
+    it('reports the close at once but keeps the connections until the buffers drain', async () => {
+      vi.useFakeTimers();
+      const { peer, control, assets, link } = await clientLink();
+      let closed = 0;
+      link.onClose(() => closed++);
+      link.send('control', 'bye');
+      control.dataChannel!.bufferedAmount = 3;
+      link.close();
+      expect(closed).toBe(1);
+      expect(control.sent).toEqual(['bye']);
+      expect(control.closed).toBe(false);
+      expect(assets.closed).toBe(false);
+      link.send('control', 'late');
+      expect(control.sent).toEqual(['bye']);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(control.closed).toBe(false);
+      control.dataChannel!.bufferedAmount = 0;
+      await vi.advanceTimersByTimeAsync(FLUSH_POLL_MS);
+      expect(control.closed).toBe(false); // still in the grace period
+      await vi.advanceTimersByTimeAsync(FLUSH_GRACE_MS);
+      expect(control.closed).toBe(true);
+      expect(assets.closed).toBe(true);
+      expect(peer.destroyed).toBe(true);
+      expect(closed).toBe(1);
+    });
+
+    it('waits for the PeerJS send queue too', async () => {
+      vi.useFakeTimers();
+      const { control, link } = await clientLink();
+      control.bufferSize = 1;
+      link.close();
+      await vi.advanceTimersByTimeAsync(FLUSH_GRACE_MS * 3);
+      expect(control.closed).toBe(false);
+      control.bufferSize = 0;
+      await vi.advanceTimersByTimeAsync(FLUSH_POLL_MS + FLUSH_GRACE_MS);
+      expect(control.closed).toBe(true);
+    });
+
+    it('closes an empty link after only the grace period', async () => {
+      vi.useFakeTimers();
+      const { control, link } = await clientLink();
+      link.close();
+      expect(control.closed).toBe(false);
+      await vi.advanceTimersByTimeAsync(FLUSH_GRACE_MS);
+      expect(control.closed).toBe(true);
+    });
+
+    it('gives up waiting after the cap when the buffer never drains', async () => {
+      vi.useFakeTimers();
+      const { peer, assets, link } = await clientLink();
+      assets.dataChannel!.bufferedAmount = 1;
+      link.close();
+      await vi.advanceTimersByTimeAsync(FLUSH_CAP_MS - 1);
+      expect(assets.closed).toBe(false);
+      expect(peer.destroyed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(assets.closed).toBe(true);
+      expect(peer.destroyed).toBe(true);
+    });
+
+    it('stops delivering messages once closed', async () => {
+      vi.useFakeTimers();
+      const { control, link } = await clientLink();
+      const received: unknown[] = [];
+      link.onMessage((_channel, data) => received.push(data));
+      link.close();
+      control.emit('data', 'after');
+      expect(received).toEqual([]);
+    });
+
+    it('host close() destroys the peer only after closing links have flushed', async () => {
+      vi.useFakeTimers();
+      const { peer, host, control, link } = await hostLink();
+      link.send('control', 'denied');
+      control.dataChannel!.bufferedAmount = 10;
+      link.close();
+      host.close();
+      expect(peer.destroyed).toBe(false);
+      await vi.advanceTimersByTimeAsync(300);
+      expect(peer.destroyed).toBe(false);
+      control.dataChannel!.bufferedAmount = 0;
+      await vi.advanceTimersByTimeAsync(FLUSH_POLL_MS + FLUSH_GRACE_MS);
+      expect(control.closed).toBe(true);
+      expect(peer.destroyed).toBe(true);
+    });
+
+    it('host close() destroys the peer by the cap when a link never drains', async () => {
+      vi.useFakeTimers();
+      const { peer, host, control, link } = await hostLink();
+      control.dataChannel!.bufferedAmount = 10;
+      link.close();
+      host.close();
+      await vi.advanceTimersByTimeAsync(FLUSH_CAP_MS - 1);
+      expect(peer.destroyed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(peer.destroyed).toBe(true);
+    });
+
+    it('host close() with nothing to flush destroys at once, and reports no later errors', async () => {
+      const { peer, host } = await openedHost();
+      const errors: string[] = [];
+      host.onError((error) => errors.push(error.code));
+      host.close();
+      expect(peer.destroyed).toBe(true);
+      peer.emit('error', { type: 'network', message: 'gone' });
+      expect(errors).toEqual([]);
+    });
+
+    it('a link closed by the other end tears down at once', async () => {
+      const { control, assets } = await hostLink();
+      control.close();
+      expect(assets.closed).toBe(true);
+    });
   });
 
   describe('host refuses', () => {
