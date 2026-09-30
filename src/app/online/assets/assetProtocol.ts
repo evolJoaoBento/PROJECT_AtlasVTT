@@ -37,18 +37,22 @@ function isHandle(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= MAX_HANDLE;
 }
 function isSize(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= ASSET_LIMITS.fileBytes;
+  return Number.isSafeInteger(value) && (value as number) >= 1 && (value as number) <= ASSET_LIMITS.fileBytes;
 }
 function isIdList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length >= 1 && value.length <= ASSET_LIMITS.idsPerMessage && value.every(isAssetId);
+  return Array.isArray(value) && value.length >= 1 && value.length <= ASSET_LIMITS.idsPerMessage
+    && value.every(isAssetId) && new Set(value).size === value.length;
 }
 
-const VALIDATORS: Record<AssetMessage['type'], (m: Fields) => boolean> = {
-  'asset-request': (m) => isIdList(m.ids),
-  'asset-start': (m) => isAssetId(m.id) && isHandle(m.handle) && isSize(m.size) && isAssetMime(m.mime),
-  'asset-end': (m) => isHandle(m.handle),
-  'asset-denied': (m) => isAssetId(m.id),
-  'asset-cancel': (m) => isIdList(m.ids),
+/** Each validator returns a fresh message holding only its named fields, or null. */
+const VALIDATORS: Record<AssetMessage['type'], (m: Fields) => AssetMessage | null> = {
+  'asset-request': (m) => (isIdList(m.ids) ? { v: 1, type: 'asset-request', ids: [...m.ids] } : null),
+  'asset-start': (m) => (isAssetId(m.id) && isHandle(m.handle) && isSize(m.size) && isAssetMime(m.mime)
+    ? { v: 1, type: 'asset-start', id: m.id, handle: m.handle, size: m.size, mime: m.mime }
+    : null),
+  'asset-end': (m) => (isHandle(m.handle) ? { v: 1, type: 'asset-end', handle: m.handle } : null),
+  'asset-denied': (m) => (isAssetId(m.id) ? { v: 1, type: 'asset-denied', id: m.id } : null),
+  'asset-cancel': (m) => (isIdList(m.ids) ? { v: 1, type: 'asset-cancel', ids: [...m.ids] } : null),
 };
 
 export function encodeAsset(message: AssetMessage): string {
@@ -56,6 +60,8 @@ export function encodeAsset(message: AssetMessage): string {
 }
 
 export function encodeChunk(handle: number, bytes: Uint8Array): ArrayBuffer {
+  if (!isHandle(handle)) throw new RangeError('Chunk handle out of range');
+  if (bytes.byteLength < 1 || bytes.byteLength > ASSET_LIMITS.chunkBytes) throw new RangeError('Chunk size out of range');
   const frame = new Uint8Array(HANDLE_BYTES + bytes.byteLength);
   new DataView(frame.buffer).setUint32(0, handle, false);
   frame.set(bytes, HANDLE_BYTES);
@@ -82,7 +88,11 @@ export function decodeAsset(raw: unknown): DecodedAsset {
 }
 
 function decodeText(raw: string): DecodedAsset {
-  if (raw.length > ASSET_LIMITS.messageBytes) return { kind: 'invalid', reason: 'too-large' };
+  // UTF-8 takes at most 3 bytes per code unit: measure only when the string could exceed the limit.
+  if (raw.length > ASSET_LIMITS.messageBytes
+    || (raw.length > ASSET_LIMITS.messageBytes / 3 && new TextEncoder().encode(raw).byteLength > ASSET_LIMITS.messageBytes)) {
+    return { kind: 'invalid', reason: 'too-large' };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -93,7 +103,6 @@ function decodeText(raw: string): DecodedAsset {
   if (parsed.v !== PROTOCOL_VERSION) return { kind: 'invalid', reason: 'version' };
   const type = parsed.type as AssetMessage['type'];
   if (!Object.hasOwn(VALIDATORS, type)) return { kind: 'ignored' };
-  return VALIDATORS[type](parsed)
-    ? { kind: 'message', message: parsed as unknown as AssetMessage }
-    : { kind: 'invalid', reason: `bad-${type}` };
+  const message = VALIDATORS[type](parsed);
+  return message ? { kind: 'message', message } : { kind: 'invalid', reason: `bad-${type}` };
 }

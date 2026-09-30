@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ASSET_LIMITS, isArrayBuffer, isAssetId, isAssetMime, mimeForPath, sceneAssetIds, sha256Id,
 } from '../../../src/app/online/assets/assetIds';
-import { binaryOf, decodeAsset, encodeAsset, encodeChunk, type AssetMessage } from '../../../src/app/online/assets/assetProtocol';
+import { MAX_HANDLE, binaryOf, decodeAsset, encodeAsset, encodeChunk, type AssetMessage } from '../../../src/app/online/assets/assetProtocol';
 import { base64Url, randomId } from '../../../src/app/online/ids';
 import { fingerprint, sceneWithImages } from './sceneFixtures';
 
@@ -101,9 +101,23 @@ describe('asset messages', () => {
     expect([...decoded.chunk.bytes]).toEqual([1, 2, 3]);
 
     expect(decodeAsset(encodeChunk(1, new Uint8Array(ASSET_LIMITS.chunkBytes))).kind).toBe('chunk');
-    expect(decodeAsset(encodeChunk(1, new Uint8Array(ASSET_LIMITS.chunkBytes + 1))).kind).toBe('invalid');
-    expect(decodeAsset(encodeChunk(1, new Uint8Array(0))).kind).toBe('invalid');
-    expect(decodeAsset(encodeChunk(0, bytes)).kind).toBe('invalid');
+    const handMade = (handle: number, length: number): Uint8Array => {
+      const frame = new Uint8Array(4 + length);
+      new DataView(frame.buffer).setUint32(0, handle, false);
+      return frame;
+    };
+    expect(decodeAsset(handMade(1, ASSET_LIMITS.chunkBytes + 1)).kind).toBe('invalid');
+    expect(decodeAsset(handMade(1, 0)).kind).toBe('invalid');
+    expect(decodeAsset(handMade(0, 3)).kind).toBe('invalid');
+    expect(decodeAsset(handMade(MAX_HANDLE, 1))).toMatchObject({ kind: 'chunk', chunk: { handle: MAX_HANDLE } });
+    expect(decodeAsset(new Uint8Array([0, 0, 1])).kind).toBe('invalid');
+    expect(decodeAsset(new Uint8Array(0)).kind).toBe('invalid');
+    expect(() => encodeChunk(0, bytes)).toThrow(RangeError);
+    expect(() => encodeChunk(MAX_HANDLE + 1, bytes)).toThrow(RangeError);
+    expect(() => encodeChunk(1, new Uint8Array(0))).toThrow(RangeError);
+    expect(() => encodeChunk(1, new Uint8Array(ASSET_LIMITS.chunkBytes + 1))).toThrow(RangeError);
+    const view = new DataView(handMade(5, 2).buffer);
+    expect(decodeAsset(view)).toMatchObject({ kind: 'chunk', chunk: { handle: 5 } });
     // A view into a larger buffer is read from its own offset.
     const padded = new Uint8Array(10);
     padded.set(new Uint8Array(encodeChunk(9, bytes)), 3);
@@ -111,5 +125,40 @@ describe('asset messages', () => {
     expect(fromView).toMatchObject({ kind: 'chunk', chunk: { handle: 9 } });
     if (fromView.kind === 'chunk') expect([...fromView.chunk.bytes]).toEqual([1, 2, 3]);
     expect(binaryOf('text')).toBeNull();
+  });
+
+  it('keeps only the named fields of a message', () => {
+    const raw = `{"v":1,"type":"asset-denied","id":"${A}","pad":"x","__proto__":{"polluted":true}}`;
+    const decoded = decodeAsset(raw);
+    expect(decoded).toEqual({ kind: 'message', message: { v: 1, type: 'asset-denied', id: A } });
+    if (decoded.kind === 'message') {
+      expect(Object.keys(decoded.message)).toEqual(['v', 'type', 'id']);
+      expect(Object.getPrototypeOf(decoded.message)).toBe(Object.prototype);
+    }
+  });
+
+  it('measures the text limit in UTF-8 bytes', () => {
+    const wide = JSON.stringify({ v: 1, type: 'asset-denied', id: A, pad: 'é'.repeat(8200) });
+    expect(wide.length).toBeLessThan(ASSET_LIMITS.messageBytes);
+    expect(decodeAsset(wide).kind).toBe('invalid');
+    const head = JSON.stringify({ v: 1, type: 'asset-denied', id: A, pad: '' });
+    const exact = JSON.stringify({ v: 1, type: 'asset-denied', id: A, pad: 'x'.repeat(ASSET_LIMITS.messageBytes - head.length) });
+    expect(exact.length).toBe(ASSET_LIMITS.messageBytes);
+    expect(decodeAsset(exact).kind).toBe('message');
+    expect(decodeAsset(`${exact} `).kind).toBe('invalid');
+  });
+
+  it('checks the edges of every limit', () => {
+    const start = (size: number): string => JSON.stringify({ v: 1, type: 'asset-start', id: A, handle: 1, size, mime: 'image/png' });
+    expect(decodeAsset(start(ASSET_LIMITS.fileBytes)).kind).toBe('message');
+    expect(decodeAsset(start(1)).kind).toBe('message');
+    expect(decodeAsset(start(0)).kind).toBe('invalid');
+    const ids = (n: number): string => JSON.stringify({ v: 1, type: 'asset-request', ids: Array.from({ length: n }, (_, i) => fingerprint(i)) });
+    expect(decodeAsset(ids(ASSET_LIMITS.idsPerMessage)).kind).toBe('message');
+    expect(decodeAsset(JSON.stringify({ v: 1, type: 'asset-cancel', ids: [A, A] })).kind).toBe('invalid');
+    expect(decodeAsset(JSON.stringify({ v: 1, type: 'asset-end', handle: MAX_HANDLE })).kind).toBe('message');
+    for (const type of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      expect(decodeAsset(JSON.stringify({ v: 1, type, id: A })), type).toEqual({ kind: 'ignored' });
+    }
   });
 });
