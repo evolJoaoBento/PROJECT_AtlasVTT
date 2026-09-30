@@ -4,6 +4,8 @@
  * so it imports nothing from Obsidian.
  */
 import { decodeControl, encodeControl, type PresencePlayer } from './protocol';
+import { PlayerSceneMirror } from './scene/PlayerSceneMirror';
+import type { PlayerScene } from './scene/sceneTypes';
 import type { ClientTransport, PeerLink } from './transport/types';
 
 export type PlayerStatus = 'connecting' | 'waiting' | 'admitted' | 'denied' | 'lost';
@@ -30,6 +32,8 @@ export interface PlayerSessionOptions {
   clientVersion: string;
   transport: ClientTransport;
   onChange(state: PlayerSessionState): void;
+  /** The presented scene changed: a snapshot or patch applied, or null when the GM shows none. */
+  onScene?(scene: PlayerScene | null): void;
 }
 
 export class PlayerSession {
@@ -42,7 +46,19 @@ export class PlayerSession {
   private droppedAt = 0;
   private retryTimer: number | null = null;
 
-  constructor(private readonly options: PlayerSessionOptions) {}
+  private readonly mirror: PlayerSceneMirror;
+
+  constructor(private readonly options: PlayerSessionOptions) {
+    this.mirror = new PlayerSceneMirror({
+      sendResync: (seq) => this.link?.send('control', encodeControl({ v: 1, type: 'scene-resync', seq })),
+      onChange: (scene) => this.options.onScene?.(scene),
+    });
+  }
+
+  /** The presented scene as this player has it; null while the GM shows none. */
+  get scene(): PlayerScene | null {
+    return this.mirror.scene;
+  }
 
   start(): void {
     if (this.started) return;
@@ -55,6 +71,7 @@ export class PlayerSession {
     this.finished = true;
     if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    this.mirror.dispose();
     this.link?.send('control', encodeControl({ v: 1, type: 'bye', reason: 'left' }));
     this.link?.close();
   }
@@ -84,6 +101,7 @@ export class PlayerSession {
   private receive(link: PeerLink, data: unknown): void {
     if (this.finished || this.link !== link) return;
     const decoded = decodeControl(data);
+    if (decoded.kind === 'invalid' && decoded.reason.startsWith('bad-scene-')) this.mirror.invalid();
     if (decoded.kind !== 'message') return;
     const message = decoded.message;
     switch (message.type) {
@@ -106,6 +124,13 @@ export class PlayerSession {
         // A newer tab of this player took over, or the GM ended the session.
         this.finish('lost', message.reason === 'replaced' ? 'replaced' : 'ended');
         link.close();
+        break;
+      case 'scene-snapshot':
+      case 'scene-fog':
+      case 'scene-drawings':
+      case 'scene-patch':
+      case 'scene-clear':
+        this.mirror.receive(message);
         break;
       default:
         break;
@@ -134,6 +159,7 @@ export class PlayerSession {
     this.finished = true;
     if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    this.mirror.dispose();
     this.update({ status, reason });
   }
 
