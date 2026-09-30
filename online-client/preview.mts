@@ -22,7 +22,8 @@ export class ScenePreview {
   private readonly fog = document.createElement('canvas');
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    window.addEventListener('resize', () => this.request());
+    if (typeof ResizeObserver === 'undefined') window.addEventListener('resize', () => this.request());
+    else new ResizeObserver(() => this.request()).observe(canvas);
   }
 
   show(scene: PlayerScene | null): void {
@@ -43,8 +44,11 @@ export class ScenePreview {
     const ratio = window.devicePixelRatio || 1;
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
-    this.canvas.width = Math.max(1, Math.round(width * ratio));
-    this.canvas.height = Math.max(1, Math.round(height * ratio));
+    const pixelWidth = Math.max(1, Math.round(width * ratio));
+    const pixelHeight = Math.max(1, Math.round(height * ratio));
+    // Assigning a size clears and reallocates the canvas, so only do it when it changed.
+    if (this.canvas.width !== pixelWidth) this.canvas.width = pixelWidth;
+    if (this.canvas.height !== pixelHeight) this.canvas.height = pixelHeight;
     const context = this.canvas.getContext('2d');
     if (!context) return;
     context.setTransform(1, 0, 0, 1, 0, 0);
@@ -175,10 +179,13 @@ function drawFog(
   toWorld: (context: CanvasRenderingContext2D) => void,
 ): void {
   if (shapes.length === 0) return;
-  fogCanvas.width = target.canvas.width;
-  fogCanvas.height = target.canvas.height;
+  if (fogCanvas.width !== target.canvas.width) fogCanvas.width = target.canvas.width;
+  if (fogCanvas.height !== target.canvas.height) fogCanvas.height = target.canvas.height;
   const fog = fogCanvas.getContext('2d');
   if (!fog) return;
+  fog.setTransform(1, 0, 0, 1, 0, 0);
+  fog.globalCompositeOperation = 'source-over';
+  fog.clearRect(0, 0, fogCanvas.width, fogCanvas.height);
   toWorld(fog);
   fog.fillStyle = FOG_COLOR;
   fog.strokeStyle = FOG_COLOR;

@@ -63,8 +63,14 @@ function render(state: PlayerSessionState): void {
   renderScene();
 }
 
+const listContent = new WeakMap<HTMLElement, string>();
+
+/** Rebuilds a list only when its lines changed; scene patches arrive many times a second. */
 function fillList(list: HTMLElement, lines: string[]): void {
   list.hidden = lines.length === 0;
+  const joined = JSON.stringify(lines);
+  if (listContent.get(list) === joined) return;
+  listContent.set(list, joined);
   list.replaceChildren(...lines.map((line) => {
     const item = document.createElement('li');
     item.textContent = line;
@@ -80,7 +86,7 @@ function renderScene(): void {
   fillList(widgetList, shown ? widgetLines(shown.widgets) : []);
   fillList(initiativeList, shown ? initiativeLines(shown.initiative) : []);
   // Read-only, for checking in the developer tools what this page received.
-  (window as unknown as { atlasScene: PlayerScene | null }).atlasScene = scene;
+  (window as unknown as { atlasScene: PlayerScene | null }).atlasScene = shown;
 }
 
 const target = parseJoinFragment(location.hash);

@@ -124,6 +124,7 @@ export function fogShapes(fog: Readonly<Record<string, PlayerFogOp>>): FogShape[
   });
 }
 
+/** Eraser records are skipped: Atlas's eraser splits or deletes strokes in the store, so current tools create none. */
 export function inkStrokes(drawings: Readonly<Record<string, PlayerDrawing>>): InkStroke[] {
   return sortedByOrder(drawings, (drawing) => drawing.order)
     .filter(([, drawing]) => drawing.type !== 'eraser')

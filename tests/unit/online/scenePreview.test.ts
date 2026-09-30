@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fitTransform, sceneWorldBounds } from '../../../src/app/online/preview/previewLayout';
-import { fogShapes, gridLines, initials, inkStrokes, textLabels, tokenMarkers } from '../../../src/app/online/preview/previewShapes';
+import { MAX_GRID_HEXES, fogShapes, gridLines, initials, inkStrokes, textLabels, tokenMarkers } from '../../../src/app/online/preview/previewShapes';
 import { initiativeLines, widgetLines } from '../../../src/app/online/preview/sceneSummary';
 import type { PlayerGrid } from '../../../src/app/online/scene/sceneTypes';
 import { fogRect, playerScene, playerToken } from './sceneFixtures';
@@ -19,6 +19,12 @@ describe('preview layout', () => {
     expect(tall.offsetX).toBe(216);
   });
 
+  it('fits a zero-size world without dividing by zero', () => {
+    const fit = fitTransform({ x: 0, y: 0, width: 0, height: 0 }, { width: 100, height: 100 });
+    expect(Number.isFinite(fit.scale)).toBe(true);
+    expect(Number.isFinite(fit.offsetX)).toBe(true);
+  });
+
   it('shows the map, else the tokens, else ten cells of grid', () => {
     expect(sceneWorldBounds(playerScene())).toEqual({ x: 0, y: 0, width: 1000, height: 800 });
     const noMap = { asset: null, width: 0, height: 0, cellSize: 70 };
@@ -34,6 +40,12 @@ describe('preview shapes', () => {
     expect(lines?.segments).toHaveLength(7);
     expect(lines).toMatchObject({ hexes: [], color: '#808080', alpha: 0.5, width: 2, dash: [6, 4] });
     expect(gridLines({ ...square, size: 1 }, { x: 0, y: 0, width: 2000, height: 2000 })).toBeNull();
+  });
+
+  it('skips hex grids over the cap', () => {
+    const hex: PlayerGrid = { ...square, type: 'hex-vertical', size: 1, lineType: 'solid' };
+    expect(gridLines(hex, { x: 0, y: 0, width: 5000, height: 5000 })).toBeNull();
+    expect(MAX_GRID_HEXES).toBe(5000);
   });
 
   it('draws hex outlines for hex grids', () => {
@@ -83,6 +95,8 @@ describe('preview shapes', () => {
       { x: 100, y: 100, radius: 94.5, color: '#9aa0a6', label: null, hp: null },
       { x: 100, y: 100, radius: 31.5, color: '#ff0000', label: 'AB', hp: 0.5 },
     ]);
+    const zeroMax = playerScene({ tokens: { a: playerToken({ hp: { current: 0, max: 0 } }) } });
+    expect(tokenMarkers(zeroMax)[0]?.hp).toBeNull();
     expect(initials('Grimgar')).toBe('GR');
     expect(initials('   ')).toBe('');
   });
