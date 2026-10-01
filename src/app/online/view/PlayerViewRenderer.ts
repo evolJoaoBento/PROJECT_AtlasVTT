@@ -44,6 +44,8 @@ export class PlayerViewRenderer {
   private bounds: WorldRect | null = null;
   private frame: number | null = null;
   private disposed = false;
+  /** Layers whose failure was already logged, so a broken one does not flood the console. */
+  private readonly failed = new Set<SceneLayer>();
 
   constructor(private readonly options: PlayerViewRendererOptions) {}
 
@@ -96,7 +98,19 @@ export class PlayerViewRenderer {
       pixel: 1 / scale,
       bounds: this.bounds,
     };
-    for (const name of SCENE_LAYER_ORDER) layers[name].draw(surface, frame);
+    // A layer that throws must not hide the others, least of all the fog (drawn last): failing
+    // open would show players what the GM hides. The camera is set again to drop any unmatched push.
+    for (const name of SCENE_LAYER_ORDER) {
+      try {
+        layers[name].draw(surface, frame);
+      } catch (error) {
+        if (!this.failed.has(name)) {
+          this.failed.add(name);
+          console.error(`[Atlas online] the ${name} layer failed to draw`, error);
+        }
+        surface.setCamera(scale, width / 2 - view.centerX * scale, height / 2 - view.centerY * scale);
+      }
+    }
   }
 
   private request(): void {

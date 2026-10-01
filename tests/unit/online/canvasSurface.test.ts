@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createCanvasSurface } from '../../../online-client/canvasSurface.mts';
 
-function fakeCanvas(): { canvas: HTMLCanvasElement; calls: string[] } {
+function fakeCanvas(fields: Record<string, unknown> = {}): { canvas: HTMLCanvasElement; calls: string[] } {
   const calls: string[] = [];
-  const fields: Record<string, unknown> = {};
   const context = new Proxy(fields, {
     get: (target, key: string) => (key in target ? target[key] : (...args: unknown[]): unknown => {
       calls.push(`${key}(${args.map((arg) => (typeof arg === 'number' || typeof arg === 'string' ? arg : typeof arg)).join(',')})`);
@@ -20,6 +19,24 @@ function fakeCanvas(): { canvas: HTMLCanvasElement; calls: string[] } {
 }
 
 describe('canvas surface', () => {
+  it('builds rounded rectangles from arcs where roundRect does not exist', () => {
+    const { canvas, calls } = fakeCanvas({ roundRect: undefined });
+    createCanvasSurface(canvas)!.roundRect(0, 0, 20, 10, 50, { fill: '#000000' });
+    expect(calls.filter((call) => call.startsWith('arcTo'))).toHaveLength(4);
+    expect(calls).toContain('arcTo(20,0,20,10,5)');
+    expect(calls).toContain('fill()');
+  });
+
+  it('restores the context when a shape cannot be traced', () => {
+    const { canvas, calls } = fakeCanvas();
+    const surface = createCanvasSurface(canvas)!;
+    expect(() => surface.paths([[{ x: 0, y: 0 }]], false, { stroke: '#ff0000' })).not.toThrow();
+    calls.length = 0;
+    const throwing = fakeCanvas({ rect: () => { throw new Error('boom'); } });
+    expect(() => createCanvasSurface(throwing.canvas)!.rect(0, 0, 1, 1, { fill: '#000000' })).toThrow('boom');
+    expect(throwing.calls).toContain('restore()');
+  });
+
   it('sizes the canvas and fills the background', () => {
     const { canvas, calls } = fakeCanvas();
     createCanvasSurface(canvas)!.begin(200, 100, '#000000');

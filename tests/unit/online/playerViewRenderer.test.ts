@@ -7,7 +7,7 @@ import { pixelRatioFor, PlayerViewRenderer, VIEW_BACKGROUND } from '../../../src
 import { fakeFrames, RecordingSurface } from './recordingSurface';
 import { playerScene } from './sceneFixtures';
 
-function setup(options: { hidden?: boolean } = {}) {
+function setup(options: { hidden?: boolean; throwing?: SceneLayer } = {}) {
   let time = 0;
   let hidden = options.hidden ?? false;
   const frames = fakeFrames();
@@ -15,7 +15,13 @@ function setup(options: { hidden?: boolean } = {}) {
   const drawn: string[] = [];
   const disposed: string[] = [];
   const layers = Object.fromEntries(SCENE_LAYER_ORDER.map((name): [SceneLayer, PlayerLayer] => [name, {
-    draw: () => { drawn.push(name); },
+    draw: (target) => {
+      if (name === options.throwing) {
+        target.push(1, 1, 0, 1);
+        throw new Error('layer failed');
+      }
+      drawn.push(name);
+    },
     dispose: () => { disposed.push(name); },
   }])) as Record<SceneLayer, PlayerLayer>;
   const camera = new CameraController({ now: () => time, onChange: () => renderer.invalidate() });
@@ -47,6 +53,22 @@ describe('PlayerViewRenderer', () => {
     expect(t.drawn).toEqual([...SCENE_LAYER_ORDER]);
     expect(t.surface.ops('begin')).toHaveLength(1);
     expect(t.frames.pending).toBe(0);
+  });
+
+  it('still draws the fog, and resets the surface, when an earlier layer throws', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const t = setup({ throwing: 'tokens' });
+    t.show();
+    t.frames.run();
+    t.renderer.invalidate();
+    t.frames.run();
+    expect(t.drawn.slice(-1)).toEqual(['fog']);
+    expect(t.drawn).toEqual(['map', 'grid', 'texts', 'drawings', 'fog', 'map', 'grid', 'texts', 'drawings', 'fog']);
+    // Each failure sets the camera again, which drops the unmatched push.
+    expect(t.surface.ops('camera')).toHaveLength(4);
+    expect(t.surface.calls.findIndex((call) => call.op === 'push')).toBeLessThan(t.surface.calls.findLastIndex((call) => call.op === 'camera'));
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
   });
 
   it('draws nothing more until something changes', () => {

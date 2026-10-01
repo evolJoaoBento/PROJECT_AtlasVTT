@@ -82,7 +82,21 @@ class CanvasSurface implements ViewSurface {
   }
 
   roundRect(x: number, y: number, width: number, height: number, radius: number, style: ShapeStyle): void {
-    this.shape(style, () => this.context.roundRect(x, y, width, height, Math.max(0, Math.min(radius, width / 2, height / 2))));
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+    this.shape(style, () => {
+      const context = this.context;
+      if (typeof context.roundRect === 'function') {
+        context.roundRect(x, y, width, height, r);
+        return;
+      }
+      // Browsers without CanvasRenderingContext2D.roundRect: the same outline from arcs.
+      context.moveTo(x + r, y);
+      context.arcTo(x + width, y, x + width, y + height, r);
+      context.arcTo(x + width, y + height, x, y + height, r);
+      context.arcTo(x, y + height, x, y, r);
+      context.arcTo(x, y, x + width, y, r);
+      context.closePath();
+    });
   }
 
   circle(x: number, y: number, radius: number, style: ShapeStyle): void {
@@ -168,23 +182,26 @@ class CanvasSurface implements ViewSurface {
   private shape(style: ShapeStyle, outline: () => void): void {
     const context = this.context;
     context.save();
-    context.beginPath();
-    outline();
-    context.globalAlpha = style.alpha ?? 1;
-    context.globalCompositeOperation = style.erase ? 'destination-out' : 'source-over';
-    context.lineCap = style.round ? 'round' : 'butt';
-    context.lineJoin = style.round ? 'round' : 'miter';
-    context.setLineDash(style.dash ? [...style.dash] : []);
-    if (style.fill !== undefined) {
-      context.fillStyle = style.fill;
-      context.fill();
+    try {
+      context.beginPath();
+      outline();
+      context.globalAlpha = style.alpha ?? 1;
+      context.globalCompositeOperation = style.erase ? 'destination-out' : 'source-over';
+      context.lineCap = style.round ? 'round' : 'butt';
+      context.lineJoin = style.round ? 'round' : 'miter';
+      context.setLineDash(style.dash ? [...style.dash] : []);
+      if (style.fill !== undefined) {
+        context.fillStyle = style.fill;
+        context.fill();
+      }
+      if (style.stroke !== undefined) {
+        context.strokeStyle = style.stroke;
+        context.lineWidth = style.lineWidth ?? 1;
+        context.stroke();
+      }
+    } finally {
+      context.restore();
     }
-    if (style.stroke !== undefined) {
-      context.strokeStyle = style.stroke;
-      context.lineWidth = style.lineWidth ?? 1;
-      context.stroke();
-    }
-    context.restore();
   }
 }
 
