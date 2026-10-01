@@ -305,4 +305,12 @@ describe('vaultImageFiles', () => {
     stop();
     expect(off).toHaveBeenCalledTimes(3);
   });
+
+  it('gives no id to an empty file', async () => {
+    const files = memoryImageFiles({ 'empty.png': '' });
+    const { assets } = registry(files.source);
+    expect(assets.idFor('empty.png')).toBeNull();
+    await settle();
+    expect(assets.idFor('empty.png')).toBeNull();
+  });
 });

@@ -43,6 +43,7 @@ class FakePort implements ChannelPort {
     this.buffered = 0;
     [...this.drains].forEach((cb) => cb());
   }
+  listening(): number { return this.drains.size + this.closes.size; }
   close(): void { [...this.closes].forEach((cb) => cb()); }
 
   messages(): AssetMessage[] {
@@ -72,7 +73,7 @@ class FakePort implements ChannelPort {
 
 const who = (playerId: string): SessionPlayer => ({ playerId, name: playerId, status: 'admitted' });
 
-function setup(scene: PlayerScene | null, files: Record<string, Uint8Array> = {}) {
+function setup(scene: PlayerScene | null, files: Record<string, Uint8Array> = {}, readWith?: (id: string) => Promise<AssetFile | null>) {
   const ports = new Map<string, FakePort>();
   const handlers: SessionHandler[] = [];
   const session = {
@@ -85,15 +86,15 @@ function setup(scene: PlayerScene | null, files: Record<string, Uint8Array> = {}
     currentProjection: (): PlayerScene | null => current,
     onProjection: (listener: (next: PlayerScene | null) => void): (() => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   };
-  const read = vi.fn(async (id: string): Promise<AssetFile | null> => {
+  const read = vi.fn(readWith ?? (async (id: string): Promise<AssetFile | null> => {
     const bytes = files[id];
     return bytes ? { bytes: bytes.slice().buffer, mime: 'image/png' } : null;
-  });
+  }));
   const server = new AssetServer({ session, projection, files: { read } });
   server.start();
   const send = (playerId: string, data: unknown): void => handlers.forEach((handler) => handler.onAssetData?.(who(playerId), data));
   return {
-    server, read, handlers,
+    server, read, handlers, held: (): number => server['reads']['entries'].size,
     player: (playerId: string): FakePort => { const port = new FakePort(); ports.set(playerId, port); return port; },
     request: (playerId: string, ids: string[]): void => send(playerId, encodeAsset({ v: 1, type: 'asset-request', ids })),
     cancel: (playerId: string, ids: string[]): void => send(playerId, encodeAsset({ v: 1, type: 'asset-cancel', ids })),
@@ -283,5 +284,120 @@ describe('AssetServer', () => {
     expect(h.handlers).toEqual([]);
     anna.drain();
     expect(anna.chunks()).toHaveLength(16);
+  });
+
+  describe('hardening', () => {
+    const later = (): { read: (id: string) => Promise<AssetFile | null>; finish: (bytes: Uint8Array) => void } => {
+      let resolve: (file: AssetFile | null) => void = () => undefined;
+      const promise = new Promise<AssetFile | null>((ok) => { resolve = ok; });
+      return {
+        read: () => promise,
+        finish: (bytes) => resolve({ bytes: bytes.slice().buffer, mime: 'image/png' }),
+      };
+    };
+
+    it('sends nothing when a read resolves after the image left the scene', async () => {
+      const slow = later();
+      const h = setup(sceneWithImages(fp(1), []), {}, slow.read);
+      const anna = h.player('anna');
+      h.request('anna', [fp(1)]);
+      h.show(sceneWithImages(null, []));
+      expect(anna.types()).toEqual([`asset-denied:${fp(1)}`]);
+      slow.finish(imageBytes(10));
+      await settle();
+      expect(anna.types()).toEqual([`asset-denied:${fp(1)}`]);
+      expect(h.held()).toBe(0);
+    });
+
+    it('sends nothing when a read resolves after the player is gone or the server stopped', async () => {
+      const slow = later();
+      const h = setup(sceneWithImages(fp(1), []), {}, slow.read);
+      const anna = h.player('anna');
+      const ben = h.player('ben');
+      h.request('anna', [fp(1)]);
+      h.request('ben', [fp(1)]);
+      h.server.onGone(who('anna'));
+      slow.finish(imageBytes(10));
+      await settle();
+      expect(anna.sent).toEqual([]);
+      expect(ben.types()).toEqual([`asset-start:${fp(1)}`, 'asset-end']);
+      expect(h.held()).toBe(0);
+
+      const slowAgain = later();
+      const h2 = setup(sceneWithImages(fp(1), []), {}, slowAgain.read);
+      const carl = h2.player('carl');
+      h2.request('carl', [fp(1)]);
+      h2.server.stop();
+      slowAgain.finish(imageBytes(10));
+      await settle();
+      expect(carl.sent).toEqual([]);
+      expect(h2.held()).toBe(0);
+    });
+
+    it('denies an image whose read fails, and goes on with the next', async () => {
+      const files: Record<string, Uint8Array> = { [fp(2)]: imageBytes(10, 2) };
+      const h = setup(sceneWithImages(fp(1), [fp(2)]), files, (id) => (
+        id === fp(1) ? Promise.reject(new Error('boom')) : Promise.resolve({ bytes: files[id]!.slice().buffer, mime: 'image/png' })
+      ));
+      const anna = h.player('anna');
+      h.request('anna', [fp(1), fp(2)]);
+      await settle();
+      expect(anna.types()).toEqual([`asset-denied:${fp(1)}`, `asset-start:${fp(2)}`, 'asset-end']);
+      expect(h.held()).toBe(0);
+    });
+
+    it('denies an empty file', async () => {
+      const h = setup(sceneWithImages(fp(1), []), {}, () => Promise.resolve({ bytes: new ArrayBuffer(0), mime: 'image/png' }));
+      const anna = h.player('anna');
+      h.request('anna', [fp(1)]);
+      await settle();
+      expect(anna.types()).toEqual([`asset-denied:${fp(1)}`]);
+    });
+
+    it('does not release a hold twice when the channel closes while the end is sent', async () => {
+      const h = setup(sceneWithImages(fp(1), []), { [fp(1)]: imageBytes(10) });
+      const anna = h.player('anna');
+      const ben = h.player('ben');
+      const send = anna.send.bind(anna);
+      let heldWhenBenIsServed = -1;
+      anna.send = (data): void => { send(data); if (typeof data === 'string' && data.includes('asset-end')) anna.close(); };
+      const benSend = ben.send.bind(ben);
+      ben.send = (data): void => { if (heldWhenBenIsServed < 0) heldWhenBenIsServed = h.held(); benSend(data); };
+      h.request('anna', [fp(1)]);
+      h.request('ben', [fp(1)]);
+      await settle();
+      expect(heldWhenBenIsServed).toBe(1); // anna's close released her hold once; ben still holds the file
+      expect(ben.types()).toEqual([`asset-start:${fp(1)}`, 'asset-end']);
+      expect(h.held()).toBe(0);
+    });
+
+    it('moves a queued image that becomes the map to the front', async () => {
+      const h = setup(sceneWithImages(fp(1), [fp(2), fp(3)]), {
+        [fp(1)]: imageBytes(3 * MB), [fp(2)]: imageBytes(10, 2), [fp(3)]: imageBytes(10, 3),
+      });
+      const anna = h.player('anna');
+      anna.paced = true;
+      h.request('anna', [fp(1), fp(2), fp(3)]); // fp(1) is in flight and blocked on the buffer
+      await settle();
+      h.show(sceneWithImages(fp(3), [fp(1), fp(2)]));
+      anna.drain();
+      anna.drain();
+      anna.drain();
+      await settle();
+      anna.drain();
+      await settle();
+      const starts = anna.types().filter((type) => type.startsWith('asset-start'));
+      expect(starts).toEqual([`asset-start:${fp(1)}`, `asset-start:${fp(3)}`, `asset-start:${fp(2)}`]);
+    });
+
+    it('stop removes the port listeners', async () => {
+      const h = setup(sceneWithImages(fp(1), []), { [fp(1)]: imageBytes(10) });
+      const anna = h.player('anna');
+      h.request('anna', [fp(1)]);
+      await settle();
+      expect(anna.listening()).toBe(2);
+      h.server.stop();
+      expect(anna.listening()).toBe(0);
+    });
   });
 });

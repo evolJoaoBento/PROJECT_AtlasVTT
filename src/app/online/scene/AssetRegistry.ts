@@ -104,7 +104,7 @@ export class AssetRegistry implements AssetIds {
     if (!info) return null;
     try {
       const bytes = await this.options.files.read(info.path);
-      if (bytes.byteLength <= ASSET_LIMITS.fileBytes && await this.hash(bytes) === id) return { bytes, mime: info.mime };
+      if (bytes.byteLength > 0 && bytes.byteLength <= ASSET_LIMITS.fileBytes && await this.hash(bytes) === id) return { bytes, mime: info.mime };
     } catch {
       // Unreadable: forgotten below, like a changed file.
     }
@@ -186,7 +186,7 @@ export class AssetRegistry implements AssetIds {
       if (this.disposed) return;
       size = bytes.byteLength;
       if (size > ASSET_LIMITS.fileBytes) this.tooLarge();
-      else id = await this.hash(bytes);
+      else if (size > 0) id = await this.hash(bytes); // an empty file is no image
     } catch {
       id = null;
     }

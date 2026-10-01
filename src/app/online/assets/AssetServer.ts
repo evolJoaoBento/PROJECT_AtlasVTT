@@ -112,9 +112,10 @@ export class AssetServer implements SessionHandler {
     for (const [playerId, queue] of [...this.queues]) {
       const held = queue.current ? [queue.current.id, ...queue.pending] : queue.pending;
       const gone = new Set(held.filter((id) => !this.allowed.has(id)));
-      if (gone.size === 0) continue;
-      this.remove(queue, gone, true);
-      this.pump(playerId, queue);
+      if (gone.size > 0) this.remove(queue, gone, true);
+      const at = this.mapId === null ? -1 : queue.pending.indexOf(this.mapId);
+      if (at > 0) queue.pending.unshift(...queue.pending.splice(at, 1));
+      if (gone.size > 0 || at > 0) this.pump(playerId, queue);
     }
   }
 
@@ -204,7 +205,7 @@ export class AssetServer implements SessionHandler {
 
   private fileRead(playerId: string, queue: PlayerQueue, transfer: Transfer, file: AssetFile | null): void {
     if (queue.current !== transfer || this.queues.get(playerId) !== queue) return;
-    if (!file) {
+    if (!file || file.bytes.byteLength === 0) {
       this.finish(queue, transfer);
       queue.port.send(encodeAsset({ v: 1, type: 'asset-denied', id: transfer.id }));
     } else {
@@ -217,7 +218,8 @@ export class AssetServer implements SessionHandler {
   }
 
   private finish(queue: PlayerQueue, transfer: Transfer): void {
-    if (queue.current === transfer) queue.current = null;
+    if (queue.current !== transfer) return; // dropped meanwhile: its hold is released already
+    queue.current = null;
     this.reads.release(transfer.id);
   }
 }

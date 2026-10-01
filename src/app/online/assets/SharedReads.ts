@@ -29,7 +29,7 @@ export class SharedReads {
   file(id: string): Promise<AssetFile | null> {
     const entry = this.entries.get(id);
     if (!entry) return Promise.resolve(null);
-    entry.file ??= this.read(id);
+    entry.file ??= this.read(id).catch(() => null);
     return entry.file;
   }
 
