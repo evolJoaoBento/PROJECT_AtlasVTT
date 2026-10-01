@@ -39,7 +39,8 @@ export class MapView {
   private hasScene = false;
   private readonly listeners = new AbortController();
   private resizeObserver: ResizeObserver | null = null;
-  private ratioQuery: MediaQueryList | null = null;
+  private watchedRatio: number | null = null;
+  private unwatchRatio: (() => void) | null = null;
 
   constructor(private readonly options: MapViewOptions) {
     const frames = options.frames ?? {
@@ -83,7 +84,7 @@ export class MapView {
     this.listeners.abort();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
-    this.ratioQuery = null;
+    this.unwatchPixelRatio();
     this.renderer.dispose();
   }
 
@@ -99,11 +100,24 @@ export class MapView {
   /** The ratio changes without a resize when the window moves to another screen or the page is zoomed. */
   private watchPixelRatio(): void {
     if (this.listeners.signal.aborted || typeof window.matchMedia !== 'function') return;
+    // measure() runs on every resize: arm a listener only when the ratio changed, and drop the old one.
+    if (this.watchedRatio === window.devicePixelRatio) return;
+    this.unwatchPixelRatio();
     const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
-    this.ratioQuery = query;
-    query.addEventListener('change', () => {
-      if (this.ratioQuery === query) this.measure();
-    }, { once: true, signal: this.listeners.signal });
+    const onChange = (): void => {
+      // The listener fired once and is gone: measure() arms the next one.
+      this.unwatchPixelRatio();
+      this.measure();
+    };
+    query.addEventListener('change', onChange, { once: true });
+    this.watchedRatio = window.devicePixelRatio;
+    this.unwatchRatio = () => query.removeEventListener('change', onChange);
+  }
+
+  private unwatchPixelRatio(): void {
+    this.unwatchRatio?.();
+    this.unwatchRatio = null;
+    this.watchedRatio = null;
   }
 
   private cameraChanged(): void {

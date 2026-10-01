@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MapView } from '../../../online-client/mapView.mts';
 import { fakeFrames, RecordingSurface } from './recordingSurface';
 import { playerScene } from './sceneFixtures';
@@ -29,6 +29,28 @@ function setup() {
 }
 
 describe('MapView', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('watches the pixel ratio once however often it measures, and stops on dispose', () => {
+    const listeners = new Set<() => void>();
+    const matchMedia = vi.fn((query: string) => ({
+      matches: false, media: query,
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    }));
+    vi.stubGlobal('matchMedia', matchMedia);
+    const t = setup();
+    t.view.measure();
+    t.view.measure();
+    t.view.measure();
+    expect(listeners.size).toBe(1);
+    vi.stubGlobal('devicePixelRatio', 3);
+    t.view.measure();
+    expect(listeners.size).toBe(1);
+    t.view.dispose();
+    expect(listeners.size).toBe(0);
+  });
+
   it('breaks away on a drag on the map, and Follow GM brings it back', () => {
     const t = setup();
     t.view.setScene(playerScene());
