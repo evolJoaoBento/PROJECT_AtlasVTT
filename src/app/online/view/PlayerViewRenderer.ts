@@ -8,7 +8,7 @@
 import { SCENE_LAYER_ORDER, type SceneLayer } from '../../pixi/sceneLayerOrder';
 import { sceneWorldBounds } from '../preview/previewLayout';
 import type { PlayerScene } from '../scene/sceneTypes';
-import { visibleArea, type ScreenSize } from './camera';
+import { visibleArea, type ScreenSize, type WorldRect } from './camera';
 import type { CameraController } from './CameraController';
 import type { ImageLookup, LayerFrame, PlayerLayer } from './layers/layerTypes';
 import type { ViewSurface } from './ViewSurface';
@@ -41,19 +41,22 @@ export class PlayerViewRenderer {
   private scene: PlayerScene | null = null;
   private screen: ScreenSize = { width: 0, height: 0 };
   private ratio = 1;
+  private bounds: WorldRect | null = null;
   private frame: number | null = null;
+  private disposed = false;
 
   constructor(private readonly options: PlayerViewRendererOptions) {}
 
   setScene(scene: PlayerScene | null): void {
     this.scene = scene;
+    this.bounds = scene ? sceneWorldBounds(scene) : null;
     this.request();
   }
 
   /** The canvas's CSS size and the pixel ratio to draw at. */
   setSize(screen: ScreenSize, ratio: number): void {
     this.screen = { width: screen.width, height: screen.height };
-    this.ratio = ratio;
+    this.ratio = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
     this.request();
   }
 
@@ -68,6 +71,7 @@ export class PlayerViewRenderer {
   }
 
   dispose(): void {
+    this.disposed = true;
     if (this.frame !== null) this.options.cancelFrame(this.frame);
     this.frame = null;
     for (const name of SCENE_LAYER_ORDER) this.options.layers[name].dispose?.();
@@ -90,15 +94,17 @@ export class PlayerViewRenderer {
       visible: visibleArea(view, { width: this.screen.width + 2 * VISIBLE_MARGIN, height: this.screen.height + 2 * VISIBLE_MARGIN }),
       zoom: view.zoom,
       pixel: 1 / scale,
-      bounds: sceneWorldBounds(scene),
+      bounds: this.bounds,
     };
     for (const name of SCENE_LAYER_ORDER) layers[name].draw(surface, frame);
   }
 
   private request(): void {
-    if (this.frame !== null || this.options.isHidden()) return;
+    if (this.disposed || this.frame !== null || this.options.isHidden()) return;
     this.frame = this.options.requestFrame(() => {
       this.frame = null;
+      // Hidden since the request: skip; visibilityChanged draws what changed once shown.
+      if (this.disposed || this.options.isHidden()) return;
       this.draw();
       // A glide moves the camera every frame until it arrives.
       if (this.options.camera.isMoving()) this.request();

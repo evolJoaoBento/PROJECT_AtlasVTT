@@ -25,6 +25,8 @@ interface Glide {
   start: number;
 }
 
+const sameCamera = (a: Camera, b: Camera): boolean => a.centerX === b.centerX && a.centerY === b.centerY && a.zoom === b.zoom;
+
 export class CameraController {
   private screen: ScreenSize = { width: 0, height: 0 };
   private sceneId: string | null = null;
@@ -60,6 +62,8 @@ export class CameraController {
   setScreen(screen: ScreenSize): void {
     if (screen.width === this.screen.width && screen.height === this.screen.height) return;
     this.screen = { width: screen.width, height: screen.height };
+    // A canvas with no size (hidden, not laid out) changes nothing: the view refits or clamps once it has one.
+    if (!(screen.width > 0 && screen.height > 0)) return;
     this.jump(this.following ? this.target() : clampCamera(this.current(), this.limits()));
   }
 
@@ -84,15 +88,21 @@ export class CameraController {
   /** The GM's latest camera, whatever its scene: it is used once its scene is shown. */
   setGmCamera(camera: SceneCamera | null): void {
     this.gm = camera;
-    if (this.following && this.sceneId !== null && camera?.sceneId === this.sceneId) this.glideTo(this.target());
+    if (!this.following || this.sceneId === null || camera?.sceneId !== this.sceneId) return;
+    const target = this.target();
+    // The same camera again (the GM's resends) must not restart the glide.
+    if (sameCamera(target, this.glide?.to ?? this.camera)) return;
+    this.glideTo(target);
   }
 
   pan(dx: number, dy: number): void {
-    this.breakAway(panBy(this.current(), dx, dy, this.limits()));
+    const from = this.current();
+    this.breakAway(from, panBy(from, dx, dy, this.limits()));
   }
 
   zoomAt(point: ScreenPoint, factor: number): void {
-    this.breakAway(zoomAround(this.current(), this.screen, point, factor, this.limits()));
+    const from = this.current();
+    this.breakAway(from, zoomAround(from, this.screen, point, factor, this.limits()));
   }
 
   /** Back to following: glide to the GM's camera, or fit the map without one. */
@@ -121,7 +131,9 @@ export class CameraController {
     return this.bounds ? cameraLimits(this.bounds, this.screen) : null;
   }
 
-  private breakAway(camera: Camera): void {
+  /** A move that changes nothing (pan 0, zoom 1, or stopped by a limit's edge) keeps a follower following. */
+  private breakAway(from: Camera, camera: Camera): void {
+    if (sameCamera(from, camera)) return;
     this.following = false;
     this.jump(camera);
   }

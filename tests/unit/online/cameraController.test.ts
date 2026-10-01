@@ -162,4 +162,51 @@ describe('CameraController', () => {
     expect(after.x).toBeCloseTo(before.x);
     expect(after.y).toBeCloseTo(before.y);
   });
+
+  it('keeps a broken-away zoom through a canvas with no size', () => {
+    const { controller } = setup();
+    controller.setScreen({ width: 1032, height: 832 });
+    controller.setScene(playerScene());
+    controller.zoomAt({ x: 516, y: 416 }, 0.7);
+    controller.setScreen({ width: 0, height: 0 });
+    controller.setScreen({ width: 1000, height: 800 });
+    expect(controller.current().zoom).toBeCloseTo(0.7);
+    expect(controller.isFollowing()).toBe(false);
+  });
+
+  it('ignores non-finite zoom factors, and zooms fully out for a factor of zero or less', () => {
+    const { controller } = setup();
+    controller.setScreen(SCREEN);
+    controller.setScene(playerScene());
+    controller.zoomAt({ x: 10, y: 10 }, Number.NaN);
+    controller.zoomAt({ x: 10, y: 10 }, Infinity);
+    expect(controller.current().zoom).toBe(1);
+    expect(controller.isFollowing()).toBe(true);
+    controller.zoomAt({ x: 10, y: 10 }, -3);
+    expect(controller.current().zoom).toBeCloseTo(0.05);
+  });
+
+  it('stays following on a move that changes nothing', () => {
+    const { controller } = setup();
+    controller.setScreen(SCREEN);
+    controller.setScene(playerScene());
+    controller.pan(0, 0);
+    controller.zoomAt({ x: 10, y: 10 }, 1);
+    expect(controller.isFollowing()).toBe(true);
+  });
+
+  it('does not restart the glide for an identical repeated GM camera', () => {
+    const { controller, advance, changes } = setup();
+    controller.setScreen(PHONE);
+    controller.setScene(playerScene());
+    controller.setGmCamera(gm());
+    advance(GLIDE_MS / 2);
+    const before = changes();
+    controller.setGmCamera(gm());
+    expect(changes()).toBe(before);
+    advance(GLIDE_MS / 2);
+    expect(controller.current()).toEqual({ centerX: 200, centerY: 300, zoom: 2 });
+    controller.setGmCamera(gm());
+    expect(changes()).toBe(before);
+  });
 });

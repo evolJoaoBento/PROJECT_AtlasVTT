@@ -106,4 +106,33 @@ describe('ViewInput', () => {
     input.up(touch(5, 10, 10, 100));
     expect(moves).toEqual([]);
   });
+
+  it('treats a pen like a mouse drag, and a page-mode wheel as 800 px', () => {
+    const { input, moves } = setup();
+    const pen = (x: number, y: number): PointerInput => ({ id: 9, x, y, kind: 'pen', button: 0, time: 0 });
+    input.down(pen(0, 0));
+    input.move(pen(20, 0));
+    input.up(pen(20, 0));
+    input.wheel({ x: 1, y: 1 }, 1, 2);
+    expect(moves).toEqual([{ pan: [20, 0] }, { zoom: [{ x: 1, y: 1 }, Math.exp(-800 * WHEEL_ZOOM_PER_PIXEL)] }]);
+  });
+
+  it('ignores a wheel with a non-finite delta', () => {
+    const { input, moves } = setup();
+    input.wheel({ x: 1, y: 1 }, Number.NaN, 0);
+    input.wheel({ x: 1, y: 1 }, Infinity, 0);
+    expect(moves).toEqual([]);
+  });
+
+  it('a drag or pinch forgets the previous tap', () => {
+    const { input, moves } = setup();
+    input.down(touch(1, 50, 50, 0));
+    input.up(touch(1, 50, 50, 0));
+    input.down(touch(1, 50, 50, 100));
+    input.move(touch(1, 80, 50, 100));
+    input.up(touch(1, 80, 50, 100));
+    input.down(touch(1, 80, 50, 150));
+    input.up(touch(1, 80, 50, 150));
+    expect(moves).toEqual([{ pan: [30, 0] }]);
+  });
 });

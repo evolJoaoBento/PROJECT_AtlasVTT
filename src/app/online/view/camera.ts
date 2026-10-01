@@ -99,8 +99,11 @@ export function screenToWorld(camera: Camera, screen: ScreenSize, point: ScreenP
 
 /** Zooms by `factor`, keeping the world point under `point` where it is on screen, unless a limit stops it. */
 export function zoomAround(camera: Camera, screen: ScreenSize, point: ScreenPoint, factor: number, limits: CameraLimits | null): Camera {
+  if (!Number.isFinite(factor)) return camera;
   const anchor = screenToWorld(camera, screen, point);
-  const zoom = clampCamera({ ...camera, zoom: camera.zoom * factor }, limits).zoom;
+  // A factor of zero or less is the furthest zoom out.
+  const requested = factor > 0 ? camera.zoom * factor : (limits?.minZoom ?? camera.zoom);
+  const zoom = clampCamera({ ...camera, zoom: requested }, limits).zoom;
   return clampCamera({
     centerX: anchor.x - (point.x - screen.width / 2) / zoom,
     centerY: anchor.y - (point.y - screen.height / 2) / zoom,

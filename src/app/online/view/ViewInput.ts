@@ -61,6 +61,7 @@ export class ViewInput {
       // A second finger makes the gesture a pinch, never a tap.
       this.start = null;
       this.dragging = true;
+      this.lastTap = null;
     }
   }
 
@@ -78,6 +79,7 @@ export class ViewInput {
       const start = this.start;
       if (!start || distance(start, point) < TAP_SLOP) return;
       this.dragging = true;
+      this.lastTap = null;
       this.camera.pan(point.x - start.x, point.y - start.y);
     }
     this.pointers.set(input.id, point);
@@ -102,7 +104,7 @@ export class ViewInput {
   /** `deltaMode` as in `WheelEvent`: 0 pixels, 1 lines, 2 pages. */
   wheel(point: ScreenPoint, deltaY: number, deltaMode: number): void {
     const pixels = deltaMode === 1 ? deltaY * LINE_PIXELS : deltaMode === 2 ? deltaY * PAGE_PIXELS : deltaY;
-    if (pixels !== 0) this.camera.zoomAt(point, Math.exp(-pixels * WHEEL_ZOOM_PER_PIXEL));
+    if (Number.isFinite(pixels) && pixels !== 0) this.camera.zoomAt(point, Math.exp(-pixels * WHEEL_ZOOM_PER_PIXEL));
   }
 
   /** The browser's double-click; a touch double-tap is recognised from its taps instead, so it zooms once. */
@@ -119,7 +121,8 @@ export class ViewInput {
     const after = midpoint(point, other);
     this.camera.pan(after.x - before.x, after.y - before.y);
     const spread = distance(previous, other);
-    if (spread > 0) this.camera.zoomAt(after, distance(point, other) / spread);
+    const factor = distance(point, other) / spread;
+    if (spread > 0 && Number.isFinite(factor)) this.camera.zoomAt(after, factor);
   }
 
   private tap(point: ScreenPoint, time: number): void {

@@ -115,4 +115,34 @@ describe('PlayerViewRenderer', () => {
     expect(pixelRatioFor(3, false)).toBe(3);
     expect(pixelRatioFor(Number.NaN, false)).toBe(1);
   });
+
+  it('skips a frame requested before the page was hidden', () => {
+    const t = setup();
+    t.show();
+    t.setHidden(true);
+    t.frames.run();
+    expect(t.drawn).toEqual([]);
+    expect(t.frames.pending).toBe(0);
+    t.setHidden(false);
+    t.renderer.visibilityChanged();
+    t.frames.run();
+    expect(t.drawn).toEqual([...SCENE_LAYER_ORDER]);
+  });
+
+  it('does nothing after dispose', () => {
+    const t = setup();
+    t.show();
+    t.renderer.dispose();
+    t.renderer.invalidate();
+    t.renderer.setScene(playerScene());
+    t.camera.pan(5, 5);
+    expect(t.frames.pending).toBe(0);
+  });
+
+  it('treats a bad pixel ratio as 1', () => {
+    const t = setup();
+    t.show({ width: 100, height: 50 }, Number.NaN);
+    t.frames.run();
+    expect(t.surface.ops('begin')[0]).toMatchObject({ width: 100, height: 50 });
+  });
 });
