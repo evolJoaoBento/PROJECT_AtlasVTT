@@ -288,4 +288,25 @@ describe('AssetLoader', () => {
     h.loader.connected(link);
     expect(h.loader.progress().receivedBytes).toBe(1000);
   });
+
+  it('never shows negative or oversized progress when a check fails after the bar reset', async () => {
+    const real = imageBytes(200_000, 6);
+    const id = fingerprintOf(real);
+    const broken = imageBytes(200_000, 7);
+    const h = setup();
+    h.gm.connect();
+    h.loader.setScene(sceneWithImages(id, []));
+    await settle();
+    // The last transfer ends, so the bar resets at once; its fingerprint check fails a moment later.
+    h.gm.serve(id, 1, broken);
+    await settle();
+    const afterFailure = h.loader.progress();
+    expect(afterFailure.receivedBytes).toBeGreaterThanOrEqual(0);
+    expect(afterFailure.receivedBytes).toBeLessThanOrEqual(afterFailure.totalBytes);
+    expect(afterFailure).toEqual({ outstanding: 1, receivedBytes: 0, totalBytes: 0 });
+    h.gm.serve(id, 2, real);
+    await settle();
+    expect(h.loader.image(id)).not.toBeNull();
+    expect(h.loader.progress()).toEqual({ outstanding: 0, receivedBytes: 0, totalBytes: 0 });
+  });
 });

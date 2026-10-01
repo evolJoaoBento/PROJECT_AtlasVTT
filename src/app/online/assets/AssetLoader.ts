@@ -11,7 +11,10 @@ import type { PlayerScene } from '../scene/sceneTypes';
 import type { AssetCache } from './AssetCache';
 import { ASSET_LIMITS, sceneAssetIds, sha256Id, type AssetMime, type Hasher } from './assetIds';
 import { decodeAsset, encodeAsset, type AssetChunk, type AssetMessage } from './assetProtocol';
+import { ProgressTally, type AssetProgress, type PendingImage } from './ProgressTally';
 import { TransferAssembler } from './TransferAssembler';
+
+export type { AssetProgress };
 
 export interface DecodedImage {
   image: ImageBitmap | HTMLImageElement;
@@ -21,13 +24,6 @@ export interface DecodedImage {
 }
 
 export type ImageDecoder = (bytes: ArrayBuffer, mime: AssetMime) => Promise<DecodedImage | null>;
-
-/** What the loading bar shows: images still coming for this scene, and their bytes. */
-export interface AssetProgress {
-  outstanding: number;
-  receivedBytes: number;
-  totalBytes: number;
-}
 
 export interface AssetLoaderOptions {
   cache: Pick<AssetCache, 'get' | 'put'>;
@@ -46,8 +42,6 @@ interface Wanted {
   retried: boolean;
   /** Announced by `asset-start`; null until then. */
   size: number | null;
-  /** Bytes of this image counted in `doneBytes`, taken back if the attempt fails. */
-  counted: number;
   image: DecodedImage | null;
 }
 
@@ -58,12 +52,10 @@ export class AssetLoader implements PlayerAssetHandler {
   private readonly assembler = new TransferAssembler();
   private readonly hash: Hasher;
   private send: ((data: string) => void) | null = null;
-  /** Bytes of images finished since the loading bar was last empty. */
-  private doneBytes = 0;
+  private readonly tally = new ProgressTally();
   /** Images this link was told to stop sending: a denial for one of them can be stale. */
   private readonly cancelled = new Set<string>();
   private disposed = false;
-
   constructor(private readonly options: AssetLoaderOptions) {
     this.hash = options.hash ?? sha256Id;
   }
@@ -74,16 +66,11 @@ export class AssetLoader implements PlayerAssetHandler {
   }
 
   progress(): AssetProgress {
-    let outstanding = 0;
-    let receivedBytes = this.doneBytes;
-    let totalBytes = this.doneBytes;
+    const pending: PendingImage[] = [];
     for (const [id, wanted] of this.wanted) {
-      if (wanted.phase !== 'waiting' && wanted.phase !== 'requested') continue;
-      outstanding++;
-      receivedBytes += this.assembler.received(id);
-      totalBytes += wanted.size ?? 0;
+      if (wanted.phase === 'waiting' || wanted.phase === 'requested') pending.push({ received: this.assembler.received(id), size: wanted.size });
     }
-    return outstanding === 0 ? { outstanding: 0, receivedBytes: 0, totalBytes: 0 } : { outstanding, receivedBytes, totalBytes };
+    return this.tally.progress(pending);
   }
 
   setScene(scene: PlayerScene | null): void {
@@ -94,6 +81,7 @@ export class AssetLoader implements PlayerAssetHandler {
     for (const [id, wanted] of [...this.wanted]) {
       if (keep.has(id)) continue;
       this.wanted.delete(id);
+      this.tally.forget(id);
       this.assembler.drop(id);
       wanted.image?.release();
       if (wanted.phase === 'requested') cancelled.push(id);
@@ -135,7 +123,7 @@ export class AssetLoader implements PlayerAssetHandler {
 
   /** New images: from the cache when this device has them, the others requested together. */
   private async lookUp(ids: readonly string[]): Promise<void> {
-    const entries = ids.map((id): [string, Wanted] => [id, { phase: 'checking', retried: false, size: null, counted: 0, image: null }]);
+    const entries = ids.map((id): [string, Wanted] => [id, { phase: 'checking', retried: false, size: null, image: null }]);
     for (const [id, wanted] of entries) this.wanted.set(id, wanted);
     const cached = await Promise.all(entries.map(([id]) => this.options.cache.get(id).catch(() => null)));
     entries.forEach(([id, wanted], index) => {
@@ -212,8 +200,7 @@ export class AssetLoader implements PlayerAssetHandler {
       this.failed(id, wanted);
       return;
     }
-    this.doneBytes += bytes.byteLength;
-    wanted.counted = bytes.byteLength;
+    this.tally.add(id, bytes.byteLength);
     void this.accept(id, wanted, bytes, mime, true).then((outcome) => {
       if (outcome === 'mismatch') this.failed(id, wanted);
       else if (outcome === 'undecodable') this.refuse(id, wanted);
@@ -248,7 +235,7 @@ export class AssetLoader implements PlayerAssetHandler {
     if (!this.isCurrent(id, wanted)) return;
     wanted.retried = true;
     wanted.phase = 'waiting';
-    this.uncount(wanted);
+    this.uncount(id, wanted);
     this.requestMissing();
     this.changed();
   }
@@ -257,28 +244,26 @@ export class AssetLoader implements PlayerAssetHandler {
     if (!this.isCurrent(id, wanted)) return;
     this.assembler.drop(id);
     wanted.phase = 'refused';
-    this.uncount(wanted);
+    this.uncount(id, wanted);
     this.requestMissing();
     this.changed();
   }
 
-  private uncount(wanted: Wanted): void {
-    this.doneBytes -= wanted.counted;
-    wanted.counted = 0;
+  private uncount(id: string, wanted: Wanted): void {
+    this.tally.take(id);
     wanted.size = null;
   }
 
   /** A new link, or none: transfers of the old one are gone, and what was requested must be asked for again. */
   private restart(): void {
     this.assembler.clear();
-    this.doneBytes = 0; // the bar starts over with the new link
+    this.tally.reset(); // the bar starts over with the new link
     this.cancelled.clear();
     for (const wanted of this.wanted.values()) {
       if (wanted.phase !== 'requested') continue;
       wanted.phase = 'waiting';
       wanted.size = null;
     }
-    for (const wanted of this.wanted.values()) wanted.counted = 0;
   }
 
   private requestMissing(): void {
@@ -308,7 +293,7 @@ export class AssetLoader implements PlayerAssetHandler {
   }
 
   private changed(): void {
-    if (this.progress().outstanding === 0) this.doneBytes = 0;
+    if (this.progress().outstanding === 0) this.tally.reset();
     this.options.onChange();
   }
 }
