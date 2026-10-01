@@ -85,11 +85,6 @@ export class PlayerSession {
     return this.lastCamera;
   }
 
-  /** The tokens this player may move, from the GM's latest list. */
-  get controlledTokens(): readonly string[] {
-    return this.controlled;
-  }
-
   /**
    * Sends one drop of a token for the scene this player has. False when it cannot go
    * (not admitted, no link, no scene), so the drag sends nothing. The GM checks it.

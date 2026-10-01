@@ -16,7 +16,6 @@ describe('PlayerSession token moves', () => {
     expect(lists).toEqual([]);
     w.control.set('hero', a.playerId, true);
     expect(lists).toEqual([['hero']]);
-    expect(a.session.controlledTokens).toEqual(['hero']);
     expect(a.session.sendTokenMove('hero', 300, 150)).toBe(true);
     expect(w.token('hero')).toMatchObject({ x: 315, y: 175 });
     expect(a.session.sendTokenMove('ally', 300, 150)).toBe(true);
@@ -41,7 +40,6 @@ describe('PlayerSession token moves', () => {
     w.gm.kick(a.playerId);
     expect(a.session.state.status).toBe('denied');
     expect(lists.at(-1)).toEqual([]);
-    expect(a.session.controlledTokens).toEqual([]);
     expect(a.session.sendTokenMove('hero', 300, 150)).toBe(false);
     w.finish();
   });
