@@ -1,0 +1,118 @@
+import { describe, expect, it, vi } from 'vitest';
+import { SCENE_LAYER_ORDER, type SceneLayer } from '../../../src/app/pixi/sceneLayerOrder';
+import { GLIDE_MS } from '../../../src/app/online/view/camera';
+import { CameraController } from '../../../src/app/online/view/CameraController';
+import type { PlayerLayer } from '../../../src/app/online/view/layers/layerTypes';
+import { pixelRatioFor, PlayerViewRenderer, VIEW_BACKGROUND } from '../../../src/app/online/view/PlayerViewRenderer';
+import { fakeFrames, RecordingSurface } from './recordingSurface';
+import { playerScene } from './sceneFixtures';
+
+function setup(options: { hidden?: boolean } = {}) {
+  let time = 0;
+  let hidden = options.hidden ?? false;
+  const frames = fakeFrames();
+  const surface = new RecordingSurface();
+  const drawn: string[] = [];
+  const disposed: string[] = [];
+  const layers = Object.fromEntries(SCENE_LAYER_ORDER.map((name): [SceneLayer, PlayerLayer] => [name, {
+    draw: () => { drawn.push(name); },
+    dispose: () => { disposed.push(name); },
+  }])) as Record<SceneLayer, PlayerLayer>;
+  const camera = new CameraController({ now: () => time, onChange: () => renderer.invalidate() });
+  const renderer = new PlayerViewRenderer({
+    surface, camera, images: () => null, layers, requestFrame: frames.request, cancelFrame: (handle) => frames.cancel(handle),
+    isHidden: () => hidden,
+  });
+  const show = (screen = { width: 800, height: 600 }, ratio = 1): void => {
+    const scene = playerScene();
+    camera.setScreen(screen);
+    renderer.setSize(screen, ratio);
+    camera.setScene(scene);
+    renderer.setScene(scene);
+  };
+  return {
+    surface, camera, renderer, frames, drawn, disposed, show,
+    advance: (ms: number): void => { time += ms; },
+    setHidden: (value: boolean): void => { hidden = value; },
+  };
+}
+
+describe('PlayerViewRenderer', () => {
+  it("draws the layers in Atlas's order, once per frame however many changes arrive", () => {
+    const t = setup();
+    t.show();
+    t.renderer.invalidate();
+    expect(t.frames.pending).toBe(1);
+    t.frames.run();
+    expect(t.drawn).toEqual([...SCENE_LAYER_ORDER]);
+    expect(t.surface.ops('begin')).toHaveLength(1);
+    expect(t.frames.pending).toBe(0);
+  });
+
+  it('draws nothing more until something changes', () => {
+    const t = setup();
+    t.show();
+    t.frames.run();
+    t.frames.run();
+    expect(t.surface.ops('begin')).toHaveLength(1);
+  });
+
+  it('draws nothing while the page is hidden, and catches up once it is visible', () => {
+    const t = setup({ hidden: true });
+    t.show();
+    expect(t.frames.pending).toBe(0);
+    t.setHidden(false);
+    t.renderer.visibilityChanged();
+    t.frames.run();
+    expect(t.drawn).toEqual([...SCENE_LAYER_ORDER]);
+  });
+
+  it('keeps drawing frames while the camera glides, then stops', () => {
+    const t = setup();
+    t.show();
+    t.frames.run();
+    t.camera.setGmCamera({ sceneId: 'scene-1', centerX: 200, centerY: 200, width: 400, height: 300 });
+    t.frames.run();
+    expect(t.frames.pending).toBe(1);
+    t.advance(GLIDE_MS);
+    t.frames.run();
+    expect(t.frames.pending).toBe(0);
+  });
+
+  it('maps world to device pixels at the pixel ratio, centred on the camera', () => {
+    const t = setup();
+    t.show({ width: 800, height: 600 }, 2);
+    t.frames.run();
+    const zoom = Math.min(768 / 1000, 568 / 800);
+    expect(t.surface.ops('begin')[0]).toEqual({ op: 'begin', width: 1600, height: 1200, background: VIEW_BACKGROUND });
+    const camera = t.surface.ops('camera')[0]!;
+    expect(camera.scale).toBeCloseTo(zoom * 2);
+    expect(camera.offsetX).toBeCloseTo(800 - 500 * zoom * 2);
+    expect(camera.offsetY).toBeCloseTo(600 - 400 * zoom * 2);
+  });
+
+  it('clears to black and draws no layer without a scene', () => {
+    const t = setup();
+    t.renderer.setSize({ width: 100, height: 100 }, 1);
+    t.renderer.setScene(null);
+    t.frames.run();
+    expect(t.surface.calls).toEqual([{ op: 'begin', width: 100, height: 100, background: VIEW_BACKGROUND }]);
+    expect(t.drawn).toEqual([]);
+  });
+
+  it('cancels its frame and frees its layers when disposed', () => {
+    const t = setup();
+    t.show();
+    const cancel = vi.spyOn(t.frames, 'cancel');
+    t.renderer.dispose();
+    expect(cancel).toHaveBeenCalled();
+    expect(t.disposed).toEqual([...SCENE_LAYER_ORDER]);
+  });
+
+  it('caps the pixel ratio at 2 on phones', () => {
+    expect(pixelRatioFor(3, true)).toBe(2);
+    expect(pixelRatioFor(1.5, true)).toBe(1.5);
+    expect(pixelRatioFor(3, false)).toBe(3);
+    expect(pixelRatioFor(Number.NaN, false)).toBe(1);
+  });
+});
