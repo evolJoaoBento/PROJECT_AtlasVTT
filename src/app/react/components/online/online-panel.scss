@@ -100,6 +100,15 @@ $online-panel-padding: $spacing-m;
   font-weight: $font-weight-medium;
 }
 
+.atlas-online-panel__status-text {
+  flex: 1;
+}
+
+// A filled square reads as "stop", like a media control.
+.atlas-online-panel__stop svg {
+  fill: currentColor;
+}
+
 .atlas-online-panel__dot {
   width: $online-mark-size;
   height: $online-mark-size;

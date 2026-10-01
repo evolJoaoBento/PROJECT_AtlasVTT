@@ -1,6 +1,8 @@
 import React from 'react';
+import { EyeOff } from 'lucide-react';
 import { useStore } from 'zustand';
 import { Button } from '../../../packages/components/primitives/button';
+import { LabelTooltip } from '../../../packages/components/primitives/tooltip';
 import { PRESENT_LABEL, STOP_PRESENTING_LABEL } from '../../../online/ui/onlineCopy';
 import { presentViewToPlayers, stopPresenting } from '../../../services/presentToPlayers';
 import { usePresentedTabId } from '../../hooks/usePresentedTabId';
@@ -23,7 +25,13 @@ export function OnlinePresenting(): React.ReactElement {
         {activeTabId && presentedHere !== activeTabId && (
           <Button variant="outline" size="sm" onClick={() => { void presentViewToPlayers(view); }}>{PRESENT_LABEL}</Button>
         )}
-        {tabId && <Button variant="outline" size="sm" onClick={stopPresenting}>{STOP_PRESENTING_LABEL}</Button>}
+        {tabId && (
+          <LabelTooltip label={STOP_PRESENTING_LABEL}>
+            <Button variant="ghost" size="icon" aria-label={STOP_PRESENTING_LABEL} onClick={stopPresenting}>
+              <EyeOff />
+            </Button>
+          </LabelTooltip>
+        )}
       </div>
     </section>
   );

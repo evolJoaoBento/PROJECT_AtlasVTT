@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Copy, Network } from 'lucide-react';
+import { Copy, Network, Square } from 'lucide-react';
 import { Notice } from 'obsidian';
 import { Button } from '../../../packages/components/primitives/button';
 import { CloseButton } from '../../../packages/components/primitives/CloseButton';
@@ -77,7 +77,12 @@ function HostingView({ session, service }: { session: OnlineSessionState; servic
       <section className="atlas-online-panel__section" aria-label="Session status">
         <p className="atlas-online-panel__status">
           <span className="atlas-online-panel__dot" aria-hidden="true" />
-          Connected
+          <span className="atlas-online-panel__status-text">Connected</span>
+          <LabelTooltip label={STOP_SESSION_LABEL}>
+            <Button variant="ghost" size="icon" className="atlas-online-panel__stop" aria-label={STOP_SESSION_LABEL} onClick={() => service.stop()}>
+              <Square />
+            </Button>
+          </LabelTooltip>
         </p>
         {session.error && <p className="atlas-online-panel__error" role="status">{session.error}</p>}
         {url && (
@@ -93,9 +98,6 @@ function HostingView({ session, service }: { session: OnlineSessionState; servic
       </section>
       <OnlinePlayerList players={session.players} control={session.tokenControl} service={service} />
       <OnlinePresenting />
-      <div className="atlas-online-panel__footer">
-        <Button variant="destructive" onClick={() => service.stop()}>{STOP_SESSION_LABEL}</Button>
-      </div>
     </>
   );
 }
