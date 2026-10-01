@@ -174,6 +174,22 @@ describe('AssetServer', () => {
     expect(h.read).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps file bytes only for images a transfer is sending, not for queued ones', async () => {
+    const ids = [fp(1), fp(2), fp(3), fp(4)];
+    const files = Object.fromEntries(ids.map((id, index) => [id, imageBytes(1000, index + 1)]));
+    const h = setup(sceneWithImages(ids[0]!, ids.slice(1)), files);
+    const anna = h.player('anna');
+    const ben = h.player('ben');
+    ben.paced = true;
+    ben.buffered = ASSET_LIMITS.highWaterBytes; // ben's connection stalls: he never gets past his first image
+    h.request('ben', ids);
+    h.request('anna', ids);
+    await settle();
+    expect(anna.types().filter((type) => type === 'asset-end')).toHaveLength(4);
+    expect(ben.types()).toEqual([`asset-start:${ids[0]}`]);
+    expect(h.held()).toBe(1); // only ben's current image
+  });
+
   it('queues at most 256 images per player and ignores duplicates', () => {
     const ids = Array.from({ length: 300 }, (_, index) => fp(index + 1));
     const h = setup(sceneWithImages(null, ids), Object.fromEntries(ids.map((id, index) => [id, imageBytes(10, index + 1)])));

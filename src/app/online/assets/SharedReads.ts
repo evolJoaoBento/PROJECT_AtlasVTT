@@ -1,6 +1,7 @@
 /**
- * File bytes shared by every player queue that holds a fingerprint: read once,
- * when the first queue gets to it, and let go when no queue holds it any more.
+ * File bytes shared by the transfers sending a fingerprint at this moment: read
+ * once, when the first transfer gets to it, and let go when no transfer sends it
+ * any more (a player who asks later reads, and the registry verifies, again).
  */
 import type { AssetFile } from '../scene/AssetRegistry';
 

@@ -92,7 +92,6 @@ export class AssetServer implements SessionHandler {
         queue.port.send(encodeAsset({ v: 1, type: 'asset-denied', id }));
         continue;
       }
-      this.reads.hold(id);
       if (id === this.mapId) queue.pending.unshift(id);
       else queue.pending.push(id);
     }
@@ -121,11 +120,7 @@ export class AssetServer implements SessionHandler {
 
   /** Takes `ids` out of a queue; a transfer in flight stops, with `asset-denied` when it left the scene. */
   private remove(queue: PlayerQueue, ids: ReadonlySet<string>, deny: boolean): void {
-    queue.pending = queue.pending.filter((id) => {
-      if (!ids.has(id)) return true;
-      this.reads.release(id);
-      return false;
-    });
+    queue.pending = queue.pending.filter((id) => !ids.has(id));
     const current = queue.current;
     if (!current || !ids.has(current.id)) return;
     this.finish(queue, current);
@@ -151,7 +146,6 @@ export class AssetServer implements SessionHandler {
     if (!queue) return;
     this.queues.delete(playerId);
     queue.stops.forEach((stop) => stop());
-    for (const id of queue.pending) this.reads.release(id);
     if (queue.current) this.reads.release(queue.current.id);
     queue.pending = [];
     queue.current = null;
@@ -186,6 +180,7 @@ export class AssetServer implements SessionHandler {
       const next: Transfer = { id, handle: queue.nextHandle, file: null, offset: 0 };
       queue.nextHandle = queue.nextHandle >= MAX_HANDLE ? 1 : queue.nextHandle + 1;
       queue.current = next;
+      this.reads.hold(id); // bytes are kept only while a transfer sends them
       void this.reads.file(id).then((file) => this.fileRead(playerId, queue, next, file));
       return false;
     }
