@@ -7,7 +7,7 @@ import { createHexLayout, isHexGridType } from '../../../grid/hexGeometry';
 import {
   DEFAULT_HEX_NUMBER_OPACITY, hexNumberAnchor, hexNumberFontSize, MIN_HEX_NUMBER_SCREEN_SIZE, numberHexes, type NumberedHex,
 } from '../../../grid/hexNumbering';
-import { gridLines, type GridLimits } from '../../preview/previewShapes';
+import { gridLines, type GridLimits, type GridLines } from '../../preview/previewShapes';
 import type { PlayerGrid, PlayerMap } from '../../scene/sceneTypes';
 import { intersection, type WorldRect } from '../camera';
 import type { TextStyle, ViewSurface } from '../ViewSurface';
@@ -19,38 +19,77 @@ export const MAX_NUMBERED_HEXES = 100_000;
 /** The view only builds what is on screen, so its caps are far above the preview's. */
 const VIEW_LIMITS: GridLimits = { lines: 100_000, hexes: MAX_NUMBERED_HEXES };
 
+interface Anchored {
+  x: number;
+  y: number;
+  label: string;
+}
+
 interface Numbered {
   grid: PlayerGrid;
   width: number;
   height: number;
-  hexes: NumberedHex[];
+  /** Where each number sits, ordered by y so the visible rows are found by bisection. */
+  anchors: Anchored[];
+}
+
+interface CachedLines {
+  grid: PlayerGrid;
+  width: number;
+  height: number;
+  area: WorldRect;
+  lines: GridLines | null;
+}
+
+/**
+ * The area the lines are built for: the visible area grown outwards to a grid of tiles
+ * (a power of two at least as large as the view), so panning inside a tile reuses them.
+ * Lines beyond the screen are clipped by the canvas.
+ */
+function snapArea(visible: WorldRect, map: PlayerMap): WorldRect | null {
+  const tile = 2 ** Math.ceil(Math.log2(Math.max(1, visible.width, visible.height)));
+  const x0 = Math.floor(visible.x / tile) * tile;
+  const y0 = Math.floor(visible.y / tile) * tile;
+  const wide = { x: x0, y: y0, width: Math.ceil((visible.x + visible.width) / tile) * tile - x0, height: Math.ceil((visible.y + visible.height) / tile) * tile - y0 };
+  return map.width > 0 && map.height > 0 ? intersection(wide, { x: 0, y: 0, width: map.width, height: map.height }) : wide;
 }
 
 export function createGridLayer(): PlayerLayer {
-  // Numbering every hex of the map runs once per grid and map size, not per frame.
+  // Numbering every hex of the map, and building lines, run once per grid, map size and tile, not per frame.
   let numbered: Numbered | null = null;
-  const numbersOf = (grid: PlayerGrid, map: PlayerMap): NumberedHex[] => {
+  let cached: CachedLines | null = null;
+  const numbersOf = (grid: PlayerGrid, map: PlayerMap): Anchored[] => {
     if (numbered === null || numbered.grid !== grid || numbered.width !== map.width || numbered.height !== map.height) {
-      numbered = { grid, width: map.width, height: map.height, hexes: hexNumbersOf(grid, map) };
+      numbered = { grid, width: map.width, height: map.height, anchors: anchorsOf(grid, map) };
     }
-    return numbered.hexes;
+    return numbered.anchors;
+  };
+  const linesOf = (grid: PlayerGrid, map: PlayerMap, area: WorldRect): GridLines | null => {
+    if (
+      cached === null || cached.grid !== grid || cached.width !== map.width || cached.height !== map.height
+      || cached.area.x !== area.x || cached.area.y !== area.y || cached.area.width !== area.width || cached.area.height !== area.height
+    ) {
+      cached = { grid, width: map.width, height: map.height, area, lines: gridLines(grid, area, VIEW_LIMITS) };
+    }
+    return cached.lines;
   };
   return {
     draw(surface, frame): void {
       const { grid, map } = frame.scene;
       if (!grid) return;
+      // The visible area first (Atlas clips its grid to the map), then its tile.
       const area = map.width > 0 && map.height > 0
         ? intersection(frame.visible, { x: 0, y: 0, width: map.width, height: map.height })
         : frame.visible;
       if (!area) return;
-      drawLines(surface, frame, grid, area);
+      const tile = snapArea(frame.visible, map);
+      if (tile) drawLines(surface, frame, linesOf(grid, map, tile));
       drawHexNumbers(surface, frame, grid, numbersOf(grid, map));
     },
   };
 }
 
-function drawLines(surface: ViewSurface, frame: LayerFrame, grid: PlayerGrid, area: WorldRect): void {
-  const lines = gridLines(grid, area, VIEW_LIMITS);
+function drawLines(surface: ViewSurface, frame: LayerFrame, lines: GridLines | null): void {
   if (!lines) return;
   const style = {
     stroke: lines.color,
@@ -63,6 +102,14 @@ function drawLines(surface: ViewSurface, frame: LayerFrame, grid: PlayerGrid, ar
   if (lines.hexes.length > 0) surface.paths(lines.hexes, true, style);
 }
 
+function anchorsOf(grid: PlayerGrid, map: PlayerMap): Anchored[] {
+  if (!isHexGridType(grid.type)) return [];
+  const layout = createHexLayout(grid.type, grid.size, grid.offsetX, grid.offsetY);
+  return hexNumbersOf(grid, map)
+    .map((hex) => ({ ...hexNumberAnchor(layout, hex.center), label: hex.label }))
+    .sort((a, b) => a.y - b.y);
+}
+
 function hexNumbersOf(grid: PlayerGrid, map: PlayerMap): NumberedHex[] {
   if (!grid.hexNumbers || !isHexGridType(grid.type) || !(map.width > 0) || !(map.height > 0)) return [];
   if ((map.width * map.height) / (grid.size * grid.size * 0.866) > MAX_NUMBERED_HEXES) return [];
@@ -70,8 +117,8 @@ function hexNumbersOf(grid: PlayerGrid, map: PlayerMap): NumberedHex[] {
   return numberHexes(layout, { x: 0, y: 0, width: map.width, height: map.height }, grid.hexNumbers);
 }
 
-function drawHexNumbers(surface: ViewSurface, frame: LayerFrame, grid: PlayerGrid, hexes: readonly NumberedHex[]): void {
-  if (hexes.length === 0 || !isHexGridType(grid.type)) return;
+function drawHexNumbers(surface: ViewSurface, frame: LayerFrame, grid: PlayerGrid, anchors: readonly Anchored[]): void {
+  if (anchors.length === 0 || !isHexGridType(grid.type)) return;
   const layout = createHexLayout(grid.type, grid.size, grid.offsetX, grid.offsetY);
   const size = hexNumberFontSize(layout);
   if (size * frame.zoom < MIN_HEX_NUMBER_SCREEN_SIZE) return;
@@ -82,9 +129,20 @@ function drawHexNumbers(surface: ViewSurface, frame: LayerFrame, grid: PlayerGri
     alpha: grid.hexNumberOpacity ?? DEFAULT_HEX_NUMBER_OPACITY,
   };
   const { visible } = frame;
-  for (const hex of hexes) {
-    const at = hexNumberAnchor(layout, hex.center);
-    if (at.x < visible.x || at.x > visible.x + visible.width || at.y < visible.y || at.y > visible.y + visible.height) continue;
-    surface.text(hex.label, at.x, at.y, style);
+  const top = visible.y;
+  const bottom = visible.y + visible.height;
+  // Anchors are ordered by y: bisect to the first visible row, then stop after the last.
+  let low = 0;
+  let high = anchors.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (anchors[middle]!.y < top) low = middle + 1;
+    else high = middle;
+  }
+  for (let index = low; index < anchors.length; index++) {
+    const at = anchors[index]!;
+    if (at.y > bottom) break;
+    if (at.x < visible.x || at.x > visible.x + visible.width) continue;
+    surface.text(at.label, at.x, at.y, style);
   }
 }

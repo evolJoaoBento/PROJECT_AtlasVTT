@@ -34,14 +34,42 @@ describe('map layer', () => {
 describe('grid layer', () => {
   const grid = playerScene().grid!;
 
-  it('draws square lines over the visible part of the map only', () => {
+  it('draws square lines over the visible part of the map only, to the edge of its tile', () => {
     const surface = new RecordingSurface();
-    const visible = { x: 500, y: -100, width: 1000, height: 300 };
-    createGridLayer().draw(surface, frame(playerScene(), { visible }));
-    const lines = gridLines(grid, { x: 500, y: 0, width: 500, height: 200 });
+    const map = { asset: null, width: 100_000, height: 100_000, cellSize: 70 };
+    const visible = { x: 5000, y: 5000, width: 1000, height: 300 };
+    createGridLayer().draw(surface, frame(playerScene({ map }), { visible }));
+    const lines = gridLines(grid, { x: 4096, y: 4096, width: 2048, height: 2048 });
     expect(surface.calls).toEqual([{
       op: 'paths', paths: lines!.segments, closed: false, style: { stroke: '#808080', alpha: 0.5, lineWidth: 1, dash: [] },
     }]);
+    expect(lines!.segments.length).toBeLessThan(100);
+  });
+
+  it('reuses its lines while the view stays inside a tile, and builds them again past it', () => {
+    const surface = new RecordingSurface();
+    const layer = createGridLayer();
+    const scene = playerScene({ map: { asset: null, width: 100_000, height: 100_000, cellSize: 70 } });
+    layer.draw(surface, frame(scene, { visible: { x: 5000, y: 5000, width: 1000, height: 300 } }));
+    layer.draw(surface, frame(scene, { visible: { x: 5100, y: 5010, width: 1000, height: 300 } }));
+    layer.draw(surface, frame(scene, { visible: { x: 9000, y: 5000, width: 1000, height: 300 } }));
+    const [first, second, third] = surface.ops('paths');
+    expect(second!.paths[0]![0]).toBe(first!.paths[0]![0]);
+    expect(third!.paths[0]![0]).not.toBe(first!.paths[0]![0]);
+  });
+
+  it('numbers only the hexes on screen', () => {
+    const hexes: PlayerGrid = { ...grid, type: 'hex-vertical', hexNumbers: 'column-row' };
+    const surface = new RecordingSurface();
+    const layer = createGridLayer();
+    layer.draw(surface, frame(playerScene({ grid: hexes })));
+    const all = surface.ops('text').length;
+    surface.clear();
+    layer.draw(surface, frame(playerScene({ grid: hexes }), { visible: { x: 0, y: 0, width: 300, height: 200 } }));
+    const some = surface.ops('text');
+    expect(some.length).toBeGreaterThan(0);
+    expect(some.length).toBeLessThan(all / 3);
+    expect(some.every((label) => label.x <= 300 && label.y <= 200)).toBe(true);
   });
 
   it('dashes in screen pixels and never draws thinner than a device pixel', () => {
