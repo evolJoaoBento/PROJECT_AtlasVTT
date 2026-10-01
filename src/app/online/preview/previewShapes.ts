@@ -1,22 +1,14 @@
 /**
- * What the join page's preview draws, as plain shapes in world coordinates.
- * Shared with the web player page; the canvas layer (`online-client/preview.mts`)
- * only turns these into canvas calls.
+ * What the join page's map view takes from the preview: grid lines and fog shapes, in world coordinates.
  */
 import { axialToPixel, createHexLayout, hexVertices, isHexGridType, pixelToAxial } from '../../grid/hexGeometry';
-import {
-  sortedByOrder, type PlayerDrawing, type PlayerFogOp, type PlayerGrid, type PlayerScene, type PlayerText,
-  type PlayerTextAlign, type ScenePoint,
-} from '../scene/sceneTypes';
-import { tokenDiameter, type PreviewRect } from './previewLayout';
+import { sortedByOrder, type PlayerFogOp, type PlayerGrid, type ScenePoint } from '../scene/sceneTypes';
+import type { PreviewRect } from './previewLayout';
 
 /** Beyond this many lines or hexes the grid is too fine to be worth drawing. */
 export const MAX_GRID_LINES = 2000;
 export const MAX_GRID_HEXES = 5000;
 const DEFAULT_GRID_COLOR = '#808080';
-const DEFAULT_TOKEN_COLOR = '#9aa0a6';
-/** Token circles are drawn a little inside their footprint, like the token art. */
-const TOKEN_FILL = 0.9;
 
 export interface GridLines {
   segments: Array<[ScenePoint, ScenePoint]>;
@@ -32,40 +24,6 @@ export type FogShape =
   | { kind: 'stroke'; erase: boolean; points: ScenePoint[]; width: number }
   | { kind: 'polygon'; erase: boolean; points: ScenePoint[] }
   | { kind: 'rect'; erase: boolean; x: number; y: number; width: number; height: number };
-
-export interface InkStroke {
-  points: ScenePoint[];
-  color: string;
-  width: number;
-  alpha: number;
-  /** Icons and single points are drawn as a dot of the stroke's width. */
-  dot: boolean;
-}
-
-export interface TextLabel {
-  x: number;
-  y: number;
-  text: string;
-  size: number;
-  color: string;
-  alpha: number;
-  align: PlayerTextAlign;
-}
-
-export interface TokenMarker {
-  x: number;
-  y: number;
-  radius: number;
-  /** The ring colour, or the default one for the stand-in circle. */
-  color: string;
-  /** The token's own ring colour; null when its ring is off, so art is drawn without one. */
-  ring: string | null;
-  label: string | null;
-  /** Remaining HP from 0 to 1; null when HP is not shown. */
-  hp: number | null;
-  /** The token's image as an asset id; the preview draws it once it is loaded. */
-  image: string | null;
-}
 
 function dashFor(lineType: PlayerGrid['lineType']): number[] {
   if (lineType === 'dashed') return [6, 4];
@@ -127,48 +85,4 @@ export function fogShapes(fog: Readonly<Record<string, PlayerFogOp>>): FogShape[
     if (op.type === 'lasso') return { kind: 'polygon', erase: op.erase, points: op.points };
     return { kind: 'rect', erase: op.erase, x: op.x, y: op.y, width: op.width, height: op.height };
   });
-}
-
-/** Eraser records are skipped: Atlas's eraser splits or deletes strokes in the store, so current tools create none. */
-export function inkStrokes(drawings: Readonly<Record<string, PlayerDrawing>>): InkStroke[] {
-  return sortedByOrder(drawings, (drawing) => drawing.order)
-    .filter(([, drawing]) => drawing.type !== 'eraser')
-    .map(([, drawing]) => ({
-      points: drawing.points,
-      color: drawing.color,
-      width: drawing.width,
-      alpha: drawing.opacity,
-      dot: drawing.type === 'icon' || drawing.points.length === 1,
-    }));
-}
-
-export function textLabels(texts: Readonly<Record<string, PlayerText>>): TextLabel[] {
-  return Object.values(texts).map((text) => ({
-    x: text.x, y: text.y, text: text.text, size: text.fontSize * text.scale, color: text.color, alpha: text.opacity, align: text.align,
-  }));
-}
-
-/** One circle per token, lowest layer first. */
-export function tokenMarkers(scene: PlayerScene): TokenMarker[] {
-  return Object.values(scene.tokens)
-    .sort((a, b) => a.layer - b.layer)
-    .map((token) => ({
-      x: token.x,
-      y: token.y,
-      radius: (tokenDiameter(token.size, scene.map.cellSize) / 2) * TOKEN_FILL,
-      color: token.ring ?? DEFAULT_TOKEN_COLOR,
-      ring: token.ring,
-      label: token.name ? initials(token.name) : null,
-      hp: token.hp && token.hp.max > 0 ? Math.min(1, Math.max(0, token.hp.current / token.hp.max)) : null,
-      image: token.image,
-    }));
-}
-
-/** Two letters for a token: the first letters of its first two words, or the first two of a single word. */
-export function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter((word) => word.length > 0);
-  const [first, second] = words;
-  if (!first) return '';
-  if (!second) return Array.from(first).slice(0, 2).join('').toUpperCase();
-  return `${Array.from(first)[0] ?? ''}${Array.from(second)[0] ?? ''}`.toUpperCase();
 }

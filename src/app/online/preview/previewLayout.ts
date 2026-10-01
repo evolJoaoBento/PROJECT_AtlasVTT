@@ -12,14 +12,6 @@ export interface PreviewRect {
   height: number;
 }
 
-/** Screen position = world position × scale + offset. */
-export interface PreviewTransform {
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-}
-
-export const PREVIEW_PADDING = 16;
 /** A grid without a map or tokens shows this many cells each way. */
 const EMPTY_GRID_CELLS = 10;
 
@@ -49,20 +41,4 @@ export function sceneWorldBounds(scene: PlayerScene): PreviewRect | null {
     return { x: scene.grid.offsetX, y: scene.grid.offsetY, width: cell * EMPTY_GRID_CELLS, height: cell * EMPTY_GRID_CELLS };
   }
   return null;
-}
-
-/** Scales `world` to fit the viewport inside the padding, centred. */
-export function fitTransform(
-  world: PreviewRect,
-  viewport: { width: number; height: number },
-  padding: number = PREVIEW_PADDING,
-): PreviewTransform {
-  const availableWidth = Math.max(1, viewport.width - 2 * padding);
-  const availableHeight = Math.max(1, viewport.height - 2 * padding);
-  const scale = Math.min(availableWidth / Math.max(1, world.width), availableHeight / Math.max(1, world.height));
-  return {
-    scale,
-    offsetX: (viewport.width - world.width * scale) / 2 - world.x * scale,
-    offsetY: (viewport.height - world.height * scale) / 2 - world.y * scale,
-  };
 }

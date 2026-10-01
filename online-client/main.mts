@@ -1,48 +1,74 @@
 // online-client/main.mts
+/**
+ * The join page: the name form, the session, image loading and the map. The logic lives
+ * in tested shared modules under `src/app/online/`; this file finds the page's elements
+ * and connects them.
+ */
 import { AssetCache } from '../src/app/online/assets/AssetCache';
 import { AssetLoader } from '../src/app/online/assets/AssetLoader';
 import { openIndexedDbImageStore } from '../src/app/online/assets/indexedDbImageStore';
+import { randomId } from '../src/app/online/ids';
+import { parseJoinFragment } from '../src/app/online/joinLink';
+import { INCOMPLETE_LINK_TEXT, NAME_PROBLEM_TEXT, NO_CANVAS_TEXT, pageScreen, type PageScreen } from '../src/app/online/page/pageScreen';
 import type { PlayerSessionState } from '../src/app/online/PlayerSession';
 import { createJoinSession } from '../src/app/online/preview/joinSession';
-import { createPeerClient } from '../src/app/online/transport/PeerTransport';
-import { parseJoinFragment } from '../src/app/online/joinLink';
+import { initiativeLines, playerLines, widgetLines } from '../src/app/online/preview/sceneSummary';
 import { normalizePlayerName } from '../src/app/online/protocol';
-import { randomId } from '../src/app/online/ids';
-import { initiativeLines, widgetLines } from '../src/app/online/preview/sceneSummary';
 import type { PlayerScene } from '../src/app/online/scene/sceneTypes';
+import { createPeerClient } from '../src/app/online/transport/PeerTransport';
 import { AssetsPanel, rememberedKeep } from './assetsPanel.mts';
+import { createCanvasSurface } from './canvasSurface.mts';
 import { decodeImage } from './imageDecoder.mts';
-import { ScenePreview } from './preview.mts';
+import { MapView } from './mapView.mts';
+import { Menu } from './menu.mts';
 
 const VERSION = '0.1.0';
-const form = document.getElementById('join') as HTMLFormElement;
-const nameInput = document.getElementById('name') as HTMLInputElement;
-const status = document.getElementById('status') as HTMLParagraphElement;
-const playerList = document.getElementById('players') as HTMLUListElement;
-const sceneSection = document.getElementById('scene') as HTMLElement;
-const widgetList = document.getElementById('widgets') as HTMLUListElement;
-const initiativeList = document.getElementById('initiative') as HTMLOListElement;
+
+function element<T extends HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
+}
+
+const screen = element<HTMLElement>('screen');
+const form = element<HTMLFormElement>('join');
+const nameInput = element<HTMLInputElement>('name');
+const status = element<HTMLParagraphElement>('status');
+const table = element<HTMLElement>('table');
+const sessionName = element<HTMLElement>('session-name');
+const connection = element<HTMLElement>('connection');
+const playerList = element<HTMLUListElement>('players');
+const widgetList = element<HTMLUListElement>('widgets');
+const initiativeList = element<HTMLOListElement>('initiative');
+const canvas = element<HTMLCanvasElement>('map');
+
 const cache = new AssetCache({ keep: rememberedKeep(), openStore: openIndexedDbImageStore });
 const panel = new AssetsPanel(cache);
+new Menu(element<HTMLButtonElement>('menu-button'), element<HTMLElement>('menu'), element<HTMLButtonElement>('menu-close'));
+const surface = createCanvasSurface(canvas);
 // The lookup runs at draw time, in a later animation frame, so `loader` below is already set;
 // it asks the loader every time, so a released image is never drawn.
-const preview = new ScenePreview(document.getElementById('preview') as HTMLCanvasElement, (id) => loader.image(id));
+const map = surface
+  ? new MapView({
+    canvas, surface, images: (id) => loader.image(id),
+    viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
+  })
+  : null;
 let assetsFrame: number | null = null;
 const loader = new AssetLoader({
   cache,
   decode: decodeImage,
-  // Chunks arrive many times a second: the bar and the preview update at most once per frame.
+  // Chunks arrive many times a second: the bar and the map update at most once per frame.
   onChange: () => {
     if (assetsFrame !== null) return;
     assetsFrame = window.requestAnimationFrame(() => {
       assetsFrame = null;
       panel.showProgress(loader.progress());
-      preview.refresh();
+      map?.refresh();
     });
   },
 });
 let sessionState: PlayerSessionState | null = null;
 let scene: PlayerScene | null = null;
+let started = false;
 
 /** localStorage can throw in private windows; the page still works without it. */
 function stored(key: string, fallback: () => string): string {
@@ -53,43 +79,6 @@ function stored(key: string, fallback: () => string): string {
   } catch {
     return fallback();
   }
-}
-
-const REASONS: Record<string, string> = {
-  denied: 'The GM did not let you in.',
-  kicked: 'The GM removed you from the session.',
-  full: 'The session is full.',
-  version: 'This page is out of date for your GM\'s Atlas. Ask them for a new link.',
-  ended: 'The session ended.',
-  replaced: 'You joined from another tab.',
-  unreachable: 'Couldn\'t connect. Check the link, or your GM may need to add a relay server in Atlas settings.',
-  'connection-lost': 'Lost the connection to your GM. Reload the page to try again.',
-};
-
-function render(state: PlayerSessionState): void {
-  sessionState = state;
-  const text: Record<PlayerSessionState['status'], string> = {
-    connecting: 'Connecting…',
-    waiting: 'Waiting for the GM to let you in…',
-    admitted: scene
-      ? `Connected to ${state.title ?? 'the table'}.`
-      : `Connected to ${state.title ?? 'the table'}. Waiting for the GM to show a scene.`,
-    denied: REASONS[state.reason ?? 'denied'] ?? REASONS.denied!,
-    lost: REASONS[state.reason ?? 'unreachable'] ?? REASONS.unreachable!,
-  };
-  status.textContent = text[state.status];
-  if (state.status === 'denied' || state.status === 'lost') {
-    // The session is over for good: free the decoded images and hide the loading bar.
-    loader.dispose();
-    panel.showProgress(loader.progress());
-  }
-  playerList.hidden = state.status !== 'admitted';
-  playerList.replaceChildren(...state.players.map((player) => {
-    const item = document.createElement('li');
-    item.textContent = player.connected ? player.name : `${player.name} (away)`;
-    return item;
-  }));
-  renderScene();
 }
 
 const listContent = new WeakMap<HTMLElement, string>();
@@ -107,11 +96,40 @@ function fillList(list: HTMLElement, lines: string[]): void {
   }));
 }
 
-/** The preview and the widget and initiative lists, shown only while admitted with a scene. */
+function show(view: PageScreen): void {
+  screen.hidden = view.kind === 'table';
+  table.hidden = view.kind !== 'table';
+  form.hidden = view.kind !== 'form' || started;
+  if (view.kind === 'message') status.textContent = view.text;
+  if (view.kind === 'table') {
+    sessionName.textContent = view.title;
+    connection.textContent = view.connection;
+    // The canvas has its size only once the table is shown.
+    map?.measure();
+  }
+}
+
+function render(state: PlayerSessionState): void {
+  sessionState = state;
+  let ended = false;
+  if (state.status === 'denied' || state.status === 'lost') {
+    // The session is over for good: free the decoded images and hide the loading bar.
+    loader.dispose();
+    panel.showProgress(loader.progress());
+    ended = true;
+  }
+  fillList(playerList, playerLines(state.players));
+  renderScene();
+  // The scene is cleared from the view first; then it stops drawing and frees the fog image.
+  if (ended) map?.dispose();
+}
+
+/** The map, and the widget and initiative lists, shown only on the table screen. */
 function renderScene(): void {
-  const shown = sessionState?.status === 'admitted' ? scene : null;
-  sceneSection.hidden = shown === null;
-  preview.show(shown);
+  const view = pageScreen(sessionState, scene !== null);
+  show(view);
+  const shown = view.kind === 'table' ? scene : null;
+  map?.setScene(shown);
   fillList(widgetList, shown ? widgetLines(shown.widgets) : []);
   fillList(initiativeList, shown ? initiativeLines(shown.initiative) : []);
   // Read-only, for checking in the developer tools what this page received.
@@ -120,17 +138,18 @@ function renderScene(): void {
 
 const target = parseJoinFragment(location.hash);
 if (!target) {
-  status.textContent = 'This link is incomplete. Ask your GM for the join link again.';
+  status.textContent = INCOMPLETE_LINK_TEXT;
+} else if (!map) {
+  status.textContent = NO_CANVAS_TEXT;
 } else {
   form.hidden = false;
   nameInput.value = stored('atlas-online:name', () => '');
-  let started = false;
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     if (started) return;
     const name = normalizePlayerName(nameInput.value);
     if (!name) {
-      status.textContent = 'Enter a name of up to 40 characters.';
+      status.textContent = NAME_PROBLEM_TEXT;
       return;
     }
     try { localStorage.setItem('atlas-online:name', name); } catch { /* private window */ }
@@ -147,8 +166,9 @@ if (!target) {
       onChange: render,
       onScene: (next) => {
         scene = next;
-        if (sessionState) render(sessionState);
+        renderScene();
       },
+      onCamera: (camera) => map.setGmCamera(camera),
     }).start();
   });
 }

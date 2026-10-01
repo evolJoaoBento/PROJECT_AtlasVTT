@@ -1,29 +1,72 @@
 /* online-client/style.css */
-:root { color-scheme: light dark; --bg: #f6f6f7; --card: #fff; --text: #1f2328; --muted: #5a6068; --accent: #7c5cff; --border: #d8dbe0; }
-@media (prefers-color-scheme: dark) { :root { --bg: #161719; --card: #202124; --text: #e8e8ea; --muted: #a0a4ab; --border: #33363b; } }
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f7; --card: #fff; --text: #1f2328; --muted: #5a6068; --accent: #7c5cff; --border: #d8dbe0;
+  --bar: rgba(255, 255, 255, 0.92); --gap: 8px; --target: 44px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161719; --card: #202124; --text: #e8e8ea; --muted: #a0a4ab; --border: #33363b; --bar: rgba(32, 33, 36, 0.92); }
+}
 * { box-sizing: border-box; }
 /* The display rules below would otherwise override the hidden attribute. */
 [hidden] { display: none !important; }
-body { margin: 0; min-height: 100vh; display: grid; place-items: center; gap: 16px; padding: 16px; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+
+/* Full-screen messages: the name form, waiting, refused and ended. */
+.screen {
+  min-height: 100%; display: grid; place-items: center; align-content: center; gap: 16px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
 .card { width: min(420px, 100%); padding: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; display: grid; gap: 12px; }
 h1 { margin: 0; font-size: 20px; }
+h2 { margin: 0; font-size: 16px; }
 form { display: grid; gap: 8px; }
-input { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
-button { padding: 10px 12px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-#status { margin: 0; color: var(--muted); }
-#players { margin: 0; padding-left: 20px; }
-footer { color: var(--muted); font-size: 13px; }
-footer a { color: inherit; }
-.scene { width: min(1200px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; }
-#preview { display: block; width: 100%; height: min(70vh, 720px); background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
-.scene-info { display: grid; gap: 12px; align-content: start; }
-.scene-info ul, .scene-info ol { margin: 0; padding: 12px; list-style-position: inside; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
-@media (max-width: 720px) { .scene { grid-template-columns: 1fr; } #preview { height: 60vh; } }
-.scene-main { display: grid; gap: 12px; align-content: start; min-width: 0; }
-.image-progress { display: grid; gap: 4px; color: var(--muted); font-size: 13px; }
-.image-progress progress { width: 100%; height: 6px; accent-color: var(--accent); }
-.image-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; }
-.keep-images { display: flex; align-items: center; gap: 8px; }
-.keep-images input { width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
-button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); font-weight: 500; }
+input { min-height: var(--target); padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+button { min-height: var(--target); padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+button.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); font-weight: 500; }
 button:disabled { opacity: 0.5; cursor: default; }
+#status { margin: 0; color: var(--muted); }
+.links { color: var(--muted); font-size: 13px; }
+.links a { color: inherit; }
+
+/* The table: the map fills the window, everything else floats over it. */
+.table { position: fixed; inset: 0; overflow: hidden; background: #000; }
+#map { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#map:active { cursor: grabbing; }
+.top-bar {
+  position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: var(--gap);
+  padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) var(--gap) max(var(--gap), env(safe-area-inset-left));
+  background: var(--bar); border-bottom: 1px solid var(--border);
+}
+.session-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.connection { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.image-progress { flex: 1; min-width: 80px; display: grid; gap: 4px; color: var(--muted); font-size: 13px; }
+.image-progress progress { width: 100%; height: 6px; accent-color: var(--accent); }
+.icon-button {
+  width: var(--target); height: var(--target); padding: 0; margin-left: auto; display: grid; place-items: center;
+  background: transparent; color: var(--text); border: 1px solid var(--border); font-size: 20px; font-weight: 500;
+}
+.view-buttons {
+  position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex; gap: var(--gap);
+}
+
+/* The menu: a side panel, a bottom sheet on narrow screens. */
+.menu {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(320px, 100%); overflow-y: auto;
+  display: grid; align-content: start; gap: 12px;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) 12px;
+  background: var(--card); border-left: 1px solid var(--border);
+}
+.menu-header { display: flex; align-items: center; gap: 12px; }
+.menu ul, .menu ol { margin: 0; padding: 12px; list-style-position: inside; border: 1px solid var(--border); border-radius: 12px; }
+.image-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; }
+.keep-images { display: flex; align-items: center; gap: 8px; min-height: var(--target); }
+.keep-images input { width: 22px; height: 22px; min-height: 0; padding: 0; accent-color: var(--accent); }
+@media (max-width: 720px) {
+  .menu {
+    top: auto; left: 0; width: auto; max-height: 70%; border-left: 0; border-top: 1px solid var(--border); border-radius: 16px 16px 0 0;
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+}

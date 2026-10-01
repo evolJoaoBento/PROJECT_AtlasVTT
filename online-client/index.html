@@ -3,28 +3,49 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Atlas VTT · Join</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <main class="card">
-    <h1>Join the table</h1>
-    <form id="join" hidden>
-      <label for="name">Your name</label>
-      <input id="name" maxlength="40" autocomplete="nickname" required>
-      <button type="submit">Join</button>
-    </form>
-    <p id="status" role="status"></p>
-    <ul id="players" hidden></ul>
-  </main>
-  <section id="scene" class="scene" hidden aria-label="Scene">
-    <div class="scene-main">
+  <div id="screen" class="screen">
+    <main class="card">
+      <h1>Join the table</h1>
+      <form id="join" hidden>
+        <label for="name">Your name</label>
+        <input id="name" maxlength="40" autocomplete="nickname" required>
+        <button type="submit">Join</button>
+      </form>
+      <p id="status" role="status"></p>
+    </main>
+    <footer class="links">
+      Atlas VTT online play · <a href="https://github.com/evolJoaoBento/atlas-vtt" target="_blank" rel="noopener">Source code (AGPL-3.0)</a>
+      · <a href="https://github.com/evolJoaoBento/atlas-vtt/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">Licences</a>
+    </footer>
+  </div>
+  <section id="table" class="table" hidden aria-label="Scene">
+    <canvas id="map" role="img" aria-label="Map"></canvas>
+    <header class="top-bar">
+      <span id="session-name" class="session-name"></span>
+      <span id="connection" class="connection" role="status"></span>
       <div id="image-progress" class="image-progress" hidden>
         <progress id="image-progress-bar" aria-label="Loading images"></progress>
         <span id="image-progress-text" role="status"></span>
       </div>
-      <canvas id="preview" role="img" aria-label="Scene preview"></canvas>
+      <button id="menu-button" class="icon-button" type="button" aria-label="Menu" aria-expanded="false" aria-controls="menu">☰</button>
+    </header>
+    <div id="view-buttons" class="view-buttons" hidden>
+      <button id="follow-gm" type="button">Follow GM</button>
+      <button id="fit-map" class="secondary" type="button">Fit map</button>
+    </div>
+    <aside id="menu" class="menu" hidden aria-label="Menu">
+      <div class="menu-header">
+        <h2>Players</h2>
+        <button id="menu-close" class="icon-button" type="button" aria-label="Close menu">×</button>
+      </div>
+      <ul id="players" aria-label="Players"></ul>
+      <ul id="widgets" aria-label="Widgets" hidden></ul>
+      <ol id="initiative" aria-label="Initiative" hidden></ol>
       <div class="image-settings">
         <label class="keep-images">
           <input id="keep-images" type="checkbox" role="switch" checked>
@@ -32,16 +53,12 @@
         </label>
         <button id="clear-images" class="secondary" type="button" disabled>Clear saved images</button>
       </div>
-    </div>
-    <aside class="scene-info">
-      <ul id="widgets" aria-label="Widgets" hidden></ul>
-      <ol id="initiative" aria-label="Initiative" hidden></ol>
+      <footer class="links">
+        Atlas VTT online play · <a href="https://github.com/evolJoaoBento/atlas-vtt" target="_blank" rel="noopener">Source code (AGPL-3.0)</a>
+        · <a href="https://github.com/evolJoaoBento/atlas-vtt/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">Licences</a>
+      </footer>
     </aside>
   </section>
-  <footer>
-    Atlas VTT online play · <a href="https://github.com/evolJoaoBento/atlas-vtt" target="_blank" rel="noopener">Source code (AGPL-3.0)</a>
-    · <a href="https://github.com/evolJoaoBento/atlas-vtt/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">Licences</a>
-  </footer>
   <script type="module" src="./main.mts"></script>
 </body>
 </html>

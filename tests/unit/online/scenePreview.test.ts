@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { fitTransform, sceneWorldBounds } from '../../../src/app/online/preview/previewLayout';
-import { MAX_GRID_HEXES, fogShapes, gridLines, initials, inkStrokes, textLabels, tokenMarkers } from '../../../src/app/online/preview/previewShapes';
-import { initiativeLines, widgetLines } from '../../../src/app/online/preview/sceneSummary';
+import { sceneWorldBounds } from '../../../src/app/online/preview/previewLayout';
+import { MAX_GRID_HEXES, fogShapes, gridLines } from '../../../src/app/online/preview/previewShapes';
+import { initiativeLines, playerLines, widgetLines } from '../../../src/app/online/preview/sceneSummary';
 import type { PlayerGrid } from '../../../src/app/online/scene/sceneTypes';
 import { fogRect, playerScene, playerToken } from './sceneFixtures';
 
@@ -11,20 +11,6 @@ const square: PlayerGrid = {
 };
 
 describe('preview layout', () => {
-  it('fits the map into the canvas with padding, centred', () => {
-    expect(fitTransform({ x: 0, y: 0, width: 1000, height: 500 }, { width: 532, height: 282 }))
-      .toEqual({ scale: 0.5, offsetX: 16, offsetY: 16 });
-    const tall = fitTransform({ x: 0, y: 0, width: 100, height: 400 }, { width: 532, height: 432 });
-    expect(tall.scale).toBe(1);
-    expect(tall.offsetX).toBe(216);
-  });
-
-  it('fits a zero-size world without dividing by zero', () => {
-    const fit = fitTransform({ x: 0, y: 0, width: 0, height: 0 }, { width: 100, height: 100 });
-    expect(Number.isFinite(fit.scale)).toBe(true);
-    expect(Number.isFinite(fit.offsetX)).toBe(true);
-  });
-
   it('shows the map, else the tokens, else ten cells of grid', () => {
     expect(sceneWorldBounds(playerScene())).toEqual({ x: 0, y: 0, width: 1000, height: 800 });
     const noMap = { asset: null, width: 0, height: 0, cellSize: 70 };
@@ -66,43 +52,16 @@ describe('preview shapes', () => {
     expect(shapes[1]).toMatchObject({ width: 20, erase: false });
     expect(shapes[2]).toMatchObject({ erase: true });
   });
-
-  it('draws ink in order, icons as dots, and skips eraser strokes', () => {
-    const strokes = inkStrokes({
-      late: { type: 'pen', order: 5, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], color: '#ff0000', width: 3, opacity: 0.5, icon: null },
-      early: { type: 'icon', order: 1, points: [{ x: 9, y: 9 }], color: '#00ff00', width: 40, opacity: 1, icon: 'skull' },
-      rubber: { type: 'eraser', order: 3, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], color: '#000000', width: 3, opacity: 1, icon: null },
-    });
-    expect(strokes.map((stroke) => stroke.color)).toEqual(['#00ff00', '#ff0000']);
-    expect(strokes[0]?.dot).toBe(true);
-    expect(strokes[1]).toMatchObject({ dot: false, alpha: 0.5, width: 3 });
-  });
-
-  it('labels texts at their scaled size', () => {
-    expect(textLabels(playerScene().texts)).toEqual([
-      { x: 50, y: 50, text: 'Tavern', size: 24, color: '#000000', alpha: 1, align: 'center' },
-    ]);
-  });
-
-  it('marks tokens by layer with their footprint, colour, initials and HP', () => {
-    const scene = playerScene({
-      tokens: {
-        top: playerToken({ layer: 2, name: 'Anna Bell', hp: { current: 5, max: 10 }, ring: '#ff0000' }),
-        bottom: playerToken({ layer: 0, ring: null, size: 2 }),
-      },
-    });
-    expect(tokenMarkers(scene)).toEqual([
-      { x: 100, y: 100, radius: 94.5, color: '#9aa0a6', ring: null, label: null, hp: null, image: 'asset-1' },
-      { x: 100, y: 100, radius: 31.5, color: '#ff0000', ring: '#ff0000', label: 'AB', hp: 0.5, image: 'asset-1' },
-    ]);
-    const zeroMax = playerScene({ tokens: { a: playerToken({ hp: { current: 0, max: 0 } }) } });
-    expect(tokenMarkers(zeroMax)[0]?.hp).toBeNull();
-    expect(initials('Grimgar')).toBe('GR');
-    expect(initials('   ')).toBe('');
-  });
 });
 
 describe('scene summary', () => {
+  it('lists the players, marking the away ones', () => {
+    expect(playerLines([
+      { playerId: 'a', name: 'Anna', connected: true },
+      { playerId: 'b', name: 'Bob', connected: false },
+    ])).toEqual(['Anna', 'Bob (away)']);
+  });
+
   it('lists widgets with their values', () => {
     expect(widgetLines([
       { id: 'a', type: 'counter', label: 'Torches', icon: 'flame', value: 3 },
