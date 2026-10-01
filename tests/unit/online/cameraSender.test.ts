@@ -96,6 +96,20 @@ describe('CameraSender', () => {
     expect(w.cameras('anna')).toHaveLength(1);
   });
 
+  it('sends no camera that players would reject', async () => {
+    const w = world();
+    await w.join('anna');
+    w.presented.present(w.view, w.tavern);
+    await vi.advanceTimersByTimeAsync(CAMERA_INTERVAL_MS);
+    const before = w.cameras('anna').length;
+    w.viewport.moveTo(Number.NaN, 400);
+    await vi.advanceTimersByTimeAsync(CAMERA_INTERVAL_MS);
+    w.viewport.worldScreenWidth = 50_000_000;
+    w.viewport.moveTo(10, 10);
+    await vi.advanceTimersByTimeAsync(CAMERA_INTERVAL_MS);
+    expect(w.cameras('anna')).toHaveLength(before);
+  });
+
   it('sends at most every 100 ms, and the final position after a continuous pan', async () => {
     const w = world();
     await w.join('anna');

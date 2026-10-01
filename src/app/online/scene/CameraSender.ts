@@ -14,6 +14,7 @@ import type { ControlMessage } from '../protocol';
 import { CAMERA_INTERVAL_MS, roundedCamera, sameCamera, type SceneCamera } from './sceneCamera';
 import type { PresentedSceneSource, SceneSession } from './sceneSources';
 import type { PlayerScene } from './sceneTypes';
+import { isSceneCamera } from './sceneValidation';
 
 /** What the sender needs of the broadcaster: the scene players have, and when that changes. */
 export interface CameraProjection {
@@ -142,7 +143,10 @@ export class CameraSender implements SessionHandler {
     const scene = this.options.projection.currentProjection();
     if (!this.live || this.announce || !scene) return null;
     const view = this.live.camera();
-    return view ? roundedCamera({ sceneId: scene.sceneId, ...view }) : null;
+    if (!view) return null;
+    const camera = roundedCamera({ sceneId: scene.sceneId, ...view });
+    // Players would drop an invalid camera: a non-finite or out-of-range viewport sends nothing.
+    return isSceneCamera({ ...camera }) ? camera : null;
   }
 
   /** The last camera, to a player who just got a snapshot of the same scene. */
