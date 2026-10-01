@@ -60,6 +60,8 @@ export interface TokenMarker {
   label: string | null;
   /** Remaining HP from 0 to 1; null when HP is not shown. */
   hp: number | null;
+  /** The token's image as an asset id; the preview draws it once it is loaded. */
+  image: string | null;
 }
 
 function dashFor(lineType: PlayerGrid['lineType']): number[] {
@@ -154,6 +156,7 @@ export function tokenMarkers(scene: PlayerScene): TokenMarker[] {
       color: token.ring ?? DEFAULT_TOKEN_COLOR,
       label: token.name ? initials(token.name) : null,
       hp: token.hp && token.hp.max > 0 ? Math.min(1, Math.max(0, token.hp.current / token.hp.max)) : null,
+      image: token.image,
     }));
 }
 

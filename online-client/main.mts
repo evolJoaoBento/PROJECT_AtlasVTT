@@ -1,4 +1,7 @@
 // online-client/main.mts
+import { AssetCache } from '../src/app/online/assets/AssetCache';
+import { AssetLoader } from '../src/app/online/assets/AssetLoader';
+import { openIndexedDbImageStore } from '../src/app/online/assets/indexedDbImageStore';
 import { PlayerSession, type PlayerSessionState } from '../src/app/online/PlayerSession';
 import { createPeerClient } from '../src/app/online/transport/PeerTransport';
 import { parseJoinFragment } from '../src/app/online/joinLink';
@@ -6,6 +9,8 @@ import { normalizePlayerName } from '../src/app/online/protocol';
 import { randomId } from '../src/app/online/ids';
 import { initiativeLines, widgetLines } from '../src/app/online/preview/sceneSummary';
 import type { PlayerScene } from '../src/app/online/scene/sceneTypes';
+import { AssetsPanel, rememberedKeep } from './assetsPanel.mts';
+import { decodeImage } from './imageDecoder.mts';
 import { ScenePreview } from './preview.mts';
 
 const VERSION = '0.1.0';
@@ -16,7 +21,25 @@ const playerList = document.getElementById('players') as HTMLUListElement;
 const sceneSection = document.getElementById('scene') as HTMLElement;
 const widgetList = document.getElementById('widgets') as HTMLUListElement;
 const initiativeList = document.getElementById('initiative') as HTMLOListElement;
-const preview = new ScenePreview(document.getElementById('preview') as HTMLCanvasElement);
+const cache = new AssetCache({ keep: rememberedKeep(), openStore: openIndexedDbImageStore });
+const panel = new AssetsPanel(cache);
+// The lookup runs at draw time, in a later animation frame, so `loader` below is already set;
+// it asks the loader every time, so a released image is never drawn.
+const preview = new ScenePreview(document.getElementById('preview') as HTMLCanvasElement, (id) => loader.image(id));
+let assetsFrame: number | null = null;
+const loader = new AssetLoader({
+  cache,
+  decode: decodeImage,
+  // Chunks arrive many times a second: the bar and the preview update at most once per frame.
+  onChange: () => {
+    if (assetsFrame !== null) return;
+    assetsFrame = window.requestAnimationFrame(() => {
+      assetsFrame = null;
+      panel.showProgress(loader.progress());
+      preview.refresh();
+    });
+  },
+});
 let sessionState: PlayerSessionState | null = null;
 let scene: PlayerScene | null = null;
 
@@ -54,6 +77,11 @@ function render(state: PlayerSessionState): void {
     lost: REASONS[state.reason ?? 'unreachable'] ?? REASONS.unreachable!,
   };
   status.textContent = text[state.status];
+  if (state.status === 'denied' || state.status === 'lost') {
+    // The session is over for good: free the decoded images and hide the loading bar.
+    loader.dispose();
+    panel.showProgress(loader.progress());
+  }
   playerList.hidden = state.status !== 'admitted';
   playerList.replaceChildren(...state.players.map((player) => {
     const item = document.createElement('li');

@@ -19,7 +19,20 @@
     <ul id="players" hidden></ul>
   </main>
   <section id="scene" class="scene" hidden aria-label="Scene">
-    <canvas id="preview" role="img" aria-label="Scene preview"></canvas>
+    <div class="scene-main">
+      <div id="image-progress" class="image-progress" hidden>
+        <progress id="image-progress-bar" aria-label="Loading images"></progress>
+        <span id="image-progress-text" role="status"></span>
+      </div>
+      <canvas id="preview" role="img" aria-label="Scene preview"></canvas>
+      <div class="image-settings">
+        <label class="keep-images">
+          <input id="keep-images" type="checkbox" role="switch" checked>
+          <span id="keep-images-label">Keep images on this device</span>
+        </label>
+        <button id="clear-images" class="secondary" type="button" disabled>Clear saved images</button>
+      </div>
+    </div>
     <aside class="scene-info">
       <ul id="widgets" aria-label="Widgets" hidden></ul>
       <ol id="initiative" aria-label="Initiative" hidden></ol>

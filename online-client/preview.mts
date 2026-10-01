@@ -7,7 +7,11 @@ import { fitTransform, sceneWorldBounds } from '../src/app/online/preview/previe
 import {
   fogShapes, gridLines, inkStrokes, textLabels, tokenMarkers, type FogShape, type GridLines,
 } from '../src/app/online/preview/previewShapes';
+import type { DecodedImage } from '../src/app/online/assets/AssetLoader';
 import type { PlayerScene, ScenePoint } from '../src/app/online/scene/sceneTypes';
+
+/** The loaded image for an asset id, or null while it is missing. Looked up at draw time, never kept: images are released when they leave the scene. */
+export type ImageLookup = (id: string | null) => DecodedImage | null;
 
 const MAP_COLOR = '#d9d4c7';
 const FOG_COLOR = '#111318';
@@ -20,13 +24,18 @@ export class ScenePreview {
   private frame: number | null = null;
   private readonly fog = document.createElement('canvas');
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly images: ImageLookup) {
     if (typeof ResizeObserver === 'undefined') window.addEventListener('resize', () => this.request());
     else new ResizeObserver(() => this.request()).observe(canvas);
   }
 
   show(scene: PlayerScene | null): void {
     this.scene = scene;
+    this.request();
+  }
+
+  /** Images arrived or went: draw again. */
+  refresh(): void {
     this.request();
   }
 
@@ -63,10 +72,11 @@ export class ScenePreview {
     toWorld(context);
     context.fillStyle = MAP_COLOR;
     context.fillRect(world.x, world.y, world.width, world.height);
+    drawMapImage(context, scene, this.images(scene.map.asset));
     if (scene.grid) drawGrid(context, gridLines(scene.grid, world), pixel);
     drawInk(context, scene);
     drawLabels(context, scene);
-    drawTokens(context, scene, pixel);
+    drawTokens(context, scene, pixel, this.images);
     drawFog(context, this.fog, fogShapes(scene.fog), toWorld);
   }
 }
@@ -140,17 +150,42 @@ function drawLabels(context: CanvasRenderingContext2D, scene: PlayerScene): void
   context.restore();
 }
 
-function drawTokens(context: CanvasRenderingContext2D, scene: PlayerScene, pixel: number): void {
+/** The map image at the map's size, under the grid and fog; nothing until it is loaded or while the size is unknown. */
+function drawMapImage(context: CanvasRenderingContext2D, scene: PlayerScene, art: DecodedImage | null): void {
+  if (!art || scene.map.width <= 0 || scene.map.height <= 0) return;
+  context.drawImage(art.image, 0, 0, scene.map.width, scene.map.height);
+}
+
+/** Fills a square with an image, cropped so it keeps its proportions. */
+function drawCover(context: CanvasRenderingContext2D, art: DecodedImage, left: number, top: number, size: number): void {
+  const scale = Math.max(size / art.width, size / art.height);
+  const width = art.width * scale;
+  const height = art.height * scale;
+  context.drawImage(art.image, left + (size - width) / 2, top + (size - height) / 2, width, height);
+}
+
+function drawTokens(context: CanvasRenderingContext2D, scene: PlayerScene, pixel: number, images: ImageLookup): void {
   context.save();
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   for (const marker of tokenMarkers(scene)) {
-    context.fillStyle = marker.color;
-    context.strokeStyle = LABEL_COLOR;
-    context.lineWidth = 2 * pixel;
+    const art = images(marker.image);
     context.beginPath();
     context.arc(marker.x, marker.y, marker.radius, 0, Math.PI * 2);
-    context.fill();
+    if (art) {
+      // The art clipped to the token's circle (the path survives `restore`), then its ring.
+      context.save();
+      context.clip();
+      drawCover(context, art, marker.x - marker.radius, marker.y - marker.radius, marker.radius * 2);
+      context.restore();
+      context.strokeStyle = marker.color;
+      context.lineWidth = 3 * pixel;
+    } else {
+      context.fillStyle = marker.color;
+      context.fill();
+      context.strokeStyle = LABEL_COLOR;
+      context.lineWidth = 2 * pixel;
+    }
     context.stroke();
     if (marker.label) {
       context.fillStyle = LABEL_COLOR;
