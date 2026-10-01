@@ -9,7 +9,7 @@ import { sceneWorldBounds } from '../preview/previewLayout';
 import type { SceneCamera } from '../scene/sceneCamera';
 import type { PlayerScene } from '../scene/sceneTypes';
 import {
-  cameraForView, cameraLimits, clampCamera, DEFAULT_CAMERA, fitCamera, GLIDE_MS, interpolateCamera, panBy, sameRect, zoomAround,
+  cameraForView, cameraLimits, clampCamera, DEFAULT_CAMERA, fitCamera, GLIDE_MS, interpolateCamera, panBy, sameRect, screenToWorld, zoomAround,
   type Camera, type CameraLimits, type ScreenPoint, type ScreenSize, type WorldRect,
 } from './camera';
 
@@ -56,6 +56,11 @@ export class CameraController {
 
   isFollowing(): boolean {
     return this.following;
+  }
+
+  /** The world point under `point` (CSS pixels from the canvas's top left), with the camera of now. */
+  toWorld(point: ScreenPoint): ScreenPoint {
+    return screenToWorld(this.current(), this.screen, point);
   }
 
   /** The canvas's size in CSS pixels. A following view refits; one that broke away keeps its centre. */

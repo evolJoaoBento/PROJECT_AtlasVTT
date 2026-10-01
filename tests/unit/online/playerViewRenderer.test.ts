@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SCENE_LAYER_ORDER, type SceneLayer } from '../../../src/app/pixi/sceneLayerOrder';
 import { GLIDE_MS } from '../../../src/app/online/view/camera';
 import { CameraController } from '../../../src/app/online/view/CameraController';
-import type { PlayerLayer } from '../../../src/app/online/view/layers/layerTypes';
+import { NO_TOKEN_OVERLAY, type PlayerLayer, type TokenOverlay } from '../../../src/app/online/view/layers/layerTypes';
 import { pixelRatioFor, PlayerViewRenderer, VIEW_BACKGROUND } from '../../../src/app/online/view/PlayerViewRenderer';
 import { fakeFrames, RecordingSurface } from './recordingSurface';
 import { playerScene } from './sceneFixtures';
@@ -14,13 +14,15 @@ function setup(options: { hidden?: boolean; throwing?: SceneLayer } = {}) {
   const surface = new RecordingSurface();
   const drawn: string[] = [];
   const disposed: string[] = [];
+  const overlays: TokenOverlay[] = [];
   const layers = Object.fromEntries(SCENE_LAYER_ORDER.map((name): [SceneLayer, PlayerLayer] => [name, {
-    draw: (target) => {
+    draw: (target, frame) => {
       if (name === options.throwing) {
         target.push(1, 1, 0, 1);
         throw new Error('layer failed');
       }
       drawn.push(name);
+      if (name === 'tokens') overlays.push(frame.overlay);
     },
     dispose: () => { disposed.push(name); },
   }])) as Record<SceneLayer, PlayerLayer>;
@@ -37,7 +39,7 @@ function setup(options: { hidden?: boolean; throwing?: SceneLayer } = {}) {
     renderer.setScene(scene);
   };
   return {
-    surface, camera, renderer, frames, drawn, disposed, show,
+    surface, camera, renderer, frames, drawn, disposed, overlays, show,
     advance: (ms: number): void => { time += ms; },
     setHidden: (value: boolean): void => { hidden = value; },
   };
@@ -53,6 +55,18 @@ describe('PlayerViewRenderer', () => {
     expect(t.drawn).toEqual([...SCENE_LAYER_ORDER]);
     expect(t.surface.ops('begin')).toHaveLength(1);
     expect(t.frames.pending).toBe(0);
+  });
+
+  it('hands the token overlay to the layers, and draws again when it changes', () => {
+    const t = setup();
+    t.show();
+    t.frames.run();
+    expect(t.overlays.at(-1)).toBe(NO_TOKEN_OVERLAY);
+    const overlay: TokenOverlay = { controlled: new Set(['t1']), positions: new Map() };
+    t.renderer.setOverlay(overlay);
+    expect(t.frames.pending).toBe(1);
+    t.frames.run();
+    expect(t.overlays.at(-1)).toBe(overlay);
   });
 
   it('still draws the fog, and resets the surface, when an earlier layer throws', () => {

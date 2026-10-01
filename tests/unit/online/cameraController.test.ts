@@ -163,6 +163,14 @@ describe('CameraController', () => {
     expect(after.y).toBeCloseTo(before.y);
   });
 
+  it('turns canvas points into world points with the camera of now', () => {
+    const { controller } = setup();
+    controller.setScreen(SCREEN);
+    controller.setScene(playerScene());
+    expect(controller.toWorld({ x: 516, y: 416 })).toEqual({ x: 500, y: 400 });
+    expect(controller.toWorld({ x: 16, y: 16 })).toEqual({ x: 0, y: 0 });
+  });
+
   it('keeps a broken-away zoom through a canvas with no size', () => {
     const { controller } = setup();
     controller.setScreen({ width: 1032, height: 832 });

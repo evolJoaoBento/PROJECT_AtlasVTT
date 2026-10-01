@@ -1,7 +1,9 @@
 /**
  * Atlas's tokens as the player window shows them, lowest layer first: the art clipped
  * to its circle (a marker until it has loaded) and turned by the token's rotation, the
- * ring when the token has one, then its bars, nameplate and condition badges.
+ * ring when the token has one, then its bars, nameplate and condition badges. On this
+ * player's view only (`frame.overlay`), the tokens they control get a highlight ring, and
+ * a token they drag or just dropped is drawn where they put it.
  */
 import { getTokenRingCenterRadius } from '../../../pixi/token-renderer/tokenRingMetrics';
 import { computeTokenPixelSize, computeTokenStrokeWidth } from '../../../pixi/token-renderer/tokenSizing';
@@ -13,26 +15,34 @@ import { drawTokenUi } from './tokenUiDrawing';
 
 /** The stand-in drawn until a token's art has loaded. */
 export const TOKEN_MARKER_COLOR = '#9aa0a6';
+/** The ring around the tokens this player controls. */
+export const CONTROLLED_RING_COLOR = '#facc15';
 
 export function createTokensLayer(): PlayerLayer {
-  // Sorted once per change of the tokens, not on every frame.
-  let sorted: { tokens: Readonly<Record<string, PlayerToken>>; list: PlayerToken[] } | null = null;
-  const byLayer = (tokens: Readonly<Record<string, PlayerToken>>): PlayerToken[] => {
-    if (sorted === null || sorted.tokens !== tokens) sorted = { tokens, list: Object.values(tokens).sort((a, b) => a.layer - b.layer) };
+  // Sorted once per change of the tokens, not on every frame; ids kept for the overlay.
+  let sorted: { tokens: Readonly<Record<string, PlayerToken>>; list: Array<[string, PlayerToken]> } | null = null;
+  const byLayer = (tokens: Readonly<Record<string, PlayerToken>>): Array<[string, PlayerToken]> => {
+    if (sorted === null || sorted.tokens !== tokens) sorted = { tokens, list: Object.entries(tokens).sort(([, a], [, b]) => a.layer - b.layer) };
     return sorted.list;
   };
   return {
     draw(surface, frame): void {
       const cellSize = frame.scene.map.cellSize;
       const stroke = computeTokenStrokeWidth(cellSize);
-      for (const token of byLayer(frame.scene.tokens)) {
+      const { controlled, positions } = frame.overlay;
+      for (const [id, inScene] of byLayer(frame.scene.tokens)) {
+        const at = positions.get(id);
+        const token = at ? { ...inScene, x: at.x, y: at.y } : inScene;
         // Never 0 or negative: Atlas's formula gives nothing at half a cell or less.
         const size = Math.max(1, computeTokenPixelSize(cellSize, token.size));
-        // The art, its ring, and the bars and badges around it.
+        // The art, its rings, and the bars and badges around it.
         const reach = size / 2 + stroke + cellSize;
         if (!intersects({ x: token.x - reach, y: token.y - reach, width: reach * 2, height: reach * 2 }, frame.visible)) continue;
         const ringRadius = getTokenRingCenterRadius(size, stroke, 1);
         drawArt(surface, frame, token, size, stroke, ringRadius);
+        if (controlled.has(id)) {
+          surface.circle(token.x, token.y, ringRadius + stroke * 1.5, { stroke: CONTROLLED_RING_COLOR, lineWidth: stroke });
+        }
         drawTokenUi(surface, token, { size, cellSize, ringRadius });
       }
     },

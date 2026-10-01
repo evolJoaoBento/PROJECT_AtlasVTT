@@ -1,7 +1,7 @@
 import type { DecodedImage } from '../../../src/app/online/assets/AssetLoader';
 import { sceneWorldBounds } from '../../../src/app/online/preview/previewLayout';
 import type { PlayerScene, ScenePoint } from '../../../src/app/online/scene/sceneTypes';
-import type { LayerFrame } from '../../../src/app/online/view/layers/layerTypes';
+import { NO_TOKEN_OVERLAY, type LayerFrame } from '../../../src/app/online/view/layers/layerTypes';
 import type { ImageClip, LayerSurface, ShapeStyle, SurfaceImage, TextStyle, ViewSurface } from '../../../src/app/online/view/ViewSurface';
 
 export type SurfaceCall =
@@ -111,6 +111,6 @@ export function decodedImage(width: number, height: number): DecodedImage {
 export function frame(scene: PlayerScene, overrides: Partial<LayerFrame> = {}): LayerFrame {
   return {
     scene, images: () => null, visible: { x: -100, y: -100, width: 1200, height: 1000 }, zoom: 1, pixel: 1,
-    bounds: sceneWorldBounds(scene), ...overrides,
+    bounds: sceneWorldBounds(scene), overlay: NO_TOKEN_OVERLAY, ...overrides,
   };
 }

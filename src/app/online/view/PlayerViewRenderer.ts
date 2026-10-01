@@ -10,7 +10,7 @@ import { sceneWorldBounds } from '../preview/previewLayout';
 import type { PlayerScene } from '../scene/sceneTypes';
 import { visibleArea, type ScreenSize, type WorldRect } from './camera';
 import type { CameraController } from './CameraController';
-import type { ImageLookup, LayerFrame, PlayerLayer } from './layers/layerTypes';
+import { NO_TOKEN_OVERLAY, type ImageLookup, type LayerFrame, type PlayerLayer, type TokenOverlay } from './layers/layerTypes';
 import type { ViewSurface } from './ViewSurface';
 
 /** Outside the map Atlas's canvas is black. */
@@ -42,6 +42,7 @@ export class PlayerViewRenderer {
   private screen: ScreenSize = { width: 0, height: 0 };
   private ratio = 1;
   private bounds: WorldRect | null = null;
+  private overlay: TokenOverlay = NO_TOKEN_OVERLAY;
   private frame: number | null = null;
   private disposed = false;
   /** Layers whose failure was already logged, so a broken one does not flood the console. */
@@ -52,6 +53,12 @@ export class PlayerViewRenderer {
   setScene(scene: PlayerScene | null): void {
     this.scene = scene;
     this.bounds = scene ? sceneWorldBounds(scene) : null;
+    this.request();
+  }
+
+  /** This player's token moves: the ring on their tokens and where dragged ones are drawn. */
+  setOverlay(overlay: TokenOverlay): void {
+    this.overlay = overlay;
     this.request();
   }
 
@@ -97,6 +104,7 @@ export class PlayerViewRenderer {
       zoom: view.zoom,
       pixel: 1 / scale,
       bounds: this.bounds,
+      overlay: this.overlay,
     };
     // A layer that throws must not hide the others, least of all the fog (drawn last): failing
     // open would show players what the GM hides. The camera is set again to drop any unmatched push.

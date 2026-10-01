@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ScreenPoint } from '../../../src/app/online/view/camera';
-import { DOUBLE_ZOOM, ViewInput, WHEEL_ZOOM_PER_PIXEL, type PointerInput } from '../../../src/app/online/view/ViewInput';
+import { DOUBLE_ZOOM, ViewInput, WHEEL_ZOOM_PER_PIXEL, type PointerInput, type TokenGrab } from '../../../src/app/online/view/ViewInput';
 
 type Move = { pan: [number, number] } | { zoom: [ScreenPoint, number] };
 
@@ -15,6 +15,27 @@ function setup(): { input: ViewInput; moves: Move[] } {
 
 const mouse = (x: number, y: number, button = 0): PointerInput => ({ id: 1, x, y, kind: 'mouse', button, time: 0 });
 const touch = (id: number, x: number, y: number, time = 0): PointerInput => ({ id, x, y, kind: 'touch', button: 0, time });
+
+/** The player's token covers everything left of x = 50; `grabs` records what the hook heard. */
+function tokenSetup(): { input: ViewInput; moves: Move[]; grabs: string[] } {
+  const moves: Move[] = [];
+  const grabs: string[] = [];
+  const tokens: TokenGrab = {
+    grab: (point) => {
+      if (point.x >= 50) return false;
+      grabs.push(`grab ${point.x},${point.y}`);
+      return true;
+    },
+    move: (point) => { grabs.push(`move ${point.x},${point.y}`); },
+    drop: (point) => { grabs.push(`drop ${point.x},${point.y}`); },
+    cancel: () => { grabs.push('cancel'); },
+  };
+  const input = new ViewInput({
+    pan: (dx, dy) => { moves.push({ pan: [dx, dy] }); },
+    zoomAt: (point, factor) => { moves.push({ zoom: [point, factor] }); },
+  }, tokens);
+  return { input, moves, grabs };
+}
 
 describe('ViewInput', () => {
   it('zooms around the cursor on the wheel, by pixels, lines or pages', () => {
@@ -122,6 +143,69 @@ describe('ViewInput', () => {
     input.wheel({ x: 1, y: 1 }, Number.NaN, 0);
     input.wheel({ x: 1, y: 1 }, Infinity, 0);
     expect(moves).toEqual([]);
+  });
+
+  it('drags a token pressed on instead of panning, once past the slop, and drops it on release', () => {
+    const { input, moves, grabs } = tokenSetup();
+    input.down(mouse(10, 10));
+    input.move(mouse(13, 10));
+    input.move(mouse(30, 10));
+    input.move(mouse(40, 20));
+    input.up(mouse(40, 20));
+    expect(grabs).toEqual(['grab 10,10', 'move 30,10', 'move 40,20', 'drop 40,20']);
+    expect(moves).toEqual([]);
+  });
+
+  it("pans when the press misses the player's tokens", () => {
+    const { input, moves, grabs } = tokenSetup();
+    input.down(mouse(100, 100));
+    input.move(mouse(120, 100));
+    input.up(mouse(120, 100));
+    expect(grabs).toEqual([]);
+    expect(moves).toEqual([{ pan: [20, 0] }]);
+  });
+
+  it('cancels a press on a token that stays within the slop, and never grabs with another button', () => {
+    const { input, grabs } = tokenSetup();
+    input.down(mouse(10, 10));
+    input.move(mouse(12, 10));
+    input.up(mouse(12, 10));
+    input.down(mouse(10, 10, 2));
+    input.up(mouse(10, 10, 2));
+    expect(grabs).toEqual(['grab 10,10', 'cancel']);
+  });
+
+  it('turns a second finger into a pinch that cancels the token drag, and the finger left pans', () => {
+    const { input, moves, grabs } = tokenSetup();
+    input.down(touch(1, 10, 10));
+    input.move(touch(1, 30, 10));
+    input.down(touch(2, 100, 10));
+    input.move(touch(2, 120, 10));
+    input.up(touch(2, 120, 10));
+    input.move(touch(1, 40, 10));
+    input.up(touch(1, 40, 10));
+    expect(grabs).toEqual(['grab 10,10', 'move 30,10', 'cancel']);
+    expect(moves.filter((move) => 'pan' in move)).toEqual([{ pan: [10, 0] }, { pan: [10, 0] }]);
+    expect(moves.some((move) => 'zoom' in move)).toBe(true);
+  });
+
+  it('cancels the token drag when the browser cancels the pointer', () => {
+    const { input, grabs } = tokenSetup();
+    input.down(touch(1, 10, 10));
+    input.move(touch(1, 30, 10));
+    input.cancel(1);
+    input.up(touch(1, 30, 10));
+    expect(grabs).toEqual(['grab 10,10', 'move 30,10', 'cancel']);
+  });
+
+  it('still counts a tap on a token toward a double-tap zoom', () => {
+    const { input, moves, grabs } = tokenSetup();
+    input.down(touch(1, 10, 10, 0));
+    input.up(touch(1, 10, 10, 0));
+    input.down(touch(1, 12, 10, 100));
+    input.up(touch(1, 12, 10, 100));
+    expect(grabs).toEqual(['grab 10,10', 'cancel', 'grab 12,10', 'cancel']);
+    expect(moves).toEqual([{ zoom: [{ x: 12, y: 10 }, DOUBLE_ZOOM] }]);
   });
 
   it('a drag or pinch forgets the previous tap', () => {

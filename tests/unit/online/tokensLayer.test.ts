@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTokensLayer, TOKEN_MARKER_COLOR } from '../../../src/app/online/view/layers/tokensLayer';
+import { CONTROLLED_RING_COLOR, createTokensLayer, TOKEN_MARKER_COLOR } from '../../../src/app/online/view/layers/tokensLayer';
 import { NEUTRAL_BADGE_COLOR } from '../../../src/app/online/view/layers/tokenUiDrawing';
 import type { PlayerToken } from '../../../src/app/online/scene/sceneTypes';
 import { decodedImage, frame, RecordingSurface } from './recordingSurface';
@@ -66,6 +66,25 @@ describe('tokens layer', () => {
       a: playerToken({ x: 100, layer: 2 }), b: playerToken({ x: 200, layer: 1 }), c: playerToken({ x: 9000, layer: 0 }),
     });
     expect(surface.ops('push').map(({ x }) => x)).toEqual([200, 100]);
+  });
+
+  it('rings the tokens this player controls, outside their own ring', () => {
+    const surface = new RecordingSurface();
+    createTokensLayer().draw(surface, frame(playerScene({ tokens: { t1: playerToken(), t2: playerToken({ x: 300 }) } }), {
+      overlay: { controlled: new Set(['t1']), positions: new Map() },
+    }));
+    expect(surface.ops('circle').filter(({ style }) => style.stroke === CONTROLLED_RING_COLOR)).toEqual([
+      { op: 'circle', x: 100, y: 100, radius: 39, style: { stroke: CONTROLLED_RING_COLOR, lineWidth: 4 } },
+    ]);
+  });
+
+  it('draws a dragged or waiting token, with its nameplate, where the player put it', () => {
+    const surface = new RecordingSurface();
+    createTokensLayer().draw(surface, frame(playerScene({ tokens: { t1: playerToken({ name: 'Hero' }) } }), {
+      overlay: { controlled: new Set(['t1']), positions: new Map([['t1', { x: 400, y: 300 }]]) },
+    }));
+    expect(surface.ops('push')[0]).toMatchObject({ x: 400, y: 300 });
+    expect(surface.ops('push').map(({ x }) => x)).not.toContain(100);
   });
 
   it('never draws a token smaller than a pixel, even under half a cell', () => {

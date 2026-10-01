@@ -11,7 +11,7 @@ import { randomId } from '../src/app/online/ids';
 import { parseJoinFragment } from '../src/app/online/joinLink';
 import { createOnlineLog } from '../src/app/online/onlineLog';
 import { INCOMPLETE_LINK_TEXT, NAME_PROBLEM_TEXT, NO_CANVAS_TEXT, pageScreen, type PageScreen } from '../src/app/online/page/pageScreen';
-import type { PlayerSessionState } from '../src/app/online/PlayerSession';
+import type { PlayerSession, PlayerSessionState } from '../src/app/online/PlayerSession';
 import { createJoinSession } from '../src/app/online/preview/joinSession';
 import { initiativeLines, playerLines, widgetLines } from '../src/app/online/preview/sceneSummary';
 import { normalizePlayerName } from '../src/app/online/protocol';
@@ -45,12 +45,16 @@ const cache = new AssetCache({ keep: rememberedKeep(), openStore: openIndexedDbI
 const panel = new AssetsPanel(cache);
 new Menu(element<HTMLButtonElement>('menu-button'), element<HTMLElement>('menu'), element<HTMLButtonElement>('menu-close'));
 const surface = createCanvasSurface(canvas);
+/** Set once the player joins; until then a drop has nowhere to go. */
+let session: PlayerSession | null = null;
 // The lookup runs at draw time, in a later animation frame, so `loader` below is already set;
 // it asks the loader every time, so a released image is never drawn.
 const map = surface
   ? new MapView({
     canvas, surface, images: (id) => loader.image(id),
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
+    sendMove: (tokenId, x, y) => session?.sendTokenMove(tokenId, x, y) ?? false,
+    notice: element('move-notice'),
   })
   : null;
 let assetsFrame: number | null = null;
@@ -125,6 +129,8 @@ function show(view: PageScreen): void {
 function render(state: PlayerSessionState): void {
   log.event('status', { status: state.status, reason: state.reason, players: state.players.length });
   sessionState = state;
+  // Only an admitted player drags tokens: reconnecting or ended cancels a drag.
+  map?.setConnected(state.status === 'admitted');
   let ended = false;
   if (state.status === 'denied' || state.status === 'lost') {
     // The session is over for good: free the decoded images and hide the loading bar.
@@ -173,7 +179,7 @@ if (!target) {
     try { localStorage.setItem('atlas-online:name', name); } catch { /* private window */ }
     started = true;
     form.hidden = true;
-    createJoinSession({
+    session = createJoinSession({
       loader,
       hostId: target.hostId,
       name,
@@ -191,6 +197,15 @@ if (!target) {
         log.event('camera', { sceneId: camera.sceneId, centerX: camera.centerX, centerY: camera.centerY });
         map.setGmCamera(camera);
       },
-    }).start();
+      onControl: (tokenIds) => {
+        log.event('control', { tokens: tokenIds.length });
+        map.setControlled(tokenIds);
+      },
+      onMoveRefused: (tokenId) => {
+        log.event('move refused', { tokenId });
+        map.moveRefused(tokenId);
+      },
+    });
+    session.start();
   });
 }

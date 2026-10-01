@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MapView } from '../../../online-client/mapView.mts';
+import { MOVE_REFUSED_TEXT, REFUSED_NOTICE_MS } from '../../../src/app/online/view/TokenMoves';
 import { fakeFrames, RecordingSurface } from './recordingSurface';
 import { playerScene } from './sceneFixtures';
 
@@ -14,6 +15,7 @@ function setup() {
     '<section><canvas id="map"></canvas>',
     '<div id="view-buttons" hidden><button id="follow-gm" type="button">Follow GM</button>',
     '<button id="fit-map" type="button">Fit map</button></div>',
+    '<p id="move-notice" hidden></p>',
     '<button id="menu-button" type="button">Menu</button></section>',
   ].join('');
   const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -21,11 +23,30 @@ function setup() {
   Object.defineProperties(canvas, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
   const frames = fakeFrames();
   const surface = new RecordingSurface();
+  const sent: Array<[string, number, number]> = [];
   const view = new MapView({
     canvas, surface, images: () => null, frames, isHidden: () => false,
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
+    sendMove: (tokenId, x, y) => {
+      sent.push([tokenId, x, y]);
+      return true;
+    },
+    notice: element('move-notice'),
   });
-  return { view, canvas, surface, frames, buttons: element('view-buttons'), follow: element<HTMLButtonElement>('follow-gm'), menu: element('menu-button') };
+  return {
+    view, canvas, surface, frames, sent, notice: element('move-notice'),
+    buttons: element('view-buttons'), follow: element<HTMLButtonElement>('follow-gm'), menu: element('menu-button'),
+  };
+}
+
+/**
+ * `playerScene`'s 1000 × 800 map fits the 800 × 600 canvas at zoom 0.71 around (500, 400),
+ * so t1, at world (100, 100), is at canvas (116, 87).
+ */
+function withToken(t: ReturnType<typeof setup>): void {
+  t.view.setScene(playerScene());
+  t.view.setConnected(true);
+  t.view.setControlled(['t1']);
 }
 
 describe('MapView', () => {
@@ -96,5 +117,61 @@ describe('MapView', () => {
     pointer(t.canvas, 'pointerdown', 100, 100);
     pointer(t.canvas, 'pointermove', 160, 100);
     expect(t.buttons.hidden).toBe(true);
+  });
+
+  it('drags a controlled token with the mouse and sends one move on release, still following the GM', () => {
+    const t = setup();
+    withToken(t);
+    pointer(t.canvas, 'pointerdown', 116, 87);
+    pointer(t.canvas, 'pointermove', 166, 87);
+    pointer(t.canvas, 'pointermove', 216, 87);
+    expect(t.sent).toEqual([]);
+    pointer(t.canvas, 'pointerup', 216, 87);
+    expect(t.sent).toHaveLength(1);
+    const [tokenId, x, y] = t.sent[0]!;
+    expect(tokenId).toBe('t1');
+    expect(x).toBeCloseTo(100 + 100 / 0.71);
+    expect(y).toBeCloseTo(100);
+    expect(t.buttons.hidden).toBe(true);
+  });
+
+  it('shows a grab hand over a controlled token, and grabbing while it is held', () => {
+    const t = setup();
+    withToken(t);
+    pointer(t.canvas, 'pointermove', 116, 87);
+    expect(t.canvas.classList.contains('can-grab')).toBe(true);
+    pointer(t.canvas, 'pointermove', 600, 500);
+    expect(t.canvas.classList.contains('can-grab')).toBe(false);
+    pointer(t.canvas, 'pointermove', 116, 87);
+    pointer(t.canvas, 'pointerdown', 116, 87);
+    expect(t.canvas.classList.contains('is-grabbing')).toBe(true);
+    expect(t.canvas.classList.contains('can-grab')).toBe(false);
+    pointer(t.canvas, 'pointerup', 116, 87);
+    expect(t.canvas.classList.contains('is-grabbing')).toBe(false);
+  });
+
+  it('cancels a drag on Escape and sends nothing', () => {
+    const t = setup();
+    withToken(t);
+    pointer(t.canvas, 'pointerdown', 116, 87);
+    pointer(t.canvas, 'pointermove', 216, 87);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    pointer(t.canvas, 'pointerup', 216, 87);
+    expect(t.sent).toEqual([]);
+  });
+
+  it('shows "Move not allowed." for a few seconds after a refusal', () => {
+    vi.useFakeTimers();
+    try {
+      const t = setup();
+      withToken(t);
+      t.view.moveRefused('t1');
+      expect(t.notice.hidden).toBe(false);
+      expect(t.notice.textContent).toBe(MOVE_REFUSED_TEXT);
+      vi.advanceTimersByTime(REFUSED_NOTICE_MS);
+      expect(t.notice.hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

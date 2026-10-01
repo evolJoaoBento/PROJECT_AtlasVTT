@@ -45,6 +45,10 @@ export interface PlayerSessionOptions {
   onScene?(scene: PlayerScene | null): void;
   /** The GM's latest camera, whatever its scene: the map view uses it once that scene is shown. */
   onCamera?(camera: SceneCamera): void;
+  /** The tokens this player may move: the GM's latest `token-control` list; empty once the session is over. */
+  onControl?(tokenIds: readonly string[]): void;
+  /** The GM refused this player's move of the token. */
+  onMoveRefused?(tokenId: string): void;
   /** Gets the assets channel while admitted (the join page's image loader). */
   assets?: PlayerAssetHandler;
 }
@@ -60,6 +64,7 @@ export class PlayerSession {
   private retryTimer: number | null = null;
   private assetLink: PeerLink | null = null;
   private lastCamera: SceneCamera | null = null;
+  private controlled: readonly string[] = [];
 
   private readonly mirror: PlayerSceneMirror;
 
@@ -78,6 +83,22 @@ export class PlayerSession {
   /** The GM's latest camera; null before the first. */
   get camera(): SceneCamera | null {
     return this.lastCamera;
+  }
+
+  /** The tokens this player may move, from the GM's latest list. */
+  get controlledTokens(): readonly string[] {
+    return this.controlled;
+  }
+
+  /**
+   * Sends one drop of a token for the scene this player has. False when it cannot go
+   * (not admitted, no link, no scene), so the drag sends nothing. The GM checks it.
+   */
+  sendTokenMove(tokenId: string, x: number, y: number): boolean {
+    const scene = this.mirror.scene;
+    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'token-move', sceneId: scene.sceneId, tokenId, x, y }));
+    return true;
   }
 
   start(): void {
@@ -169,6 +190,12 @@ export class PlayerSession {
         this.lastCamera = cameraOfMessage(message);
         this.options.onCamera?.(this.lastCamera);
         break;
+      case 'token-control':
+        this.setControlled(message.tokenIds);
+        break;
+      case 'token-move-refused':
+        this.options.onMoveRefused?.(message.tokenId);
+        break;
       default:
         break;
     }
@@ -198,6 +225,7 @@ export class PlayerSession {
     this.retryTimer = null;
     this.mirror.dispose();
     this.leaveAssets();
+    this.setControlled([]);
     this.update({ status, reason });
   }
 
@@ -205,6 +233,13 @@ export class PlayerSession {
     if (!this.assetLink) return;
     this.assetLink = null;
     this.options.assets?.disconnected();
+  }
+
+  /** Keeps the GM's list; an empty list after an empty one tells nobody. */
+  private setControlled(tokenIds: readonly string[]): void {
+    if (tokenIds.length === 0 && this.controlled.length === 0) return;
+    this.controlled = tokenIds;
+    this.options.onControl?.(tokenIds);
   }
 
   private update(partial: Partial<PlayerSessionState>): void {
