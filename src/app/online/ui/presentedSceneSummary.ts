@@ -62,8 +62,16 @@ export function readPresentedScene(): PresentedSceneSummary {
     characters: tokens ? charactersOf(tokens) : [],
     assignable,
   };
-  cached = { scene, assignable, tokens, tabs, value };
-  return value;
+  // Token drags change the tokens every frame: keep the previous summary while nothing it shows changed.
+  const result = cached && sameSummary(cached.value, value) ? cached.value : value;
+  cached = { scene, assignable, tokens, tabs, value: result };
+  return result;
+}
+
+function sameSummary(a: PresentedSceneSummary, b: PresentedSceneSummary): boolean {
+  return a.tabId === b.tabId && a.name === b.name && a.assignable === b.assignable
+    && a.characters.length === b.characters.length
+    && a.characters.every((character, index) => character.id === b.characters[index]?.id && character.name === b.characters[index].name);
 }
 
 /** Calls `onChange` when the presented scene, its tokens, its loading or its tab names change. */

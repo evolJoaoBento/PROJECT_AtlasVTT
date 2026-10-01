@@ -1,17 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// Online session panel — floating window of the map view (GM only), and the
-// marks on its toolbar button. Imported inside the `.atlas-vtt-plugin` scope
-// of styles/main.scss.
+// Online session panel — floating window of the map view (GM only). Imported
+// inside the `.atlas-vtt-plugin` scope of styles/main.scss.
 // ═══════════════════════════════════════════════════════════════════════════
 
 @use '../../../../../styles/tokens' as *;
 @use '../../../../../styles/mixins' as *;
+@use 'online-marks' as *;
 
 $online-panel-width: 360px;
 $online-panel-top: 64px; // below the scene tabs, where the loot roller first opens
 $online-panel-padding: $spacing-m;
-$online-mark-size: 8px;
-$online-badge-size: 16px;
 
 .atlas-online-panel {
   @include atlas-elevated-surface;
@@ -177,46 +175,4 @@ $online-badge-size: 16px;
 .atlas-online-panel__footer {
   display: flex;
   justify-content: flex-end;
-}
-
-// ── Toolbar button marks ──────────────────────────────────────────────────
-.atlas-online-tool {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.atlas-online-tool__dot {
-  position: absolute;
-  top: $spacing-xs;
-  right: $spacing-xs;
-  width: $online-mark-size;
-  height: $online-mark-size;
-  border-radius: $radius-full;
-  background: var(--color-green);
-  pointer-events: none;
-}
-
-// A pill: fixed height, and it widens with the count, hence the inline padding only.
-.atlas-online-tool__badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: $online-badge-size;
-  height: $online-badge-size;
-  padding: 0 $spacing-xs;
-  border-radius: $radius-full;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-size: $font-ui-smaller;
-  font-weight: $font-weight-semibold;
-  line-height: 1;
-  pointer-events: none;
-}
-
-.atlas-online-tool__hidden-text {
-  @include atlas-visually-hidden;
 }

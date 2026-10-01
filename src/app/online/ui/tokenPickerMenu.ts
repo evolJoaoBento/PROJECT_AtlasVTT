@@ -1,5 +1,5 @@
 /**
- * The entries of a player's "Controlled by" picker in the online panel: the presented
+ * The entries of a player's "Tokens…" picker in the online panel: the presented
  * scene's characters, checked where the player controls them. Assignments go through
  * the session's `TokenControl`, as in the token context menu.
  */
