@@ -5,6 +5,7 @@
  * one `token-control` list carries. Listeners hear which players' lists changed.
  */
 import { MAX_CONTROLLED_TOKENS } from '../protocol';
+import { isSceneId } from '../scene/sceneValidation';
 
 export type ControlListener = (playerIds: readonly string[]) => void;
 
@@ -29,8 +30,13 @@ export class TokenControl {
     return [...this.byToken.keys()];
   }
 
-  /** Gives `tokenId` to the player or takes it away; a player who has the most tokens gets no more. */
+  /**
+   * Gives `tokenId` to the player or takes it away; a player who has the most tokens gets
+   * no more. An id the protocol would not accept is skipped: one bad id in a list would
+   * make the player discard the whole `token-control` message.
+   */
   set(tokenId: string, playerId: string, controlled: boolean): void {
+    if (controlled && !isSceneId(tokenId)) return;
     if (this.controls(playerId, tokenId) === controlled) return;
     if (controlled) {
       if (this.tokensOf(playerId).length >= MAX_CONTROLLED_TOKENS) return;

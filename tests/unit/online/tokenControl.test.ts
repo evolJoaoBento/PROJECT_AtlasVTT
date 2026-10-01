@@ -34,6 +34,14 @@ describe('TokenControl', () => {
     expect(changes).toEqual([['p1'], ['p1']]);
   });
 
+  it("skips ids the protocol would reject, so one bad id cannot void a player's whole list", () => {
+    const { control, changes } = watched();
+    control.set('hero', 'p1', true);
+    for (const bad of ['', 'x'.repeat(500), '__proto__']) control.set(bad, 'p1', true);
+    expect(control.tokensOf('p1')).toEqual(['hero']);
+    expect(changes).toEqual([['p1']]);
+  });
+
   it('gives no player more tokens than one control list carries', () => {
     const { control } = watched();
     for (let index = 0; index <= MAX_CONTROLLED_TOKENS; index++) control.set(`t${index}`, 'p1', true);
