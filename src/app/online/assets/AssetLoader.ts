@@ -46,6 +46,8 @@ interface Wanted {
   retried: boolean;
   /** Announced by `asset-start`; null until then. */
   size: number | null;
+  /** Bytes of this image counted in `doneBytes`, taken back if the attempt fails. */
+  counted: number;
   image: DecodedImage | null;
 }
 
@@ -58,6 +60,8 @@ export class AssetLoader implements PlayerAssetHandler {
   private send: ((data: string) => void) | null = null;
   /** Bytes of images finished since the loading bar was last empty. */
   private doneBytes = 0;
+  /** Images this link was told to stop sending: a denial for one of them can be stale. */
+  private readonly cancelled = new Set<string>();
   private disposed = false;
 
   constructor(private readonly options: AssetLoaderOptions) {
@@ -101,6 +105,7 @@ export class AssetLoader implements PlayerAssetHandler {
   }
 
   connected(send: (data: string) => void): void {
+    if (this.send === send) return; // the same link again: nothing to start over
     this.send = send;
     this.restart();
     this.requestMissing();
@@ -130,7 +135,7 @@ export class AssetLoader implements PlayerAssetHandler {
 
   /** New images: from the cache when this device has them, the others requested together. */
   private async lookUp(ids: readonly string[]): Promise<void> {
-    const entries = ids.map((id): [string, Wanted] => [id, { phase: 'checking', retried: false, size: null, image: null }]);
+    const entries = ids.map((id): [string, Wanted] => [id, { phase: 'checking', retried: false, size: null, counted: 0, image: null }]);
     for (const [id, wanted] of entries) this.wanted.set(id, wanted);
     const cached = await Promise.all(entries.map(([id]) => this.options.cache.get(id).catch(() => null)));
     entries.forEach(([id, wanted], index) => {
@@ -176,7 +181,10 @@ export class AssetLoader implements PlayerAssetHandler {
 
   private started(id: string, handle: number, size: number, mime: AssetMime): void {
     const wanted = this.wanted.get(id);
-    if (!wanted || wanted.phase !== 'requested') return;
+    if (!wanted || wanted.phase !== 'requested') {
+      this.sendIds('asset-cancel', [id]); // not wanted any more: stop the upload
+      return;
+    }
     if (!this.assembler.start(id, handle, size, mime)) {
       this.failed(id, wanted);
       return;
@@ -205,6 +213,7 @@ export class AssetLoader implements PlayerAssetHandler {
       return;
     }
     this.doneBytes += bytes.byteLength;
+    wanted.counted = bytes.byteLength;
     void this.accept(id, wanted, bytes, mime, true).then((outcome) => {
       if (outcome === 'mismatch') this.failed(id, wanted);
       else if (outcome === 'undecodable') this.refuse(id, wanted);
@@ -216,7 +225,10 @@ export class AssetLoader implements PlayerAssetHandler {
 
   private denied(id: string): void {
     const wanted = this.wanted.get(id);
-    if (wanted?.phase === 'requested') this.refuse(id, wanted);
+    if (wanted?.phase !== 'requested') return;
+    // A denial that queued up behind chunks of an earlier request: ask once more; the GM dedups, and denies again if it means it.
+    if (this.cancelled.delete(id)) this.sendIds('asset-request', [id]);
+    else this.refuse(id, wanted);
   }
 
   /** A transfer that broke its announcement or its fingerprint: cancelled, then asked for once more. */
@@ -236,7 +248,7 @@ export class AssetLoader implements PlayerAssetHandler {
     if (!this.isCurrent(id, wanted)) return;
     wanted.retried = true;
     wanted.phase = 'waiting';
-    wanted.size = null;
+    this.uncount(wanted);
     this.requestMissing();
     this.changed();
   }
@@ -245,20 +257,28 @@ export class AssetLoader implements PlayerAssetHandler {
     if (!this.isCurrent(id, wanted)) return;
     this.assembler.drop(id);
     wanted.phase = 'refused';
-    wanted.size = null;
+    this.uncount(wanted);
     this.requestMissing();
     this.changed();
+  }
+
+  private uncount(wanted: Wanted): void {
+    this.doneBytes -= wanted.counted;
+    wanted.counted = 0;
+    wanted.size = null;
   }
 
   /** A new link, or none: transfers of the old one are gone, and what was requested must be asked for again. */
   private restart(): void {
     this.assembler.clear();
     this.doneBytes = 0; // the bar starts over with the new link
+    this.cancelled.clear();
     for (const wanted of this.wanted.values()) {
       if (wanted.phase !== 'requested') continue;
       wanted.phase = 'waiting';
       wanted.size = null;
     }
+    for (const wanted of this.wanted.values()) wanted.counted = 0;
   }
 
   private requestMissing(): void {
@@ -277,6 +297,7 @@ export class AssetLoader implements PlayerAssetHandler {
   private sendIds(type: 'asset-request' | 'asset-cancel', ids: readonly string[]): void {
     const send = this.send;
     if (!send) return;
+    if (type === 'asset-cancel') ids.forEach((id) => this.cancelled.add(id));
     for (let start = 0; start < ids.length; start += ASSET_LIMITS.idsPerMessage) {
       send(encodeAsset({ v: 1, type, ids: ids.slice(start, start + ASSET_LIMITS.idsPerMessage) }));
     }

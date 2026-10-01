@@ -248,4 +248,44 @@ describe('AssetLoader', () => {
     expect(h.released).toEqual([fingerprintOf(a), fingerprintOf(b)]);
     expect(h.loader.image(fingerprintOf(b))).toBeNull();
   });
+
+  it('survives a stale denial that arrives after the image left and came back', async () => {
+    const art = imageBytes(100, 3);
+    const id = fingerprintOf(art);
+    const h = setup();
+    h.gm.connect();
+    h.loader.setScene(sceneWithImages(null, [id]));
+    await settle();
+    h.loader.setScene(sceneWithImages(null, [])); // leaves while requested
+    h.loader.setScene(sceneWithImages(null, [id])); // and comes back
+    await settle();
+    expect(h.gm.cancelled()).toEqual([id]);
+    h.gm.deny(id); // the old request's denial, queued behind chunks
+    expect(h.gm.requested()).toEqual([id, id, id]);
+    h.gm.serve(id, 1, art);
+    await settle();
+    expect(h.loader.image(id)).not.toBeNull();
+  });
+
+  it('cancels a transfer announced for an image it does not want', () => {
+    const art = imageBytes(100, 4);
+    const h = setup();
+    h.gm.connect();
+    h.gm.start(fingerprintOf(art), 1, art.byteLength);
+    expect(h.gm.cancelled()).toEqual([fingerprintOf(art)]);
+  });
+
+  it('does not start over when the same link is announced twice', async () => {
+    const map = imageBytes(150_000, 5);
+    const id = fingerprintOf(map);
+    const h = setup();
+    let link: ((data: string) => void) | null = null;
+    h.loader.connected((link = (): void => {}));
+    h.loader.setScene(sceneWithImages(id, []));
+    await settle();
+    h.loader.receive(encodeAsset({ v: 1, type: 'asset-start', id, handle: 1, size: map.byteLength, mime: 'image/png' }));
+    h.loader.receive(encodeChunk(1, map.subarray(0, 1000)));
+    h.loader.connected(link);
+    expect(h.loader.progress().receivedBytes).toBe(1000);
+  });
 });
