@@ -40,11 +40,11 @@ function openDatabase(): Promise<IDBDatabase> {
     const fail = (error: Error): void => {
       if (settled) return;
       settled = true;
-      globalThis.clearTimeout(timer);
+      window.clearTimeout(timer);
       reject(error);
     };
     // A hung open (blocked, or a browser that never answers) must not hang the cache.
-    const timer = globalThis.setTimeout(() => fail(new Error('IndexedDB open timed out')), OPEN_TIMEOUT_MS);
+    const timer = window.setTimeout(() => fail(new Error('IndexedDB open timed out')), OPEN_TIMEOUT_MS);
     request.onsuccess = (): void => {
       // Success after a failure was reported: nobody will use this connection.
       if (settled) {
@@ -52,7 +52,7 @@ function openDatabase(): Promise<IDBDatabase> {
         return;
       }
       settled = true;
-      globalThis.clearTimeout(timer);
+      window.clearTimeout(timer);
       resolve(request.result);
     };
     request.onerror = (): void => fail(request.error ?? new Error('IndexedDB open failed'));
