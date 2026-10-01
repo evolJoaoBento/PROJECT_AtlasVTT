@@ -16,6 +16,8 @@ export type ImageLookup = (id: string | null) => DecodedImage | null;
 const MAP_COLOR = '#d9d4c7';
 const FOG_COLOR = '#111318';
 const LABEL_COLOR = '#1f2328';
+/** A light outline for initials drawn over token art. */
+const LABEL_OUTLINE = '#ffffff';
 const HP_BACK = 'rgba(0, 0, 0, 0.5)';
 const HP_FILL = '#43a047';
 
@@ -173,23 +175,33 @@ function drawTokens(context: CanvasRenderingContext2D, scene: PlayerScene, pixel
     context.beginPath();
     context.arc(marker.x, marker.y, marker.radius, 0, Math.PI * 2);
     if (art) {
-      // The art clipped to the token's circle (the path survives `restore`), then its ring.
+      // The art clipped to the token's circle (the path survives `restore`), then its ring when the token has one.
       context.save();
       context.clip();
       drawCover(context, art, marker.x - marker.radius, marker.y - marker.radius, marker.radius * 2);
       context.restore();
-      context.strokeStyle = marker.color;
-      context.lineWidth = 3 * pixel;
+      if (marker.ring !== null) {
+        context.strokeStyle = marker.ring;
+        context.lineWidth = 3 * pixel;
+        context.stroke();
+      }
     } else {
       context.fillStyle = marker.color;
       context.fill();
       context.strokeStyle = LABEL_COLOR;
       context.lineWidth = 2 * pixel;
+      context.stroke();
     }
-    context.stroke();
     if (marker.label) {
-      context.fillStyle = LABEL_COLOR;
       context.font = `600 ${marker.radius * 0.8}px system-ui, sans-serif`;
+      if (art) {
+        // Initials over art stay readable on light and dark pictures alike.
+        context.lineJoin = 'round';
+        context.strokeStyle = LABEL_OUTLINE;
+        context.lineWidth = Math.max(2 * pixel, marker.radius * 0.18);
+        context.strokeText(marker.label, marker.x, marker.y);
+      }
+      context.fillStyle = LABEL_COLOR;
       context.fillText(marker.label, marker.x, marker.y);
     }
     if (marker.hp !== null) {

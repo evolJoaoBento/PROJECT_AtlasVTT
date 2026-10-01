@@ -56,7 +56,10 @@ export interface TokenMarker {
   x: number;
   y: number;
   radius: number;
+  /** The ring colour, or the default one for the stand-in circle. */
   color: string;
+  /** The token's own ring colour; null when its ring is off, so art is drawn without one. */
+  ring: string | null;
   label: string | null;
   /** Remaining HP from 0 to 1; null when HP is not shown. */
   hp: number | null;
@@ -154,6 +157,7 @@ export function tokenMarkers(scene: PlayerScene): TokenMarker[] {
       y: token.y,
       radius: (tokenDiameter(token.size, scene.map.cellSize) / 2) * TOKEN_FILL,
       color: token.ring ?? DEFAULT_TOKEN_COLOR,
+      ring: token.ring,
       label: token.name ? initials(token.name) : null,
       hp: token.hp && token.hp.max > 0 ? Math.min(1, Math.max(0, token.hp.current / token.hp.max)) : null,
       image: token.image,

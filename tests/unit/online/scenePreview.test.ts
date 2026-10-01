@@ -92,8 +92,8 @@ describe('preview shapes', () => {
       },
     });
     expect(tokenMarkers(scene)).toEqual([
-      { x: 100, y: 100, radius: 94.5, color: '#9aa0a6', label: null, hp: null, image: 'asset-1' },
-      { x: 100, y: 100, radius: 31.5, color: '#ff0000', label: 'AB', hp: 0.5, image: 'asset-1' },
+      { x: 100, y: 100, radius: 94.5, color: '#9aa0a6', ring: null, label: null, hp: null, image: 'asset-1' },
+      { x: 100, y: 100, radius: 31.5, color: '#ff0000', ring: '#ff0000', label: 'AB', hp: 0.5, image: 'asset-1' },
     ]);
     const zeroMax = playerScene({ tokens: { a: playerToken({ hp: { current: 0, max: 0 } }) } });
     expect(tokenMarkers(zeroMax)[0]?.hp).toBeNull();
