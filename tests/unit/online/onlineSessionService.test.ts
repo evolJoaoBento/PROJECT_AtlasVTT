@@ -9,7 +9,7 @@ import { PresentedScene } from '../../../src/app/services/PresentedScene';
 import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
 
-const app = { vault: { getName: () => 'My Vault', getAbstractFileByPath: () => null } } as never;
+const app = { vault: { getName: () => 'My Vault', getAbstractFileByPath: () => null, on: () => ({}), offref: () => {} } } as never;
 const settings = {
   getOnlineSettings: () => DEFAULT_ONLINE_SETTINGS,
   getLocalPlayerViewSettings: () => ({
@@ -191,5 +191,18 @@ describe('OnlineSessionService', () => {
     svc.stop();
     presented.clear();
     expect(received.filter((type) => type === 'scene-clear')).toEqual([]);
+  });
+
+  it('disposes the image registry when the session stops', async () => {
+    const stop = vi.fn();
+    const images = { stat: () => null, read: async (): Promise<ArrayBuffer> => new ArrayBuffer(0), onChange: () => stop };
+    const host = new MemoryNetwork().host('gm-id');
+    const svc = new OnlineSessionService(app, settings, {
+      createHost: async () => host, presented: new PresentedScene(), images, showRequest: () => ({ hide: () => {} }),
+    });
+    await svc.start();
+    expect(stop).not.toHaveBeenCalled();
+    svc.stop();
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 });

@@ -150,6 +150,124 @@ describe('AssetRegistry', () => {
     expect(changes()).toBe(0);
     expect(assets.idFor('a.png')).toBeNull();
   });
+
+  it('never reads a queued file after dispose, nor serves one', async () => {
+    const files = memoryImageFiles({ 'a.png': 'a', 'b.png': 'b' });
+    const { assets, changes } = registry(files.source);
+    assets.idFor('a.png');
+    assets.idFor('b.png');
+    await settle();
+    const known = fingerprintOf('a');
+    expect(assets.info(known)).not.toBeNull();
+    assets.dispose();
+    expect(await assets.read(known)).toBeNull();
+
+    const second = memoryImageFiles({ 'a.png': 'a', 'b.png': 'b' });
+    const other = registry(second.source);
+    other.assets.idFor('a.png');
+    other.assets.idFor('b.png');
+    other.assets.dispose(); // a is being read; b has not been
+    await settle();
+    expect(second.reads).toEqual(['a.png']);
+    expect(other.changes()).toBe(0);
+    expect(changes()).toBe(2);
+    expect(second.listening()).toBe(0);
+  });
+
+  it('keeps serving a fingerprint through another path with the same bytes', async () => {
+    const files = memoryImageFiles({ 'a.png': 'same', 'b.png': 'same' });
+    const { assets } = registry(files.source);
+    assets.idFor('a.png');
+    assets.idFor('b.png');
+    await settle();
+    const id = fingerprintOf('same');
+    expect(assets.info(id)?.path).toBe('a.png');
+
+    // a is edited: the fingerprint moves to b, which is read for serving.
+    files.set('a.png', 'edited', 2);
+    expect(assets.idFor('a.png')).toBeNull();
+    expect(assets.info(id)?.path).toBe('b.png');
+    expect((await assets.read(id))?.bytes.byteLength).toBe(4);
+    await settle();
+    expect(assets.idFor('a.png')).toBe(fingerprintOf('edited'));
+
+    // b breaks: it alone is dropped, and with no other path the id goes.
+    files.remove('b.png');
+    expect(await assets.read(id)).toBeNull();
+    expect(assets.info(id)).toBeNull();
+    expect(assets.idFor('a.png')).toBe(fingerprintOf('edited'));
+  });
+
+  it('does not drop a healthy path when a duplicate breaks', async () => {
+    const files = memoryImageFiles({ 'a.png': 'same', 'b.png': 'same' });
+    const { assets } = registry(files.source);
+    assets.idFor('a.png');
+    assets.idFor('b.png');
+    await settle();
+    const id = fingerprintOf('same');
+    files.fail('a.png');
+    expect(await assets.read(id)).toBeNull();
+    expect(assets.info(id)?.path).toBe('b.png');
+    expect(assets.idFor('b.png')).toBe(id);
+    expect((await assets.read(id))?.bytes.byteLength).toBe(4);
+  });
+
+  it('forgets a fingerprint when the vault reports its file changed, deleted or renamed', async () => {
+    const files = memoryImageFiles({ 'a.png': 'one', 'copy.png': 'one', 'c.png': 'three' });
+    const { assets, changes } = registry(files.source);
+    ['a.png', 'copy.png', 'c.png'].forEach((path) => assets.idFor(path));
+    await settle();
+    const one = fingerprintOf('one');
+    const before = changes();
+
+    files.set('a.png', 'uno', 1); // same time and size are not enough to trust the cache
+    files.changed('a.png');
+    expect(changes()).toBe(before + 1);
+    expect(assets.info(one)?.path).toBe('copy.png');
+    expect(assets.idFor('a.png')).toBeNull();
+    await settle();
+    expect(assets.idFor('a.png')).toBe(fingerprintOf('uno'));
+
+    files.remove('c.png');
+    files.changed('c.png');
+    expect(assets.info(fingerprintOf('three'))).toBeNull();
+    files.set('d.png', 'three', 1); // renamed from c.png
+    files.changed('c.png');
+    files.changed('d.png');
+    expect(assets.idFor('d.png')).toBeNull();
+    await settle();
+    expect(assets.idFor('d.png')).toBe(fingerprintOf('three'));
+
+    const count = changes();
+    files.changed('never-seen.png');
+    expect(changes()).toBe(count);
+  });
+
+  it('hashes a file again that the vault reports changed while it was read', async () => {
+    const files = memoryImageFiles({ 'a.png': 'old' });
+    const { assets } = registry(files.source);
+    assets.idFor('a.png');
+    files.set('a.png', 'new', 1);
+    files.changed('a.png'); // before the first read resolves
+    await settle();
+    expect(assets.idFor('a.png')).toBeNull();
+    await settle();
+    expect(assets.idFor('a.png')).toBe(fingerprintOf('new'));
+  });
+
+  it('keeps hashing when a change listener throws', async () => {
+    const files = memoryImageFiles({ 'a.png': 'a', 'b.png': 'b' });
+    const { assets } = registry(files.source);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    assets.onChange(() => { throw new Error('listener bug'); });
+    assets.idFor('a.png');
+    assets.idFor('b.png');
+    await settle();
+    expect(assets.idFor('a.png')).toBe(fingerprintOf('a'));
+    expect(assets.idFor('b.png')).toBe(fingerprintOf('b'));
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });
 
 describe('vaultImageFiles', () => {
@@ -167,5 +285,24 @@ describe('vaultImageFiles', () => {
     expect(files.stat('maps/other.png')).toBeNull();
     expect([...new Uint8Array(await files.read('maps/cave.png'))]).toEqual([1, 2, 3]);
     await expect(files.read('maps/other.png')).rejects.toThrow();
+  });
+
+  it('reports modified, deleted and renamed files until unsubscribed', () => {
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const off = vi.fn();
+    const app = {
+      vault: {
+        on: (name: string, handler: (...args: unknown[]) => void) => { handlers.set(name, handler); return { name }; },
+        offref: off,
+      },
+    } as unknown as App;
+    const seen: string[] = [];
+    const stop = vaultImageFiles(app).onChange!((path) => seen.push(path));
+    handlers.get('modify')!({ path: 'a.png' });
+    handlers.get('delete')!({ path: 'b.png' });
+    handlers.get('rename')!({ path: 'new.png' }, 'old.png');
+    expect(seen).toEqual(['a.png', 'b.png', 'old.png', 'new.png']);
+    stop();
+    expect(off).toHaveBeenCalledTimes(3);
   });
 });

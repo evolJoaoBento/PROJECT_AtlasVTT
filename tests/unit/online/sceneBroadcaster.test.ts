@@ -604,4 +604,42 @@ describe('SceneBroadcaster', () => {
     expect(player.scene).toEqual(h.broadcaster.currentProjection());
     expect(JSON.stringify(player.scene)).not.toContain('art/');
   });
+
+  it('sends two fingerprints that finish together as one patch', async () => {
+    const h = setup({ images: { 'maps/tavern.png': 'map bytes', 'art/hero.png': 'hero bytes' } });
+    const { view, tavern } = fakeView(sceneState({ hero: character('hero', 140) }));
+    h.presented.present(view, tavern);
+    const raw = await rawPlayer(h, 'raw');
+    await tick();
+    expect(sceneTypes(raw.received)).toEqual(['scene-snapshot', 'scene-patch']);
+  });
+
+  it('ignores image changes while the scene is held', async () => {
+    const h = setup({ images: { 'maps/tavern.png': 'map bytes' } });
+    const { view, tabs, tavern, dungeon } = fakeView(sceneState({ hero: character('hero', 140) }));
+    h.presented.present(view, tavern);
+    const raw = await rawPlayer(h, 'raw');
+    await tick();
+    tabs.getState().setActiveTab(dungeon);
+    await tick();
+    const sent = raw.received.length;
+    h.files.set('maps/tavern.png', 'other bytes', 2);
+    h.files.changed('maps/tavern.png');
+    await tick();
+    expect(raw.received).toHaveLength(sent);
+  });
+
+  it('gives a changed image a new fingerprint in the next patch', async () => {
+    const h = setup({ images: { 'maps/tavern.png': 'map bytes' } });
+    const { view, tavern } = fakeView(sceneState({ hero: character('hero', 140) }));
+    h.presented.present(view, tavern);
+    const player = await join(h);
+    await tick();
+    expect(player.scene?.map.asset).toBe(fingerprintOf('map bytes'));
+    h.files.set('maps/tavern.png', 'new map bytes', 1);
+    h.files.changed('maps/tavern.png');
+    await tick();
+    await tick();
+    expect(player.scene?.map.asset).toBe(fingerprintOf('new map bytes'));
+  });
 });

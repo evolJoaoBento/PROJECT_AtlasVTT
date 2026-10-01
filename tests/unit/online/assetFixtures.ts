@@ -19,6 +19,10 @@ export interface MemoryImageFiles {
   reads: string[];
   /** Makes reads of `path` fail from now on. */
   fail(path: string): void;
+  /** Tells the registry the vault reported a change to `path`. */
+  changed(path: string): void;
+  /** How many registries are listening. */
+  listening(): number;
 }
 
 /** Vault images in memory; strings are stored as their UTF-8 bytes. */
@@ -26,6 +30,7 @@ export function memoryImageFiles(initial: Record<string, Uint8Array | string> = 
   const files = new Map<string, { bytes: Uint8Array; mtime: number }>();
   const failing = new Set<string>();
   const reads: string[] = [];
+  const listeners = new Set<(path: string) => void>();
   const set = (path: string, content: Uint8Array | string, mtime = 1): void => {
     files.set(path, { bytes: typeof content === 'string' ? new TextEncoder().encode(content) : content, mtime });
   };
@@ -42,11 +47,17 @@ export function memoryImageFiles(initial: Record<string, Uint8Array | string> = 
         if (!file || failing.has(path)) throw new Error(`Cannot read ${path}`);
         return file.bytes.slice().buffer;
       },
+      onChange: (listener) => {
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+      },
     },
     set,
     remove: (path) => { files.delete(path); },
     reads,
     fail: (path) => { failing.add(path); },
+    changed: (path) => { [...listeners].forEach((listener) => listener(path)); },
+    listening: () => listeners.size,
   };
 }
 

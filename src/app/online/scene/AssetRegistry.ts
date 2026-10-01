@@ -20,6 +20,8 @@ export interface ImageFiles {
   /** Synchronous; null when there is no such file. */
   stat(path: string): ImageFileStat | null;
   read(path: string): Promise<ArrayBuffer>;
+  /** Tells when a file was modified, deleted or renamed (both paths); returns the unsubscribe. */
+  onChange?(listener: (path: string) => void): () => void;
 }
 
 /** Where a fingerprint's file is. */
@@ -63,12 +65,14 @@ export class AssetRegistry implements AssetIds {
   private readonly queue = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private readonly hash: Hasher;
+  private readonly stopWatching: (() => void) | null;
   private hashing = false;
   private disposed = false;
   private tooLargeNoticeShown = false;
 
   constructor(private readonly options: AssetRegistryOptions) {
     this.hash = options.hash ?? sha256Id;
+    this.stopWatching = options.files.onChange?.((path) => this.pathChanged(path)) ?? null;
   }
 
   idFor(path: string | null | undefined): string | null {
@@ -79,6 +83,7 @@ export class AssetRegistry implements AssetIds {
     const known = this.paths.get(path);
     if (known && known.mtime === stat.mtime && known.size === stat.size) return known.id;
     this.paths.set(path, { mtime: stat.mtime, size: stat.size, mime, id: null });
+    if (known?.id && this.release(path, known.id)) this.emit();
     if (stat.size > ASSET_LIMITS.fileBytes) this.tooLarge();
     else this.enqueue(path);
     return null;
@@ -95,7 +100,7 @@ export class AssetRegistry implements AssetIds {
    * projection hashes the file again.
    */
   async read(id: string): Promise<AssetFile | null> {
-    const info = this.infos.get(id);
+    const info = this.disposed ? undefined : this.infos.get(id);
     if (!info) return null;
     try {
       const bytes = await this.options.files.read(info.path);
@@ -103,7 +108,7 @@ export class AssetRegistry implements AssetIds {
     } catch {
       // Unreadable: forgotten below, like a changed file.
     }
-    this.forget(id);
+    this.forget(id, info.path);
     return null;
   }
 
@@ -115,23 +120,44 @@ export class AssetRegistry implements AssetIds {
 
   dispose(): void {
     this.disposed = true;
+    this.stopWatching?.();
     this.queue.clear();
     this.listeners.clear();
   }
 
-  private forget(id: string): void {
-    let forgot = this.infos.delete(id);
-    for (const [path, entry] of this.paths) {
-      if (entry.id !== id) continue;
-      this.paths.delete(path);
-      forgot = true;
+  /** A file changed in the vault: its cached fingerprint no longer counts, and the next projection hashes it again. */
+  private pathChanged(path: string): void {
+    const entry = this.paths.get(path);
+    if (this.disposed || !entry) return;
+    this.paths.delete(path);
+    this.queue.delete(path);
+    if (entry.id !== null) this.release(path, entry.id);
+    // Also while hashing: that result is dropped, and the next projection queues the file again.
+    this.emit();
+  }
+
+  /** `path` no longer vouches for `id`: another path with the same bytes takes over, else the id is forgotten. True when forgotten. */
+  private release(path: string, id: string): boolean {
+    const info = this.infos.get(id);
+    if (info?.path !== path) return false;
+    for (const [other, entry] of this.paths) {
+      if (other === path || entry.id !== id) continue;
+      this.infos.set(id, { path: other, size: entry.size, mime: entry.mime });
+      return false;
     }
-    if (forgot) this.emit();
+    this.infos.delete(id);
+    return true;
+  }
+
+  /** `path` could not serve `id`: only its own entry goes; another path with the same bytes still serves it. */
+  private forget(id: string, path: string): void {
+    if (this.paths.get(path)?.id === id) this.paths.delete(path);
+    if (this.release(path, id)) this.emit();
   }
 
   private enqueue(path: string): void {
     this.queue.add(path);
-    if (!this.hashing) void this.hashQueued();
+    if (!this.hashing) this.hashQueued().catch((error: unknown) => console.error('[Atlas online] Hashing images failed', error));
   }
 
   private async hashQueued(): Promise<void> {
@@ -157,6 +183,7 @@ export class AssetRegistry implements AssetIds {
     let size = 0;
     try {
       const bytes = await this.options.files.read(path);
+      if (this.disposed) return;
       size = bytes.byteLength;
       if (size > ASSET_LIMITS.fileBytes) this.tooLarge();
       else id = await this.hash(bytes);
@@ -166,7 +193,7 @@ export class AssetRegistry implements AssetIds {
     // The file changed while it was read: its newer entry is queued already.
     if (this.disposed || this.paths.get(path) !== entry || id === null) return;
     entry.id = id;
-    this.infos.set(id, { path, size, mime: entry.mime });
+    if (!this.infos.has(id)) this.infos.set(id, { path, size, mime: entry.mime });
     this.emit();
   }
 
@@ -177,6 +204,12 @@ export class AssetRegistry implements AssetIds {
   }
 
   private emit(): void {
-    for (const listener of [...this.listeners]) listener();
+    for (const listener of [...this.listeners]) {
+      try {
+        listener();
+      } catch (error) {
+        console.error('[Atlas online] A change listener failed', error);
+      }
+    }
   }
 }

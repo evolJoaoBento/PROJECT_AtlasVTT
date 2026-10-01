@@ -17,5 +17,14 @@ export function vaultImageFiles(app: App): ImageFiles {
       if (!file) throw new Error('The image is no longer in the vault');
       return app.vault.readBinary(file);
     },
+    onChange: (listener: (path: string) => void): (() => void) => {
+      const { vault } = app;
+      const refs = [
+        vault.on('modify', (file) => listener(file.path)),
+        vault.on('delete', (file) => listener(file.path)),
+        vault.on('rename', (file, oldPath) => { listener(oldPath); listener(file.path); }),
+      ];
+      return () => { refs.forEach((ref) => vault.offref(ref)); };
+    },
   };
 }
