@@ -12,7 +12,7 @@
  */
 import type { GridState } from '../services/MapPersistence';
 import type { ViewAtlasState } from '../storeFactory';
-import type { Character, DrawingStroke, TextElement, TokenEntity } from '../types';
+import type { DrawingStroke, TextElement, TokenEntity } from '../types';
 import type { FogOperation } from '../types/fogTypes';
 import type { ProjectedState } from './scene/projectForPlayers';
 
@@ -47,7 +47,7 @@ export const OBJECT_COVERAGE: CoverageTable<keyof ViewAtlasState['objects']> = {
   audios: notYet('ambient audio (behind AMBIENT_AUDIO_ENABLED)'),
 };
 
-export const TOKEN_FIELD_COVERAGE: CoverageTable<keyof TokenEntity | keyof Character> = {
+export const TOKEN_FIELD_COVERAGE: CoverageTable<KeysOfUnion<TokenEntity>> = {
   id: SENT,
   kind: SENT,
   x: SENT,
