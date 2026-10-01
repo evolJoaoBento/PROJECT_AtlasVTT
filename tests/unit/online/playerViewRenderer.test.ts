@@ -71,6 +71,17 @@ describe('PlayerViewRenderer', () => {
     error.mockRestore();
   });
 
+  it('blanks the frame when the fog layer itself throws, so nothing under fog shows', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const t = setup({ throwing: 'fog' });
+    t.show();
+    t.frames.run();
+    // The frame is begun once, then begun again blank after the fog failed.
+    expect(t.surface.ops('begin')).toHaveLength(2);
+    expect(t.surface.calls[t.surface.calls.length - 1]?.op).toBe('begin');
+    error.mockRestore();
+  });
+
   it('draws nothing more until something changes', () => {
     const t = setup();
     t.show();

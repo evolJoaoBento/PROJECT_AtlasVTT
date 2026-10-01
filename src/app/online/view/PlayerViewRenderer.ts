@@ -108,6 +108,11 @@ export class PlayerViewRenderer {
           this.failed.add(name);
           console.error(`[Atlas online] the ${name} layer failed to draw`, error);
         }
+        // Without its fog the frame would show what the GM hides: fail closed with a blank view.
+        if (name === 'fog' && Object.keys(scene.fog).length > 0) {
+          surface.begin(width, height, VIEW_BACKGROUND);
+          return;
+        }
         surface.setCamera(scale, width / 2 - view.centerX * scale, height / 2 - view.centerY * scale);
       }
     }
