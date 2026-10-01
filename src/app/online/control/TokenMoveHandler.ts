@@ -44,8 +44,9 @@ export class MoveRateLimit {
     return allowed;
   }
 
-  forget(playerId: string): void {
-    this.recent.delete(playerId);
+  /** Forgets every player not in `known`; a player who is only gone keeps their window. */
+  retain(known: ReadonlySet<string>): void {
+    for (const playerId of [...this.recent.keys()]) if (!known.has(playerId)) this.recent.delete(playerId);
   }
 }
 
@@ -71,8 +72,9 @@ export class TokenMoveHandler implements SessionHandler {
     this.options.session.send(player.playerId, { v: 1, type: 'token-move-refused', tokenId: message.tokenId });
   }
 
-  onGone(player: SessionPlayer): void {
-    this.limit.forget(player.playerId);
+  /** Drops the windows of players who left the session: a reconnect must not reset one. */
+  retainPlayers(known: ReadonlySet<string>): void {
+    this.limit.retain(known);
   }
 
   /** Whether the move passed every check and was written. */

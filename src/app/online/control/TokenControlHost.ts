@@ -46,6 +46,8 @@ export class TokenControlHost {
 
   /** The session's players changed: a removed (kicked) player loses their tokens; one who is only gone keeps them. */
   playersChanged(players: readonly SessionPlayer[]): void {
-    this.control.retainPlayers(new Set(players.map((player) => player.playerId)));
+    const known = new Set(players.map((player) => player.playerId));
+    this.control.retainPlayers(known);
+    this.moves.retainPlayers(known);
   }
 }

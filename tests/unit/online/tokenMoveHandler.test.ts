@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MOVES_PER_SECOND } from '../../../src/app/online/control/TokenMoveHandler';
+import { MOVES_PER_SECOND, MoveRateLimit } from '../../../src/app/online/control/TokenMoveHandler';
 import { createHexLayout, nearestHexCenter } from '../../../src/app/grid/hexGeometry';
 import { decodeControl, encodeControl, type ControlMessage } from '../../../src/app/online/protocol';
 import { moveWorld, partyState, type MoveWorld } from './tokenMoveFixtures';
@@ -174,6 +174,26 @@ describe('token moves on the GM side', () => {
     expect(w.token('hero')).toMatchObject({ x: 105, y: 175 });
     expect(w.history().pastStates).toHaveLength(MOVES_PER_SECOND + 1);
     w.finish();
+  });
+
+  it('keeps the rate window of a player who reconnects, and forgets one who left the session', async () => {
+    const w = moveWorld();
+    const a = await withHero(w);
+    for (let cell = 1; cell <= MOVES_PER_SECOND; cell++) a.move('hero', cell * 70 + 35, 140);
+    expect(w.history().pastStates).toHaveLength(MOVES_PER_SECOND);
+    const again = await w.join('A');
+    expect(again.playerId).toBe(a.playerId);
+    again.move('hero', 105, 140);
+    expect(w.history().pastStates).toHaveLength(MOVES_PER_SECOND);
+    expect(again.refusals()).toEqual([]);
+    w.finish();
+
+    const limit = new MoveRateLimit();
+    for (let i = 0; i < MOVES_PER_SECOND; i++) limit.allow('p', 0);
+    limit.retain(new Set(['p']));
+    expect(limit.allow('p', 1)).toBe(false);
+    limit.retain(new Set());
+    expect(limit.allow('p', 2)).toBe(true);
   });
 
   it('applies both drops of a token two players control, in arrival order', async () => {
