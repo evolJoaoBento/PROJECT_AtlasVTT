@@ -3,7 +3,9 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { GmSession, type SessionPlayer } from '../../../src/app/online/GmSession';
 import { PlayerSession } from '../../../src/app/online/PlayerSession';
 import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
+import { AssetRegistry } from '../../../src/app/online/scene/AssetRegistry';
 import { SCENE_TICK_MS, SceneBroadcaster } from '../../../src/app/online/scene/SceneBroadcaster';
+import { memoryImageFiles, nodeHash } from './assetFixtures';
 import { MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport';
 import type { PeerLink, ClientTransport } from '../../../src/app/online/transport/types';
 import { PresentedScene, type PresentedView } from '../../../src/app/services/PresentedScene';
@@ -87,7 +89,8 @@ function world() {
   };
   const presented = new PresentedScene();
   const notices: string[] = [];
-  const broadcaster = new SceneBroadcaster({ session: gm, presented, settings, notify: (message) => notices.push(message) });
+  const assets = new AssetRegistry({ files: memoryImageFiles().source, notify: (message) => notices.push(message), hash: nodeHash });
+  const broadcaster = new SceneBroadcaster({ session: gm, presented, settings, assets, notify: (message) => notices.push(message) });
   broadcaster.start();
 
   const tabs = createTabMetaStore();

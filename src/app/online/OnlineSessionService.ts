@@ -5,6 +5,8 @@ import { GmSession, type SessionPlayer } from './GmSession';
 import { buildJoinUrl, parseJoinFragment } from './joinLink';
 import { onlineSessionStore, resetOnlineSessionStore } from './onlineSessionStore';
 import { peerServerOptions } from './onlineSettings';
+import { vaultImageFiles } from './assets/vaultImageFiles';
+import { AssetRegistry, type ImageFiles } from './scene/AssetRegistry';
 import { SceneBroadcaster, type PresentedSceneSource } from './scene/SceneBroadcaster';
 import { createPeerHost, type PeerServerOptions } from './transport/PeerTransport';
 import type { HostTransport } from './transport/types';
@@ -18,6 +20,8 @@ interface Deps {
   showRequest?: (player: SessionPlayer, answer: (allow: boolean) => void) => { hide(): void };
   /** Which scene players see; the plugin's `presentedScene` unless a test passes its own. */
   presented?: PresentedSceneSource;
+  /** The vault's images; tests pass their own. */
+  images?: ImageFiles;
 }
 
 function errorText(error: unknown): string {
@@ -33,7 +37,9 @@ export class OnlineSessionService {
 
   private current: GmSession | null = null;
   private broadcaster: SceneBroadcaster | null = null;
+  private registry: AssetRegistry | null = null;
   private readonly presented: PresentedSceneSource;
+  private readonly images: ImageFiles;
   private generation = 0;
   private unsubscribeErrors: (() => void) | null = null;
   private readonly notices = new Map<string, { hide(): void }>();
@@ -44,6 +50,7 @@ export class OnlineSessionService {
     this.createHost = deps.createHost ?? createPeerHost;
     this.showRequest = deps.showRequest ?? showJoinRequestNotice;
     this.presented = deps.presented ?? presentedScene;
+    this.images = deps.images ?? vaultImageFiles(app);
     OnlineSessionService.instances.set(app, this);
   }
 
@@ -95,8 +102,12 @@ export class OnlineSessionService {
     });
     session.start();
     // Sends the presented scene, including one presented before the session started.
+    const notify = (message: string): Notice => new Notice(message);
+    // One registry per session: fingerprints are cached for the session, the size notice shows once.
+    const registry = new AssetRegistry({ files: this.images, notify });
+    this.registry = registry;
     const broadcaster = new SceneBroadcaster({
-      session, presented: this.presented, settings: this.settings, notify: (message) => new Notice(message),
+      session, presented: this.presented, settings: this.settings, assets: registry, notify,
     });
     this.broadcaster = broadcaster;
     this.current = session;
@@ -124,6 +135,8 @@ export class OnlineSessionService {
     this.unsubscribeErrors = null;
     this.broadcaster?.stop();
     this.broadcaster = null;
+    this.registry?.dispose();
+    this.registry = null;
     this.current?.stop();
     this.current = null;
     this.notices.forEach((notice) => notice.hide());

@@ -10,7 +10,7 @@ import { tokenHp, tokenStress } from '../../pixi/token-renderer/tokenResources';
 import type { GridState } from '../../services/MapPersistence';
 import type { ViewAtlasState } from '../../storeFactory';
 import type { Character, TokenEntity } from '../../types';
-import type { AssetRegistry } from './AssetRegistry';
+import type { AssetIds } from './AssetRegistry';
 import { finiteOr, finiteOrNull, hpOrNull, oneOf, positiveOr, resourceOrNull, textOr, textOrNull, unitOr } from './coerce';
 import type { FogCoverage } from './FogCoverage';
 import { DEFAULT_GRID_SIZE, tokenBounds } from './objectBounds';
@@ -32,7 +32,7 @@ export interface ProjectionContext {
   rules: PlayerViewRules;
   /** Rebuilt by the caller only when the fog operations change. */
   coverage: FogCoverage;
-  assets: AssetRegistry;
+  assets: AssetIds;
   mapSize: MapSize;
   memo: ProjectionMemo;
 }

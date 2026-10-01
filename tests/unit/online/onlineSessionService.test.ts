@@ -9,7 +9,7 @@ import { PresentedScene } from '../../../src/app/services/PresentedScene';
 import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
 
-const app = { vault: { getName: () => 'My Vault' } } as never;
+const app = { vault: { getName: () => 'My Vault', getAbstractFileByPath: () => null } } as never;
 const settings = {
   getOnlineSettings: () => DEFAULT_ONLINE_SETTINGS,
   getLocalPlayerViewSettings: () => ({

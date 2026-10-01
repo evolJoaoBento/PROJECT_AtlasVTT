@@ -11,7 +11,6 @@ import type { FogOperation } from '../../types/fogTypes';
 import type { SessionHandler, SessionPlayer } from '../GmSession';
 import { randomId } from '../ids';
 import type { ControlMessage } from '../protocol';
-import { AssetRegistry } from './AssetRegistry';
 import type { FogCoverage } from './FogCoverage';
 import { PlayerChannels } from './PlayerChannels';
 import { pickPlayerViewRules, samePlayerViewRules, type PlayerViewRules } from './playerViewRules';
@@ -43,7 +42,6 @@ interface LiveScene {
 }
 
 export class SceneBroadcaster implements SessionHandler {
-  private readonly assets = new AssetRegistry();
   private readonly stops: Array<() => void> = [];
   private memo: ProjectionMemo = createProjectionMemo();
   private rules: PlayerViewRules;
@@ -67,7 +65,7 @@ export class SceneBroadcaster implements SessionHandler {
   }
 
   start(): void {
-    const { session, presented, settings } = this.options;
+    const { session, presented, settings, assets } = this.options;
     this.stops.push(
       session.use(this),
       presented.subscribe({
@@ -76,6 +74,8 @@ export class SceneBroadcaster implements SessionHandler {
         cleared: () => this.clearScene(),
       }),
       settings.onChange(() => this.settingsChanged()),
+      // A fingerprint became known or was forgotten: the next tick carries the change.
+      assets.onChange(() => { if (this.live && !this.live.loading) this.scheduleTick(); }),
     );
     const current = presented.current();
     if (current && !presented.isHeld()) this.showScene(current, false);
@@ -253,7 +253,7 @@ export class SceneBroadcaster implements SessionHandler {
       sceneId: live.sceneId,
       rules: this.rules,
       coverage: this.coverageOf(state.objects?.fog ?? {}),
-      assets: this.assets,
+      assets: this.options.assets,
       mapSize: live.scene.mapSize(),
       memo: this.memo,
     });

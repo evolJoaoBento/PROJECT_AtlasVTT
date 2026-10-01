@@ -4,7 +4,7 @@ import type { FogOperation } from '../../../src/app/types/fogTypes';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
 import { decodeControl, encodeControl } from '../../../src/app/online/protocol';
 import { isDrawingRecords, isFogRecords, isPlayerSceneBody } from '../../../src/app/online/scene/sceneValidation';
-import { AssetRegistry } from '../../../src/app/online/scene/AssetRegistry';
+import { fakeAssetIds } from './sceneFixtures';
 import { FogCoverage } from '../../../src/app/online/scene/FogCoverage';
 import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
 import { projectForPlayers, type ProjectedState, type ProjectionContext } from '../../../src/app/online/scene/projectForPlayers';
@@ -36,7 +36,7 @@ function withTokens(tokens: Record<string, Token | Character>, extra: Partial<Pr
 }
 function context(overrides: Partial<ProjectionContext> = {}): ProjectionContext {
   return {
-    sceneId: 'scene-1', rules: ALL_ON, coverage: FogCoverage.EMPTY, assets: new AssetRegistry(),
+    sceneId: 'scene-1', rules: ALL_ON, coverage: FogCoverage.EMPTY, assets: fakeAssetIds(),
     mapSize: { width: 1000, height: 800 }, memo: createProjectionMemo(), ...overrides,
   };
 }
@@ -101,7 +101,7 @@ describe('projectForPlayers', () => {
   });
 
   it('gives each image one asset id and the map its size', () => {
-    const assets = new AssetRegistry();
+    const assets = fakeAssetIds();
     const scene = projectForPlayers(withTokens({ hero: hero(), twin: hero({ id: 'twin' }) }), context({ assets }));
     expect(scene.tokens.twin?.image).toBe(scene.tokens.hero?.image);
     expect(scene.map).toEqual({ asset: assets.idFor('atlas-vtt/assets/lair.png'), width: 1000, height: 800, cellSize: 70 });

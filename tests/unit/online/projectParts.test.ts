@@ -4,7 +4,6 @@ import type { FogOperation } from '../../../src/app/types/fogTypes';
 import type { AnyWidget } from '../../../src/app/types/widgetTypes';
 import type { InitiativeEntry } from '../../../src/app/types/initiativeTypes';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
-import { AssetRegistry } from '../../../src/app/online/scene/AssetRegistry';
 import { FogCoverage } from '../../../src/app/online/scene/FogCoverage';
 import { drawingBounds, textBounds, tokenBounds } from '../../../src/app/online/scene/objectBounds';
 import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
@@ -44,21 +43,6 @@ function entry(overrides: Partial<InitiativeEntry> & { id: string; tokenId: stri
     isActive: false, isDefeated: false, isNPC: true, order: 0, ...overrides,
   };
 }
-
-describe('AssetRegistry', () => {
-  it('gives each vault path one random id for the session', () => {
-    const assets = new AssetRegistry();
-    const id = assets.idFor('atlas-vtt/assets/secret-lair.png');
-    expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(assets.idFor('atlas-vtt/assets/secret-lair.png')).toBe(id);
-    expect(assets.idFor('atlas-vtt/assets/other.png')).not.toBe(id);
-    expect(new AssetRegistry().idFor('atlas-vtt/assets/secret-lair.png')).not.toBe(id);
-    expect(assets.idFor(null)).toBeNull();
-    expect(assets.idFor('')).toBeNull();
-    expect(assets.idFor('__proto__')).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(assets.idFor('constructor')).not.toBe(assets.idFor('__proto__'));
-  });
-});
 
 describe('object bounds', () => {
   it('measures token footprints, estimated text boxes and drawings', () => {

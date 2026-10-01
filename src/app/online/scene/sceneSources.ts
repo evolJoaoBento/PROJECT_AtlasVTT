@@ -4,6 +4,7 @@ import type { ControlMessage } from '../protocol';
 import type { PresentedSceneInfo, PresentedSceneListener } from '../../services/PresentedScene';
 import type { ViewAtlasState } from '../../storeFactory';
 import type { FogOperation } from '../../types/fogTypes';
+import type { AssetRegistry } from './AssetRegistry';
 import { FogCoverage } from './FogCoverage';
 import type { PlayerViewRules } from './playerViewRules';
 import { projectFog, type ProjectionMemo } from './projectRecords';
@@ -30,6 +31,8 @@ export interface SceneBroadcasterOptions {
   session: SceneSession;
   presented: PresentedSceneSource;
   settings: PlayerViewSettingsSource;
+  /** The session's content registry: fingerprints for the projection, and when to project again. */
+  assets: AssetRegistry;
   /** Tells the GM something; `OnlineSessionService` shows an Obsidian notice. */
   notify(message: string): void;
 }

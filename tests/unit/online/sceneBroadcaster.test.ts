@@ -3,6 +3,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { GmSession, type SessionPlayer } from '../../../src/app/online/GmSession';
 import { PlayerSession } from '../../../src/app/online/PlayerSession';
 import { decodeControl, encodeControl, MAX_CONTROL_MESSAGE_BYTES, type ControlMessage } from '../../../src/app/online/protocol';
+import { AssetRegistry } from '../../../src/app/online/scene/AssetRegistry';
 import { SCENE_LIMITS } from '../../../src/app/online/scene/sceneTypes';
 import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
 import { FOG_TRUNCATED_NOTICE, SCENE_TICK_MS, SCENE_TOO_LARGE_NOTICE, SceneBroadcaster } from '../../../src/app/online/scene/SceneBroadcaster';
@@ -15,6 +16,7 @@ import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import type { Character, DrawingStroke } from '../../../src/app/types';
 import type { FogOperation } from '../../../src/app/types/fogTypes';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
+import { fingerprintOf, memoryImageFiles, nodeHash, type MemoryImageFiles } from './assetFixtures';
 import { fogRect, playerScene } from './sceneFixtures';
 
 type SceneState = Pick<ViewAtlasState,
@@ -91,6 +93,7 @@ const DEFAULT_RULES: PlayerViewRules = {
 };
 
 interface Harness {
+  files: MemoryImageFiles;
   network: MemoryNetwork;
   gm: GmSession;
   requests: SessionPlayer[];
@@ -100,7 +103,7 @@ interface Harness {
   setRules(next: Partial<PlayerViewRules>): void;
 }
 
-function setup(options: { start?: boolean } = {}): Harness {
+function setup(options: { start?: boolean; images?: Record<string, string | Uint8Array> } = {}): Harness {
   const network = new MemoryNetwork();
   const requests: SessionPlayer[] = [];
   const gm = new GmSession(network.host('gm'), {
@@ -115,13 +118,15 @@ function setup(options: { start?: boolean } = {}): Harness {
   };
   const presented = new PresentedScene();
   const notices: string[] = [];
-  const broadcaster = new SceneBroadcaster({ session: gm, presented, settings, notify: (message) => notices.push(message) });
+  const files = memoryImageFiles(options.images ?? {});
+  const assets = new AssetRegistry({ files: files.source, notify: (message) => notices.push(message), hash: nodeHash });
+  const broadcaster = new SceneBroadcaster({ session: gm, presented, settings, assets, notify: (message) => notices.push(message) });
   if (options.start !== false) broadcaster.start();
   const setRules = (next: Partial<PlayerViewRules>): void => {
     rules = { ...rules, ...next };
     listeners.forEach((listener) => listener());
   };
-  return { network, gm, requests, presented, broadcaster, notices, setRules };
+  return { network, gm, requests, presented, broadcaster, notices, setRules, files };
 }
 
 /** A player through `PlayerSession`, admitted by the GM. */
@@ -583,5 +588,20 @@ describe('SceneBroadcaster', () => {
     h.presented.clear();
     raw.link.send('control', encodeControl({ v: 1, type: 'scene-resync', seq: 1 }));
     expect(sceneTypes(raw.received)).toEqual(['scene-snapshot', 'scene-clear', 'scene-clear']);
+  });
+
+  it('adds an image to the scene once its fingerprint is known', async () => {
+    const h = setup({ images: { 'maps/tavern.png': 'map bytes', 'art/hero.png': 'hero bytes' } });
+    const { view, tavern } = fakeView(sceneState({ hero: character('hero', 140) }));
+    h.presented.present(view, tavern);
+    // Presenting never waits for hashing: the first snapshot has no images.
+    expect(h.broadcaster.currentProjection()?.map.asset).toBeNull();
+    expect(h.broadcaster.currentProjection()?.tokens.hero?.image).toBeNull();
+    const player = await join(h);
+    await tick();
+    expect(player.scene?.map.asset).toBe(fingerprintOf('map bytes'));
+    expect(player.scene?.tokens.hero?.image).toBe(fingerprintOf('hero bytes'));
+    expect(player.scene).toEqual(h.broadcaster.currentProjection());
+    expect(JSON.stringify(player.scene)).not.toContain('art/');
   });
 });

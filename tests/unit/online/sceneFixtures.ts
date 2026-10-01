@@ -1,3 +1,4 @@
+import type { AssetIds } from '../../../src/app/online/scene/AssetRegistry';
 import type { FogOperation } from '../../../src/app/types/fogTypes';
 import { FogCoverage } from '../../../src/app/online/scene/FogCoverage';
 import { createProjectionMemo, projectFog } from '../../../src/app/online/scene/projectRecords';
@@ -62,4 +63,16 @@ export function sceneWithImages(mapAsset: string | null, tokenImages: ReadonlyAr
     map: { asset: mapAsset, width: 1000, height: 800, cellSize: 70 },
     tokens: Object.fromEntries(tokenImages.map((image, index) => [`t${index}`, playerToken({ image })])),
   });
+}
+
+/** Asset ids as the projection sees them, without hashing: one stable id per path, `asset-1` first. */
+export function fakeAssetIds(): AssetIds {
+  const ids = new Map<string, string>();
+  return {
+    idFor: (path) => {
+      if (typeof path !== 'string' || path.length === 0) return null;
+      if (!ids.has(path)) ids.set(path, `asset-${ids.size + 1}`);
+      return ids.get(path) ?? null;
+    },
+  };
 }
