@@ -23,6 +23,16 @@ export function presentActiveTabToPlayers(app: App): Promise<void> {
   return presentViewToPlayers(app.workspace.getActiveViewOfType(AtlasView));
 }
 
+/**
+ * Switch `view` to the scene tab `tabId`, then present it to online players without
+ * opening the local player window: the scene tab's eye while a session runs.
+ */
+export async function presentTabToPlayers(view: AtlasView, tabId: string): Promise<void> {
+  await view.switchToTab(tabId);
+  if (view.isClosed || view.tabMetaStore.getState().activeTabId !== tabId) return;
+  await presentViewToPlayers(view);
+}
+
 /** Players keep the last scene they saw in the local window; online players see none. */
 export function stopPresenting(): void {
   if (!presentedScene.current()) return;

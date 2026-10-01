@@ -46,6 +46,7 @@ import { LocalPlayerViewSettingsPanel } from './command-palette/LocalPlayerViewS
 import { SceneSnapshotsPanel } from './command-palette/SceneSnapshotsPanel';
 import { placePalette, type PalettePosition } from './command-palette/palettePlacement';
 import { isSettingsPanelId, type CommandOption, type SettingsPanelId } from './command-palette/types';
+import { ONLINE_SECTION, useOnlineCommands } from './command-palette/onlineCommands';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -97,6 +98,7 @@ export function CommandPalette({ isOpen, onClose, toolbarRef }: CommandPalettePr
   const setInitiativeTrackerOpen = useAtlasStore(state => state.setInitiativeTrackerOpen);
   const setDiceLogOpen = useAtlasStore(state => state.setDiceLogOpen);
   const setLootRollerOpen = useAtlasStore(state => state.setLootRollerOpen);
+  const onlineCommands = useOnlineCommands(onClose);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [focusedOptionIndex, setFocusedOptionIndex] = useState<number>(-1);
@@ -369,6 +371,7 @@ export function CommandPalette({ isOpen, onClose, toolbarRef }: CommandPalettePr
         },
       ],
     },
+    ...onlineCommands,
   ];
 
   // Derive rows from current state so open-menu toggles stay in sync.
@@ -713,6 +716,7 @@ export function CommandPalette({ isOpen, onClose, toolbarRef }: CommandPalettePr
     { id: 'tools', title: 'Tools' },
     { id: 'mode', title: 'Mode' },
     { id: 'settings', title: 'Settings' },
+    ONLINE_SECTION,
   ].map((section) => ({
     ...section,
     options: filteredOptions.filter((option) => option.section === section.id),

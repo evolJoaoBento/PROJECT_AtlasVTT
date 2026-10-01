@@ -5,15 +5,20 @@ import { cn } from '../../../utils/cn';
 import { useSceneTabStore } from '../hooks/useSceneTabStore';
 import { useTabStripOverflow } from '../hooks/useTabStripOverflow';
 import { usePresentedTabId } from '../hooks/usePresentedTabId';
+import { useOnlineSession } from './online/useOnlineState';
 import type { SceneTab } from '../../types/sceneTabTypes';
 import { LabelTooltip, TooltipProvider } from '../../packages/components/primitives/tooltip';
 import './scene-tab-bar.scss';
+
+type MenuPosition = { x: number; y: number };
 
 interface SceneTabBarProps {
   onSwitchTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onAddTab: () => void;
   onPresentTab: (tabId: string) => void;
+  /** The eye's context menu; returns false when it offers none, so the right-click is left alone. */
+  onPresentTabMenu?: ((tabId: string, position: MenuPosition) => boolean) | undefined;
   /** Lists every open map; offered while the tabs do not fit the bar. */
   onShowAllTabs: () => void;
 }
@@ -24,10 +29,12 @@ interface TabActionButtonProps {
   /** When defined the button is a toggle and stays visible while active. */
   isActive?: boolean;
   onClick: () => void;
+  /** Returns true when it opened a menu of its own. */
+  onContextMenu?: ((position: MenuPosition) => boolean) | undefined;
 }
 
 /** Icon button inside a tab; keeps its events from activating or closing the tab. */
-function TabActionButton({ icon: Icon, label, isActive, onClick }: TabActionButtonProps): React.ReactElement {
+function TabActionButton({ icon: Icon, label, isActive, onClick, onContextMenu }: TabActionButtonProps): React.ReactElement {
   return (
     <LabelTooltip side="bottom" label={label}>
       <button
@@ -36,6 +43,11 @@ function TabActionButton({ icon: Icon, label, isActive, onClick }: TabActionButt
         onClick={(e) => {
           e.stopPropagation();
           onClick();
+        }}
+        onContextMenu={(e) => {
+          if (!onContextMenu?.({ x: e.clientX, y: e.clientY })) return;
+          e.preventDefault();
+          e.stopPropagation();
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
@@ -47,16 +59,22 @@ function TabActionButton({ icon: Icon, label, isActive, onClick }: TabActionButt
   );
 }
 
-export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, onShowAllTabs }: SceneTabBarProps): React.ReactElement | null {
+export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, onPresentTabMenu, onShowAllTabs }: SceneTabBarProps): React.ReactElement | null {
   const store = useSceneTabStore();
 
   const tabs = useStore(store, (s) => s.tabs);
   const activeTabId = useStore(store, (s) => s.activeTabId);
   const presentedTabId = usePresentedTabId(store);
+  const hosting = useOnlineSession().status === 'hosting';
   const [strip, setStrip] = useState<HTMLDivElement | null>(null);
   const { overflows, hiddenBefore, hiddenAfter } = useTabStripOverflow(strip, activeTabId);
 
   if (tabs.length === 0) return null;
+
+  const presentLabel = (tab: SceneTab, isPresented: boolean): string => {
+    if (isPresented) return `${tab.displayName} is shown to players`;
+    return hosting ? `Present ${tab.displayName} to players` : `Show ${tab.displayName} on the player view`;
+  };
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -107,9 +125,10 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
                 {tab.isDirty && <span className="atlas-scene-tab__dirty" />}
                 <TabActionButton
                   icon={Eye}
-                  label={isPresented ? `${tab.displayName} is shown to players` : `Show ${tab.displayName} on the player view`}
+                  label={presentLabel(tab, isPresented)}
                   isActive={isPresented}
                   onClick={() => onPresentTab(tab.id)}
+                  onContextMenu={onPresentTabMenu && ((position) => onPresentTabMenu(tab.id, position))}
                 />
                 <TabActionButton icon={X} label={`Close ${tab.displayName}`} onClick={() => onCloseTab(tab.id)} />
               </div>

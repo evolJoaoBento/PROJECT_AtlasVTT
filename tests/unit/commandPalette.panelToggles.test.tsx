@@ -8,6 +8,8 @@ vi.mock('../../src/app/react/root/AtlasUIContext', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../src/app/react/root/AtlasUIContext')>(), useAtlasUI: () => ({ app: {}, view: {} }) }));
 vi.mock('../../src/app/services/PlayerWindowService', () => ({ PlayerWindowService: {} }));
 vi.mock('../../src/app/services/PlayerWindowPresenter', () => ({ presentActiveTabInPlayerWindow: vi.fn() }));
+vi.mock('../../src/app/services/presentToPlayers', () => ({ presentViewToPlayers: vi.fn(), stopPresenting: vi.fn() }));
+vi.mock('../../src/app/online/OnlineSessionService', () => ({ OnlineSessionService: { forApp: () => undefined } }));
 vi.mock('../../src/app/react/components/command-palette/GridSettingsPanel', () => ({ GridSettingsPanel: () => null }));
 vi.mock('../../src/app/react/components/command-palette/TokenSettingsPanel', () => ({ TokenSettingsPanel: () => null }));
 vi.mock('../../src/app/react/components/command-palette/LocalPlayerViewSettingsPanel', () => ({ LocalPlayerViewSettingsPanel: () => null }));
