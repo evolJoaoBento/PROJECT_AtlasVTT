@@ -89,11 +89,6 @@ export class AssetRegistry implements AssetIds {
     return null;
   }
 
-  /** Where a fingerprint's file is; null for one this session does not know. */
-  info(id: string): AssetInfo | null {
-    return this.infos.get(id) ?? null;
-  }
-
   /**
    * The file behind `id`, read again and checked against it. Null when it cannot
    * be read or no longer matches; the fingerprint is then forgotten, so the next

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TFile, type App } from 'obsidian';
 import { ASSET_LIMITS } from '../../../src/app/online/assets/assetIds';
 import { vaultImageFiles } from '../../../src/app/online/assets/vaultImageFiles';
-import { AssetRegistry, IMAGE_TOO_LARGE_NOTICE, type ImageFiles } from '../../../src/app/online/scene/AssetRegistry';
+import { AssetRegistry, IMAGE_TOO_LARGE_NOTICE, type AssetInfo, type ImageFiles } from '../../../src/app/online/scene/AssetRegistry';
 import { fingerprintOf, memoryImageFiles, nodeHash, settle } from './assetFixtures';
 
 function registry(files: ImageFiles, withNodeHash = true): { assets: AssetRegistry; notices: string[]; changes: () => number } {
@@ -13,6 +13,9 @@ function registry(files: ImageFiles, withNodeHash = true): { assets: AssetRegist
   return { assets, notices, changes: () => changes };
 }
 
+/** What the registry knows about a fingerprint's file: its private table, read for assertions. */
+const infoOf = (assets: AssetRegistry, id: string): AssetInfo | null => assets['infos'].get(id) ?? null;
+
 const bytesOf = (text: string): ArrayBuffer => new TextEncoder().encode(text).slice().buffer;
 
 describe('AssetRegistry', () => {
@@ -22,7 +25,7 @@ describe('AssetRegistry', () => {
     expect(assets.idFor('maps/cave.png')).toBeNull();
     await vi.waitFor(() => expect(assets.idFor('maps/cave.png')).toBe(fingerprintOf('cave bytes')));
     expect(changes()).toBe(1);
-    expect(assets.info(fingerprintOf('cave bytes'))).toEqual({ path: 'maps/cave.png', size: 10, mime: 'image/png' });
+    expect(infoOf(assets, fingerprintOf('cave bytes'))).toEqual({ path: 'maps/cave.png', size: 10, mime: 'image/png' });
   });
 
   it('hashes an unchanged file once and a changed one again', async () => {
@@ -100,7 +103,7 @@ describe('AssetRegistry', () => {
     // A sync tool rewrote the file keeping its time and size: only the bytes tell.
     files.set('a.png', 'abd', 1);
     expect(await assets.read(a)).toBeNull();
-    expect(assets.info(a)).toBeNull();
+    expect(infoOf(assets, a)).toBeNull();
     expect(changes()).toBe(3);
     expect(assets.idFor('a.png')).toBeNull();
     await settle();
@@ -108,7 +111,7 @@ describe('AssetRegistry', () => {
 
     files.fail('b.png');
     expect(await assets.read(b)).toBeNull();
-    expect(assets.info(b)).toBeNull();
+    expect(infoOf(assets, b)).toBeNull();
     expect(await assets.read(fingerprintOf('never seen'))).toBeNull();
   });
 
@@ -158,7 +161,7 @@ describe('AssetRegistry', () => {
     assets.idFor('b.png');
     await settle();
     const known = fingerprintOf('a');
-    expect(assets.info(known)).not.toBeNull();
+    expect(infoOf(assets, known)).not.toBeNull();
     assets.dispose();
     expect(await assets.read(known)).toBeNull();
 
@@ -181,12 +184,12 @@ describe('AssetRegistry', () => {
     assets.idFor('b.png');
     await settle();
     const id = fingerprintOf('same');
-    expect(assets.info(id)?.path).toBe('a.png');
+    expect(infoOf(assets, id)?.path).toBe('a.png');
 
     // a is edited: the fingerprint moves to b, which is read for serving.
     files.set('a.png', 'edited', 2);
     expect(assets.idFor('a.png')).toBeNull();
-    expect(assets.info(id)?.path).toBe('b.png');
+    expect(infoOf(assets, id)?.path).toBe('b.png');
     expect((await assets.read(id))?.bytes.byteLength).toBe(4);
     await settle();
     expect(assets.idFor('a.png')).toBe(fingerprintOf('edited'));
@@ -194,7 +197,7 @@ describe('AssetRegistry', () => {
     // b breaks: it alone is dropped, and with no other path the id goes.
     files.remove('b.png');
     expect(await assets.read(id)).toBeNull();
-    expect(assets.info(id)).toBeNull();
+    expect(infoOf(assets, id)).toBeNull();
     expect(assets.idFor('a.png')).toBe(fingerprintOf('edited'));
   });
 
@@ -207,7 +210,7 @@ describe('AssetRegistry', () => {
     const id = fingerprintOf('same');
     files.fail('a.png');
     expect(await assets.read(id)).toBeNull();
-    expect(assets.info(id)?.path).toBe('b.png');
+    expect(infoOf(assets, id)?.path).toBe('b.png');
     expect(assets.idFor('b.png')).toBe(id);
     expect((await assets.read(id))?.bytes.byteLength).toBe(4);
   });
@@ -223,14 +226,14 @@ describe('AssetRegistry', () => {
     files.set('a.png', 'uno', 1); // same time and size are not enough to trust the cache
     files.changed('a.png');
     expect(changes()).toBe(before + 1);
-    expect(assets.info(one)?.path).toBe('copy.png');
+    expect(infoOf(assets, one)?.path).toBe('copy.png');
     expect(assets.idFor('a.png')).toBeNull();
     await settle();
     expect(assets.idFor('a.png')).toBe(fingerprintOf('uno'));
 
     files.remove('c.png');
     files.changed('c.png');
-    expect(assets.info(fingerprintOf('three'))).toBeNull();
+    expect(infoOf(assets, fingerprintOf('three'))).toBeNull();
     files.set('d.png', 'three', 1); // renamed from c.png
     files.changed('c.png');
     files.changed('d.png');

@@ -32,7 +32,7 @@ export interface SceneBroadcasterOptions {
   presented: PresentedSceneSource;
   settings: PlayerViewSettingsSource;
   /** The session's content registry: fingerprints for the projection, and when to project again. */
-  assets: AssetRegistry;
+  assets: Pick<AssetRegistry, 'idFor' | 'onChange'>;
   /** Tells the GM something; `OnlineSessionService` shows an Obsidian notice. */
   notify(message: string): void;
 }
