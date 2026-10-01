@@ -48,3 +48,20 @@ it('marks the tab presented to players, whether or not the player window is open
   act(() => { presentedScene.clear(); });
   expect(pressed()).toBe(0);
 });
+
+it("turns the presented tab's eye into a hide button that stops presenting", () => {
+  const tabMetaStore = createTabMetaStore();
+  const tavern = tabMetaStore.getState().addTab('Tavern.atlasmap', 'Tavern');
+  tabMetaStore.getState().setActiveTab(tavern);
+  const onPresentTab = vi.fn();
+  const value = { app: {}, view: { viewId: 'map', tabMetaStore }, pixiApp: null, renderer: null } as never;
+  const { getByRole } = render(<AtlasUIContext.Provider value={value}>
+    <SceneTabBar onSwitchTab={vi.fn()} onCloseTab={vi.fn()} onAddTab={vi.fn()} onPresentTab={onPresentTab} onShowAllTabs={vi.fn()} />
+  </AtlasUIContext.Provider>);
+  const view = { tabMetaStore, atlasStore: createStore(() => ({ isMapLoading: false })), register: () => {} } as unknown as PresentedView;
+  act(() => { presentedScene.present(view, tavern); });
+
+  act(() => { getByRole('button', { name: 'Stop presenting Tavern' }).click(); });
+  expect(onPresentTab).not.toHaveBeenCalled();
+  expect(presentedScene.current()).toBeNull();
+});

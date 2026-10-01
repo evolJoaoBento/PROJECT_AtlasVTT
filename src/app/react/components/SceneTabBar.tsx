@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { ChevronDown, Eye, Plus, X } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Plus, X } from 'lucide-react';
 import { useStore } from 'zustand';
 import { cn } from '../../../utils/cn';
 import { useSceneTabStore } from '../hooks/useSceneTabStore';
 import { useTabStripOverflow } from '../hooks/useTabStripOverflow';
 import { usePresentedTabId } from '../hooks/usePresentedTabId';
 import { useOnlineSession } from './online/useOnlineState';
+import { stopPresenting } from '../../services/presentToPlayers';
 import type { SceneTab } from '../../types/sceneTabTypes';
 import { LabelTooltip, TooltipProvider } from '../../packages/components/primitives/tooltip';
 import './scene-tab-bar.scss';
@@ -72,7 +73,7 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
   if (tabs.length === 0) return null;
 
   const presentLabel = (tab: SceneTab, isPresented: boolean): string => {
-    if (isPresented) return `${tab.displayName} is shown to players`;
+    if (isPresented) return `Stop presenting ${tab.displayName}`;
     return hosting ? `Present ${tab.displayName} to players` : `Show ${tab.displayName} on the player view`;
   };
 
@@ -124,10 +125,11 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
                 </LabelTooltip>
                 {tab.isDirty && <span className="atlas-scene-tab__dirty" />}
                 <TabActionButton
-                  icon={Eye}
+                  icon={isPresented ? EyeOff : Eye}
                   label={presentLabel(tab, isPresented)}
                   isActive={isPresented}
-                  onClick={() => onPresentTab(tab.id)}
+                  // The presented scene's eye hides it again.
+                  onClick={() => (isPresented ? stopPresenting() : onPresentTab(tab.id))}
                   onContextMenu={onPresentTabMenu && ((position) => onPresentTabMenu(tab.id, position))}
                 />
                 <TabActionButton icon={X} label={`Close ${tab.displayName}`} onClick={() => onCloseTab(tab.id)} />
