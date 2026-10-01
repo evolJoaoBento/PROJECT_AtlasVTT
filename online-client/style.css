@@ -31,11 +31,16 @@ button:disabled { opacity: 0.5; cursor: default; }
 .links a { color: inherit; }
 
 /* The table: the map fills the window, everything else floats over it. */
-.table { position: fixed; inset: 0; overflow: hidden; background: #000; }
-#map { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.table {
+  position: fixed; inset: 0; overflow: hidden; background: #000; display: grid; grid-template-rows: auto minmax(0, 1fr);
+  /* A pinch or double-tap that starts on the bar or a button must not zoom the page. */
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+/* The map sits below the top bar, so the GM's framing is never hidden behind it. */
+#map { grid-row: 2; display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 #map:active { cursor: grabbing; }
 .top-bar {
-  position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: var(--gap);
+  grid-row: 1; position: relative; z-index: 1; display: flex; align-items: center; gap: var(--gap);
   padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right)) var(--gap) max(var(--gap), env(safe-area-inset-left));
   background: var(--bar); border-bottom: 1px solid var(--border);
 }
@@ -57,7 +62,7 @@ button:disabled { opacity: 0.5; cursor: default; }
   position: absolute; top: 0; right: 0; bottom: 0; width: min(320px, 100%); overflow-y: auto;
   display: grid; align-content: start; gap: 12px;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) 12px;
-  background: var(--card); border-left: 1px solid var(--border);
+  background: var(--card); border-left: 1px solid var(--border); z-index: 2; touch-action: pan-y;
 }
 .menu-header { display: flex; align-items: center; gap: 12px; }
 .menu ul, .menu ol { margin: 0; padding: 12px; list-style-position: inside; border: 1px solid var(--border); border-radius: 12px; }

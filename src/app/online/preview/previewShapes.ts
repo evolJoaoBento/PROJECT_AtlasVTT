@@ -8,6 +8,14 @@ import type { PreviewRect } from './previewLayout';
 /** Beyond this many lines or hexes the grid is too fine to be worth drawing. */
 export const MAX_GRID_LINES = 2000;
 export const MAX_GRID_HEXES = 5000;
+
+/** How many lines or hexes a grid may have before it is skipped. */
+export interface GridLimits {
+  lines: number;
+  hexes: number;
+}
+
+const DEFAULT_LIMITS: GridLimits = { lines: MAX_GRID_LINES, hexes: MAX_GRID_HEXES };
 const DEFAULT_GRID_COLOR = '#808080';
 
 export interface GridLines {
@@ -31,18 +39,18 @@ function dashFor(lineType: PlayerGrid['lineType']): number[] {
   return [];
 }
 
-export function gridLines(grid: PlayerGrid, area: PreviewRect): GridLines | null {
+export function gridLines(grid: PlayerGrid, area: PreviewRect, limits: GridLimits = DEFAULT_LIMITS): GridLines | null {
   const style = { color: grid.color ?? DEFAULT_GRID_COLOR, alpha: grid.opacity, width: grid.lineWidth, dash: dashFor(grid.lineType) };
   if (isHexGridType(grid.type)) {
-    const hexes = hexOutlines(grid, area);
+    const hexes = hexOutlines(grid, area, limits.hexes);
     return hexes ? { segments: [], hexes, ...style } : null;
   }
-  const segments = squareLines(grid, area);
+  const segments = squareLines(grid, area, limits.lines);
   return segments ? { segments, hexes: [], ...style } : null;
 }
 
-function squareLines(grid: PlayerGrid, area: PreviewRect): Array<[ScenePoint, ScenePoint]> | null {
-  if (Math.floor(area.width / grid.size) + Math.floor(area.height / grid.size) + 2 > MAX_GRID_LINES) return null;
+function squareLines(grid: PlayerGrid, area: PreviewRect, maxLines: number): Array<[ScenePoint, ScenePoint]> | null {
+  if (Math.floor(area.width / grid.size) + Math.floor(area.height / grid.size) + 2 > maxLines) return null;
   const right = area.x + area.width;
   const bottom = area.y + area.height;
   const first = (start: number, offset: number): number => offset + Math.ceil((start - offset) / grid.size) * grid.size;
@@ -52,7 +60,7 @@ function squareLines(grid: PlayerGrid, area: PreviewRect): Array<[ScenePoint, Sc
   return segments;
 }
 
-function hexOutlines(grid: PlayerGrid, area: PreviewRect): ScenePoint[][] | null {
+function hexOutlines(grid: PlayerGrid, area: PreviewRect, maxHexes: number): ScenePoint[][] | null {
   if (grid.type === 'square') return null;
   const layout = createHexLayout(grid.type, grid.size, grid.offsetX, grid.offsetY);
   const right = area.x + area.width;
@@ -64,7 +72,7 @@ function hexOutlines(grid: PlayerGrid, area: PreviewRect): ScenePoint[][] | null
   const qMax = Math.max(...corners.map((hex) => hex.q)) + 1;
   const rMin = Math.min(...corners.map((hex) => hex.r)) - 1;
   const rMax = Math.max(...corners.map((hex) => hex.r)) + 1;
-  if ((qMax - qMin + 1) * (rMax - rMin + 1) > MAX_GRID_HEXES * 4) return null;
+  if ((qMax - qMin + 1) * (rMax - rMin + 1) > maxHexes * 4) return null;
   const reach = grid.size;
   const hexes: ScenePoint[][] = [];
   for (let q = qMin; q <= qMax; q++) {
@@ -72,7 +80,7 @@ function hexOutlines(grid: PlayerGrid, area: PreviewRect): ScenePoint[][] | null
       const center = axialToPixel(layout, { q, r });
       if (center.x < area.x - reach || center.x > right + reach || center.y < area.y - reach || center.y > bottom + reach) continue;
       hexes.push(hexVertices(layout, center));
-      if (hexes.length > MAX_GRID_HEXES) return null;
+      if (hexes.length > maxHexes) return null;
     }
   }
   return hexes;

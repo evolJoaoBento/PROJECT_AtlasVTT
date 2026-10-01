@@ -67,4 +67,12 @@ describe('MapView', () => {
     t.view.setScene(null);
     expect(t.buttons.hidden).toBe(true);
   });
+  it('stops listening once disposed', () => {
+    const t = setup();
+    t.view.setScene(playerScene());
+    t.view.dispose();
+    pointer(t.canvas, 'pointerdown', 100, 100);
+    pointer(t.canvas, 'pointermove', 160, 100);
+    expect(t.buttons.hidden).toBe(true);
+  });
 });

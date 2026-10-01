@@ -65,6 +65,15 @@ describe('grid layer', () => {
     expect(surface.ops('text')).toEqual([]);
   });
 
+  it('draws the hexes of a large map at the fitted zoom, past the preview cap', () => {
+    const hexes: PlayerGrid = { ...grid, type: 'hex-vertical', size: 70 };
+    const map = { asset: null, width: 6000, height: 5000, cellSize: 70 };
+    const surface = new RecordingSurface();
+    const visible = { x: -64, y: -64, width: 6128, height: 5128 };
+    createGridLayer().draw(surface, frame(playerScene({ grid: hexes, map }), { visible, zoom: 0.15 }));
+    expect(surface.ops('paths')[0]?.paths.length).toBeGreaterThan(5000);
+  });
+
   it('draws no grid when the GM hides it', () => {
     const surface = new RecordingSurface();
     createGridLayer().draw(surface, frame(playerScene({ grid: null })));

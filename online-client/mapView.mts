@@ -37,6 +37,9 @@ export class MapView {
   private readonly renderer: PlayerViewRenderer;
   private readonly input: ViewInput;
   private hasScene = false;
+  private readonly listeners = new AbortController();
+  private resizeObserver: ResizeObserver | null = null;
+  private ratioQuery: MediaQueryList | null = null;
 
   constructor(private readonly options: MapViewOptions) {
     const frames = options.frames ?? {
@@ -77,6 +80,10 @@ export class MapView {
 
   /** The session is over: stops drawing and frees the fog image. The page does not use the view again. */
   dispose(): void {
+    this.listeners.abort();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.ratioQuery = null;
     this.renderer.dispose();
   }
 
@@ -86,6 +93,17 @@ export class MapView {
     const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
     this.camera.setScreen({ width, height });
     this.renderer.setSize({ width, height }, pixelRatioFor(window.devicePixelRatio, coarse));
+    this.watchPixelRatio();
+  }
+
+  /** The ratio changes without a resize when the window moves to another screen or the page is zoomed. */
+  private watchPixelRatio(): void {
+    if (this.listeners.signal.aborted || typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    this.ratioQuery = query;
+    query.addEventListener('change', () => {
+      if (this.ratioQuery === query) this.measure();
+    }, { once: true, signal: this.listeners.signal });
   }
 
   private cameraChanged(): void {
@@ -99,6 +117,7 @@ export class MapView {
 
   private bind(): void {
     const { canvas, followButton, fitButton } = this.options;
+    const { signal } = this.listeners;
     const point = (event: MouseEvent): ScreenPoint => {
       const rect = canvas.getBoundingClientRect();
       return { x: event.clientX - rect.left, y: event.clientY - rect.top };
@@ -114,22 +133,25 @@ export class MapView {
         // The pointer is already gone, or the environment has no pointer capture.
       }
       this.input.down(pointer(event));
-    });
-    canvas.addEventListener('pointermove', (event) => this.input.move(pointer(event)));
-    canvas.addEventListener('pointerup', (event) => this.input.up(pointer(event)));
-    canvas.addEventListener('pointercancel', (event) => this.input.cancel(event.pointerId));
+    }, { signal });
+    canvas.addEventListener('pointermove', (event) => this.input.move(pointer(event)), { signal });
+    canvas.addEventListener('pointerup', (event) => this.input.up(pointer(event)), { signal });
+    canvas.addEventListener('pointercancel', (event) => this.input.cancel(event.pointerId), { signal });
     canvas.addEventListener('wheel', (event) => {
       event.preventDefault();
       this.input.wheel(point(event), event.deltaY, event.deltaMode);
-    }, { passive: false });
+    }, { passive: false, signal });
     canvas.addEventListener('dblclick', (event) => {
       event.preventDefault();
       this.input.doubleClick(point(event));
-    });
-    followButton.addEventListener('click', () => this.camera.followGm());
-    fitButton.addEventListener('click', () => this.camera.fitMap());
-    document.addEventListener('visibilitychange', () => this.renderer.visibilityChanged());
-    if (typeof ResizeObserver === 'undefined') window.addEventListener('resize', () => this.measure());
-    else new ResizeObserver(() => this.measure()).observe(canvas);
+    }, { signal });
+    followButton.addEventListener('click', () => this.camera.followGm(), { signal });
+    fitButton.addEventListener('click', () => this.camera.fitMap(), { signal });
+    document.addEventListener('visibilitychange', () => this.renderer.visibilityChanged(), { signal });
+    if (typeof ResizeObserver === 'undefined') window.addEventListener('resize', () => this.measure(), { signal });
+    else {
+      this.resizeObserver = new ResizeObserver(() => this.measure());
+      this.resizeObserver.observe(canvas);
+    }
   }
 }

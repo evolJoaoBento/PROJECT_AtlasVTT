@@ -7,7 +7,7 @@ import { createHexLayout, isHexGridType } from '../../../grid/hexGeometry';
 import {
   DEFAULT_HEX_NUMBER_OPACITY, hexNumberAnchor, hexNumberFontSize, MIN_HEX_NUMBER_SCREEN_SIZE, numberHexes, type NumberedHex,
 } from '../../../grid/hexNumbering';
-import { gridLines } from '../../preview/previewShapes';
+import { gridLines, type GridLimits } from '../../preview/previewShapes';
 import type { PlayerGrid, PlayerMap } from '../../scene/sceneTypes';
 import { intersection, type WorldRect } from '../camera';
 import type { TextStyle, ViewSurface } from '../ViewSurface';
@@ -16,6 +16,8 @@ import type { LayerFrame, PlayerLayer } from './layerTypes';
 const DEFAULT_NUMBER_COLOR = '#ffffff';
 /** Beyond this many hexes on the map, numbering them costs more than they are worth. */
 export const MAX_NUMBERED_HEXES = 100_000;
+/** The view only builds what is on screen, so its caps are far above the preview's. */
+const VIEW_LIMITS: GridLimits = { lines: 100_000, hexes: MAX_NUMBERED_HEXES };
 
 interface Numbered {
   grid: PlayerGrid;
@@ -48,7 +50,7 @@ export function createGridLayer(): PlayerLayer {
 }
 
 function drawLines(surface: ViewSurface, frame: LayerFrame, grid: PlayerGrid, area: WorldRect): void {
-  const lines = gridLines(grid, area);
+  const lines = gridLines(grid, area, VIEW_LIMITS);
   if (!lines) return;
   const style = {
     stroke: lines.color,

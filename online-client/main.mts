@@ -69,6 +69,8 @@ const loader = new AssetLoader({
 let sessionState: PlayerSessionState | null = null;
 let scene: PlayerScene | null = null;
 let started = false;
+let tableShown = false;
+let shownScene: PlayerScene | null = null;
 
 /** localStorage can throw in private windows; the page still works without it. */
 function stored(key: string, fallback: () => string): string {
@@ -104,9 +106,10 @@ function show(view: PageScreen): void {
   if (view.kind === 'table') {
     sessionName.textContent = view.title;
     connection.textContent = view.connection;
-    // The canvas has its size only once the table is shown.
-    map?.measure();
+    // The canvas has its size only once the table is shown; after that it resizes itself.
+    if (!tableShown) map?.measure();
   }
+  tableShown = view.kind === 'table';
 }
 
 function render(state: PlayerSessionState): void {
@@ -129,7 +132,11 @@ function renderScene(): void {
   const view = pageScreen(sessionState, scene !== null);
   show(view);
   const shown = view.kind === 'table' ? scene : null;
-  map?.setScene(shown);
+  // Presence updates arrive often; the view only hears of a scene that changed.
+  if (shown !== shownScene) {
+    shownScene = shown;
+    map?.setScene(shown);
+  }
   fillList(widgetList, shown ? widgetLines(shown.widgets) : []);
   fillList(initiativeList, shown ? initiativeLines(shown.initiative) : []);
   // Read-only, for checking in the developer tools what this page received.
