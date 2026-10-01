@@ -58,6 +58,23 @@ describe('PlayerSession assets channel', () => {
     expect(events.filter((event) => event === 'disconnected')).toHaveLength(2);
   });
 
+  it('announces a link to the handler once, however often the GM admits on it', async () => {
+    const network = new MemoryNetwork();
+    const gmEnds: PeerLink[] = [];
+    network.host('gm').onConnection((link) => gmEnds.push(link));
+    const connected = vi.fn();
+    const player = new PlayerSession({
+      hostId: 'gm', name: 'A', playerKey: 'k', clientVersion: '1', transport: network.client(), onChange: () => {},
+      assets: { connected, receive: () => {}, disconnected: () => {} },
+    });
+    player.start();
+    await vi.advanceTimersByTimeAsync(0);
+    gmEnds[0]!.send('control', admitted);
+    gmEnds[0]!.send('control', admitted);
+    expect(connected).toHaveBeenCalledTimes(1);
+    player.stop();
+  });
+
   it('works without an assets handler', async () => {
     const network = new MemoryNetwork();
     const host = network.host('gm');

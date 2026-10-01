@@ -127,8 +127,11 @@ export class PlayerSession {
         this.wasAdmitted = true;
         this.attempt = 0;
         this.update({ status: 'admitted', playerId: message.playerId, title: message.session.title, reason: null });
-        this.assetLink = link;
-        this.options.assets?.connected((data) => link.send('assets', data));
+        if (this.assetLink !== link) {
+          // A repeated admission on the same link must not start the handler over.
+          this.assetLink = link;
+          this.options.assets?.connected((data) => link.send('assets', data));
+        }
         break;
       case 'denied':
         this.finish('denied', message.reason);
