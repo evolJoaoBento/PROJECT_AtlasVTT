@@ -273,4 +273,31 @@ describe('OnlineSessionService', () => {
     svc.stop();
     presented.clear();
   });
+
+  it('logs players and scene messages to the console while Log online play events is on', async () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const logging = {
+      getOnlineSettings: () => ({ ...DEFAULT_ONLINE_SETTINGS, logEvents: true }),
+      getLocalPlayerViewSettings: () => ({
+        showGrid: true, showTokenHP: false, showTokenStress: false, showTokenNameplates: false, showWidgets: true, showInitiative: true,
+      }),
+      onChange: () => () => {},
+    } as never;
+    const network = new MemoryNetwork();
+    const host = network.host('gm-id');
+    const notices: Array<(allow: boolean) => void> = [];
+    const svc = new OnlineSessionService(app, logging, {
+      createHost: async () => host, presented: new PresentedScene(),
+      showRequest: (_player, answer) => { notices.push(answer); return { hide: () => {} }; },
+    });
+    await svc.start();
+    const link = await network.client().connect('gm-id');
+    link.send('control', encodeControl({ v: 1, type: 'join', name: 'Anna', playerKey: 'k', client: { kind: 'web', version: '1' } }));
+    notices[0]!(true);
+    const events = debug.mock.calls.map((call) => call[1]);
+    expect(events).toContain('players');
+    expect(events).toContain('send scene-clear');
+    svc.stop();
+    debug.mockRestore();
+  });
 });

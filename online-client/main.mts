@@ -9,6 +9,7 @@ import { AssetLoader } from '../src/app/online/assets/AssetLoader';
 import { openIndexedDbImageStore } from '../src/app/online/assets/indexedDbImageStore';
 import { randomId } from '../src/app/online/ids';
 import { parseJoinFragment } from '../src/app/online/joinLink';
+import { createOnlineLog } from '../src/app/online/onlineLog';
 import { INCOMPLETE_LINK_TEXT, NAME_PROBLEM_TEXT, NO_CANVAS_TEXT, pageScreen, type PageScreen } from '../src/app/online/page/pageScreen';
 import type { PlayerSessionState } from '../src/app/online/PlayerSession';
 import { createJoinSession } from '../src/app/online/preview/joinSession';
@@ -69,6 +70,15 @@ const loader = new AssetLoader({
 let sessionState: PlayerSessionState | null = null;
 let scene: PlayerScene | null = null;
 let started = false;
+
+/** Diagnostics: run `localStorage.setItem('atlas-online:log', 'on')` in this page's console, then reload. */
+const log = createOnlineLog(() => {
+  try {
+    return localStorage.getItem('atlas-online:log') === 'on';
+  } catch {
+    return false;
+  }
+});
 let tableShown = false;
 let shownScene: PlayerScene | null = null;
 
@@ -113,6 +123,7 @@ function show(view: PageScreen): void {
 }
 
 function render(state: PlayerSessionState): void {
+  log.event('status', { status: state.status, reason: state.reason, players: state.players.length });
   sessionState = state;
   let ended = false;
   if (state.status === 'denied' || state.status === 'lost') {
@@ -172,10 +183,14 @@ if (!target) {
       transport: createPeerClient(target.server),
       onChange: render,
       onScene: (next) => {
+        log.event('scene', { sceneId: next?.sceneId ?? null, tokens: next ? Object.keys(next.tokens).length : 0 });
         scene = next;
         renderScene();
       },
-      onCamera: (camera) => map.setGmCamera(camera),
+      onCamera: (camera) => {
+        log.event('camera', { sceneId: camera.sceneId, centerX: camera.centerX, centerY: camera.centerY });
+        map.setGmCamera(camera);
+      },
     }).start();
   });
 }

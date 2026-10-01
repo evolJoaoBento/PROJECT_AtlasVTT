@@ -102,7 +102,10 @@ export class OnlineSessionService {
         this.notices.get(playerId)?.hide();
         this.notices.delete(playerId);
       },
-      onPlayersChanged: (players) => onlineSessionStore.setState({ players, error: null }),
+      onPlayersChanged: (players) => {
+        log.event('players', { players: players.map((player) => `${player.name}: ${player.status}`).join(', ') });
+        onlineSessionStore.setState({ players, error: null });
+      },
     });
     // Signaling hiccups while hosting are not fatal: keep hosting, show the note.
     this.unsubscribeErrors = host.onError((error) => {
