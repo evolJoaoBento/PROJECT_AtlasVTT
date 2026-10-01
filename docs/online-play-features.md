@@ -52,3 +52,18 @@ Change the shared module, never a copy in one renderer.
 ## 7. Tell players and the GM
 
 Update `README.md` and `changelog/Unreleased.md`. Update `PRIVACY.md` too when players learn something new about the GM's scene or view.
+
+## 8. When players act on the scene
+
+Players change the GM's scene only through messages the GM checks. Token moves (`src/app/online/control/`) are the pattern:
+
+- Add the message to `src/app/online/protocol.ts` with its validator, and its type to `PLAYER_MESSAGE_TYPES`. `GmSession` hands handlers nothing else from players.
+- Handle it in its own `GmSession` handler, started by `TokenControlHost` or beside it, never in `SceneBroadcaster`.
+- Check the message against what players have (`currentProjection()`).
+- Refuse while the presented scene is held or its map is loading, because the view's store then holds another map.
+- Look ids up with `Object.hasOwn`.
+- Rate-limit per player.
+- Write through a store action inside `runHistoryTransaction`, so each player action is one undo step for the GM.
+- Answer a refusal with only what the player sent, so refusals reveal nothing.
+- Validate numbers as numbers and check finiteness in the handler, because `1e400` reads as `Infinity`. A bad value then gets a refusal, not an invalid-message strike.
+- Test it end to end over `MemoryTransport` with the history-backed store in `tests/unit/online/tokenMoveFixtures.ts`. A store without history passes undo tests for the wrong reason.
