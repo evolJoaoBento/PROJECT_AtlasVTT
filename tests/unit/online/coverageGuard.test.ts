@@ -5,14 +5,16 @@ import { describe, expect, it } from 'vitest';
 const ROOT = process.cwd();
 const PROBE = path.resolve(ROOT, 'tests/unit/online/__coverage_probe__.ts');
 const PROBE_SOURCE = [
-  "import { OBJECT_COVERAGE, TEXT_FIELD_COVERAGE, type Coverage } from '../../../src/app/online/coverage';",
+  "import { OBJECT_COVERAGE, TEXT_FIELD_COVERAGE, TOKEN_FIELD_COVERAGE, type Coverage, type KeysOfUnion } from '../../../src/app/online/coverage';",
   "import type { ViewAtlasState } from '../../../src/app/storeFactory';",
-  "import type { TextElement } from '../../../src/app/types';",
+  "import type { Character, TextElement, Token } from '../../../src/app/types';",
   'export const complete: Record<keyof TextElement, Coverage> = TEXT_FIELD_COVERAGE;',
   'type GlowingText = TextElement & { glow: string };',
   'export const newField: Record<keyof GlowingText, Coverage> = TEXT_FIELD_COVERAGE;',
   "type MoreObjects = ViewAtlasState['objects'] & { portals: Record<string, unknown> };",
   'export const newKind: Record<keyof MoreObjects, Coverage> = OBJECT_COVERAGE;',
+  'type AuraToken = Token | (Character & { aura: string });',
+  'export const newCharacterField: Record<KeysOfUnion<AuraToken>, Coverage> = TOKEN_FIELD_COVERAGE;',
 ].join('\n');
 
 interface Finding { line: number; code: number; message: string }
@@ -44,9 +46,10 @@ function probeDiagnostics(): Finding[] {
 describe('coverage tables', () => {
   it('fail to compile until a new Atlas field or object kind is recorded', () => {
     const findings = probeDiagnostics();
-    // Line 3 (the complete table) compiles; lines 5 and 7 each miss exactly the new key.
-    expect(findings.map(({ line, code }) => ({ line, code }))).toEqual([{ line: 5, code: 2741 }, { line: 7, code: 2741 }]);
+    // Line 3 (the complete table) compiles; lines 5, 7 and 9 each miss exactly the new key.
+    expect(findings.map(({ line, code }) => ({ line, code }))).toEqual([{ line: 5, code: 2741 }, { line: 7, code: 2741 }, { line: 9, code: 2741 }]);
     expect(findings[0]?.message).toContain("'glow'");
     expect(findings[1]?.message).toContain("'portals'");
+    expect(findings[2]?.message).toContain("'aura'");
   }, 120_000);
 });

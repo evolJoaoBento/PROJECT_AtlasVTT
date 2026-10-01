@@ -20,6 +20,7 @@ describe('join page screens', () => {
     expect(pageScreen(state({ status: 'denied', reason: 'kicked' }), true)).toEqual({ kind: 'message', text: 'The GM removed you from the session.' });
     expect(pageScreen(state({ status: 'lost', reason: 'ended' }), true)).toEqual({ kind: 'message', text: 'The session ended.' });
     expect(pageScreen(state({ status: 'lost', reason: 'something-new' }), false)).toEqual({ kind: 'message', text: UNREACHABLE });
+    expect(pageScreen(state({ status: 'lost', reason: 'constructor' }), false)).toEqual({ kind: 'message', text: UNREACHABLE });
   });
 
   it('shows the table with a scene, also while reconnecting', () => {
