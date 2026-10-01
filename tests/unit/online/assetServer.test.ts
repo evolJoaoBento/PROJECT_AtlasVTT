@@ -119,7 +119,7 @@ describe('AssetServer', () => {
     expect(h.read).toHaveBeenCalledTimes(1);
   });
 
-  it('sends one image at a time per player, the map first, in chunks of 64 KB', async () => {
+  it('sends one image at a time per player, the map first, in chunks that make 64 KiB frames', async () => {
     const files = { [fp(1)]: imageBytes(150_000, 1), [fp(2)]: imageBytes(10, 2), [fp(3)]: imageBytes(10, 3) };
     const h = setup(sceneWithImages(fp(1), [fp(2), fp(3)]), files);
     const anna = h.player('anna');
@@ -129,7 +129,8 @@ describe('AssetServer', () => {
     expect(anna.types()).toEqual([
       `asset-start:${fp(1)}`, 'asset-end', `asset-start:${fp(2)}`, 'asset-end', `asset-start:${fp(3)}`, 'asset-end',
     ]);
-    expect(anna.chunks(1).map((chunk) => chunk.bytes.byteLength)).toEqual([65_536, 65_536, 18_928]);
+    expect(anna.chunks(1).map((chunk) => chunk.bytes.byteLength)).toEqual([65_532, 65_532, 18_936]);
+    expect(anna.sent.slice(0, 2).map((data) => (typeof data === 'string' ? 0 : data.byteLength))).toEqual([0, 65_536]); // handle + payload
     expect(anna.bytesOf(fp(1))).toEqual(files[fp(1)]);
     expect(anna.bytesOf(fp(3))).toEqual(files[fp(3)]);
   });
@@ -149,12 +150,13 @@ describe('AssetServer', () => {
     expect(anna.chunks()).toHaveLength(32);
     anna.drain();
     expect(anna.chunks()).toHaveLength(48);
+    expect(anna.types()).toEqual([`asset-start:${fp(1)}`]); // 3 MB is 49 chunks of 65 532 bytes
+    anna.drain();
+    expect(anna.chunks()).toHaveLength(49);
     expect(anna.types()).toEqual([`asset-start:${fp(1)}`, 'asset-end']);
     await settle();
-    // The next image waits for the buffer too.
-    expect(anna.types()).toEqual([`asset-start:${fp(1)}`, 'asset-end', `asset-start:${fp(2)}`]);
-    anna.drain();
-    expect(anna.types().at(-1)).toBe('asset-end');
+    // One chunk is buffered, far below the high-water mark: the next image goes straight out.
+    expect(anna.types()).toEqual([`asset-start:${fp(1)}`, 'asset-end', `asset-start:${fp(2)}`, 'asset-end']);
     expect(sameBytes(anna.bytesOf(fp(1)), big)).toBe(true);
   });
 

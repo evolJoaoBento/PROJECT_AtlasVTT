@@ -187,7 +187,7 @@ export class AssetServer implements SessionHandler {
     if (!transfer.file) return false;
     const bytes = new Uint8Array(transfer.file.bytes);
     while (transfer.offset < bytes.byteLength && queue.port.bufferedAmount() < ASSET_LIMITS.highWaterBytes) {
-      const end = Math.min(transfer.offset + ASSET_LIMITS.chunkBytes, bytes.byteLength);
+      const end = Math.min(transfer.offset + ASSET_LIMITS.sentChunkBytes, bytes.byteLength);
       queue.port.send(encodeChunk(transfer.handle, bytes.subarray(transfer.offset, end)));
       transfer.offset = end;
       if (queue.current !== transfer) return false; // cancelled while sending

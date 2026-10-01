@@ -10,8 +10,10 @@ const MB = 1024 * 1024;
 export const ASSET_LIMITS = {
   /** Largest image the GM sends and a player assembles. */
   fileBytes: 64 * MB,
-  /** File bytes in one binary chunk, after its 4-byte handle. */
+  /** Most file bytes a player accepts in one binary chunk, after its 4-byte handle. */
   chunkBytes: 64 * 1024,
+  /** File bytes the GM puts in one chunk: with the handle, a frame is exactly 64 KiB, WebRTC's default message size. */
+  sentChunkBytes: 64 * 1024 - 4,
   /** Fingerprints in one `asset-request` or `asset-cancel`. */
   idsPerMessage: 64,
   /** Fingerprints the GM keeps queued or in flight for one player; more are denied. */
