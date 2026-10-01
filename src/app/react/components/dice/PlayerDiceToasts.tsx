@@ -4,6 +4,7 @@ import type { StoreApi } from 'zustand';
 import { AtlasUIContext, type AtlasUIContextValue } from '../../root/AtlasUIContext';
 import type { ViewAtlasState } from '../../../storeFactory';
 import type { DiceRollResult } from '../../../tools/DiceTool';
+import { withoutHiddenToken } from '../../../tools/diceRolling';
 import { DiceToastContainer } from './DiceToastContainer';
 
 interface PlayerDiceToastsProps {
@@ -21,13 +22,9 @@ interface PlayerDiceToastsProps {
 export function PlayerDiceToasts({ app, store, container }: PlayerDiceToastsProps): React.ReactElement {
   const context = useMemo((): AtlasUIContextValue => ({ app, view: null, pixiApp: null, renderer: null }), [app]);
 
-  const forPlayers = useCallback((result: DiceRollResult): DiceRollResult => {
-    const source = result.source;
-    const tokenId = source?.tokenId;
-    if (!source || !tokenId || !store.getState().objects?.tokens?.[tokenId]?.isHidden) return result;
-    const { type, abilityName } = source;
-    return { ...result, source: abilityName ? { type, abilityName } : { type } };
-  }, [store]);
+  const forPlayers = useCallback((result: DiceRollResult): DiceRollResult => withoutHiddenToken(
+    result, (tokenId) => Boolean(store.getState().objects?.tokens?.[tokenId]?.isHidden),
+  ), [store]);
 
   return (
     <AtlasUIContext.Provider value={context}>

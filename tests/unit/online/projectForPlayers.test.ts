@@ -223,6 +223,21 @@ describe('projectForPlayers', () => {
     expect(fogPart.kind).toBe('message');
     expect(drawingPart.kind).toBe('message');
   });
+
+  it("sends the measurement of the map's collection, or else of its grid", () => {
+    const grid = { ...gmState().grid!, unitType: 'meters' as const, unitDistance: 1.5, measurementType: 'units' as const };
+    expect(projectForPlayers(gmState({ grid }), context()).measurement).toEqual({
+      mode: 'metric', unitType: 'meters', unitDistance: 1.5, diagonalRule: 'equidistant', rangeBands: [],
+    });
+    const collectionGrid = {
+      unitType: 'feet' as const, unitDistance: 5, measurementMode: 'abstract' as const, diagonalRule: 'alternating' as const,
+      abstractRangeBands: [{ name: 'Close', maxSquares: 1 }, { name: 'x'.repeat(300), maxSquares: Number.NaN }],
+    };
+    expect(projectForPlayers(gmState({ grid }), context({ collectionGrid })).measurement).toEqual({
+      mode: 'abstract', unitType: 'feet', unitDistance: 5, diagonalRule: 'alternating',
+      rangeBands: [{ name: 'Close', maxSquares: 1 }, { name: 'x'.repeat(128), maxSquares: 1 }],
+    });
+  });
 });
 
 describe('projectForPlayers out-of-range numbers', () => {

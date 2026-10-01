@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DRAWING_FIELD_COVERAGE, FOG_FIELD_COVERAGE, GRID_FIELD_COVERAGE, OBJECT_COVERAGE, SCENE_FIELD_COVERAGE, TEXT_FIELD_COVERAGE,
+  DRAWING_FIELD_COVERAGE, FOG_FIELD_COVERAGE, GRID_FIELD_COVERAGE, MEASUREMENT_FIELD_COVERAGE, OBJECT_COVERAGE, SCENE_FIELD_COVERAGE, TEXT_FIELD_COVERAGE,
   TOKEN_FIELD_COVERAGE, type CoverageTable, type KeysOfUnion,
 } from '../../../src/app/online/coverage';
 import { projectForPlayers, type ProjectedState } from '../../../src/app/online/scene/projectForPlayers';
@@ -9,6 +9,7 @@ import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRu
 import type { GridState } from '../../../src/app/services/MapPersistence';
 import type { ViewAtlasState } from '../../../src/app/storeFactory';
 import type { Character, DrawingStroke, TextElement } from '../../../src/app/types';
+import type { CollectionGridDefaults } from '../../../src/app/types/collectionSettingsTypes';
 import type { FogBrushStroke, FogOperation, FogRectangleFill } from '../../../src/app/types/fogTypes';
 import { createDefaultInitiativeState, type InitiativeEntry } from '../../../src/app/types/initiativeTypes';
 import type { AnyWidget } from '../../../src/app/types/widgetTypes';
@@ -196,5 +197,23 @@ describe('coverage of grid and scene fields', () => {
       initiativeTrackerOpen: (state) => ({ ...state, initiativeTrackerOpen: false }),
     };
     expectCoverage(SCENE_FIELD_COVERAGE, variants, sceneState(), project);
+  });
+});
+
+describe('coverage of the measurement', () => {
+  it("sends every grid default of the map's collection", () => {
+    const base: CollectionGridDefaults = {
+      unitType: 'feet', unitDistance: 5, measurementMode: 'abstract',
+      abstractRangeBands: [{ name: 'Close', maxSquares: 1 }], diagonalRule: 'equidistant',
+    };
+    const set = (patch: Partial<CollectionGridDefaults>) => (defaults: CollectionGridDefaults): CollectionGridDefaults => ({ ...defaults, ...patch });
+    const variants: Variants<keyof CollectionGridDefaults, CollectionGridDefaults> = {
+      unitType: set({ unitType: 'meters' }), unitDistance: set({ unitDistance: 10 }), measurementMode: set({ measurementMode: 'metric' }),
+      abstractRangeBands: set({ abstractRangeBands: [{ name: 'Far', maxSquares: 6 }] }), diagonalRule: set({ diagonalRule: 'alternating' }),
+    };
+    expectCoverage(MEASUREMENT_FIELD_COVERAGE, variants, base, (collectionGrid) => projectForPlayers(sceneState(), {
+      sceneId: 'scene-1', rules: RULES, coverage: coverageOfFog({}), assets, mapSize: { width: 1000, height: 800 },
+      memo: createProjectionMemo(), collectionGrid,
+    }).measurement);
   });
 });

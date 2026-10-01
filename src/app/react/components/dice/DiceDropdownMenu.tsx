@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { cn } from 'src/utils/cn';
 import { useKeepInView } from '../../../packages/components/primitives/useKeepInView';
 import { DiceTool } from '../../../tools/DiceTool';
+import { diceFormula } from '../../../tools/diceRolling';
 import { DiceGrid } from './DiceGrid';
 import { DiceFormulaBar } from './DiceFormulaBar';
 import { DiceToastContainer } from './DiceToastContainer';
@@ -49,13 +50,10 @@ export function DiceDropdownMenu({ diceTool, isOpen, onToggle, triggerRef }: Dic
   // ── Roll & clear ─────────────────────────────
 
   const handleRoll = useCallback((): void => {
-    const parts = Object.entries(selection)
-      .filter(([, count]) => count > 0)
-      .map(([die, count]) => (count > 1 ? `${count}${die}` : die));
+    const formula = diceFormula(selection);
+    if (!formula) return;
 
-    if (parts.length === 0) return;
-
-    diceTool.rollDice(parts.join('+'));
+    diceTool.rollDice(formula);
     onToggle();
   }, [selection, diceTool, onToggle]);
 

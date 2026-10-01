@@ -10,7 +10,7 @@ import { decodeAsset, encodeAsset } from '../../../src/app/online/assets/assetPr
 import type { ImageFiles } from '../../../src/app/online/scene/AssetRegistry';
 import { fingerprintOf } from './assetFixtures';
 import { moveSceneStore } from './tokenMoveFixtures';
-import { FakeViewport, viewWithViewport } from './cameraFixtures';
+import { emptySceneState, FakeViewport, viewWithViewport } from './cameraFixtures';
 import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
 
@@ -333,5 +333,37 @@ describe('OnlineSessionService', () => {
     expect(tokenControl!.tokensOf(playerId)).toEqual([]);
     svc.stop();
     expect(onlineSessionStore.getState().tokenControl).toBeNull();
+  });
+
+  it("sends the measurement of the presented map's collection", async () => {
+    const presented = new PresentedScene();
+    const { view, tavern } = viewWithViewport(null, { ...emptySceneState(), mapPath: 'maps/tavern.atlasmap' } as never);
+    presented.present(view, tavern);
+    const network = new MemoryNetwork();
+    const host = network.host('gm-id');
+    const answers: Array<(allow: boolean) => void> = [];
+    const asked: Array<string | null> = [];
+    const svc = new OnlineSessionService(app, settings, {
+      createHost: async () => host,
+      presented,
+      showRequest: (_player, answer) => { answers.push(answer); return { hide: () => {} }; },
+      collectionGrid: (mapPath) => {
+        asked.push(mapPath);
+        return { unitType: 'meters', unitDistance: 1.5, measurementMode: 'metric', diagonalRule: 'euclidean' };
+      },
+    });
+    await svc.start();
+    const link = await network.client().connect('gm-id');
+    const received: ControlMessage[] = [];
+    link.onMessage((_channel, data) => {
+      const decoded = decodeControl(data);
+      if (decoded.kind === 'message') received.push(decoded.message);
+    });
+    link.send('control', encodeControl({ v: 1, type: 'join', name: 'Anna', playerKey: 'k', client: { kind: 'web', version: '1' } }));
+    answers[0]!(true);
+    const snapshot = received.find((message) => message.type === 'scene-snapshot') as Extract<ControlMessage, { type: 'scene-snapshot' }>;
+    expect(snapshot.scene.measurement).toEqual({ mode: 'metric', unitType: 'meters', unitDistance: 1.5, diagonalRule: 'euclidean', rangeBands: [] });
+    expect(asked).toContain('maps/tavern.atlasmap');
+    svc.stop();
   });
 });

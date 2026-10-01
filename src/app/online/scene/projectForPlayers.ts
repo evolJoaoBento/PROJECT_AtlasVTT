@@ -5,11 +5,13 @@
  * GM's records, never spread, so anything this code does not name, including
  * fields a later Atlas adds, is left out.
  */
+import { resolveMeasurementSettings } from '../../grid/measurementFormat';
 import { DEFAULT_HEX_NUMBER_OPACITY, isHexNumberFormat } from '../../grid/hexNumbering';
 import { tokenHp, tokenStress } from '../../pixi/token-renderer/tokenResources';
 import type { GridState } from '../../services/MapPersistence';
 import type { ViewAtlasState } from '../../storeFactory';
 import type { Character, TokenEntity } from '../../types';
+import type { CollectionGridDefaults } from '../../types/collectionSettingsTypes';
 import type { AssetIds } from './AssetRegistry';
 import { finiteOr, finiteOrNull, hpOrNull, oneOf, positiveOr, resourceOrNull, textOr, textOrNull, unitOr } from './coerce';
 import type { FogCoverage } from './FogCoverage';
@@ -18,8 +20,8 @@ import type { PlayerViewRules } from './playerViewRules';
 import { projectInitiative, projectWidgets } from './projectPanels';
 import { projectDrawings, projectFog, projectRecord, projectTexts, type ProjectionMemo } from './projectRecords';
 import {
-  PLAYER_GRID_LINES, PLAYER_GRID_TYPES, SCENE_LIMITS, SCENE_RANGES,
-  type MapSize, type PlayerCondition, type PlayerGrid, type PlayerMap, type PlayerScene, type PlayerToken,
+  PLAYER_DIAGONAL_RULES, PLAYER_GRID_LINES, PLAYER_GRID_TYPES, PLAYER_MEASUREMENT_MODES, PLAYER_UNIT_TYPES, SCENE_LIMITS, SCENE_RANGES,
+  type MapSize, type PlayerCondition, type PlayerGrid, type PlayerMap, type PlayerMeasurement, type PlayerScene, type PlayerToken,
 } from './sceneTypes';
 
 export type ProjectedState = Pick<
@@ -35,6 +37,8 @@ export interface ProjectionContext {
   assets: AssetIds;
   mapSize: MapSize;
   memo: ProjectionMemo;
+  /** The grid defaults of the map's collection, which decide the measurement; without them the map's grid does. */
+  collectionGrid?: CollectionGridDefaults | null;
 }
 
 const DEFAULT_RING = '#ffffff';
@@ -55,6 +59,7 @@ export function projectForPlayers(state: ProjectedState, context: ProjectionCont
     drawings: projectDrawings(objects?.drawings, context.coverage, context.memo),
     widgets: projectWidgets(state, context.rules),
     initiative: projectInitiative(state, new Set(Object.keys(tokens)), context.rules),
+    measurement: projectMeasurement(context.collectionGrid ?? null, state.grid),
   };
 }
 
@@ -81,6 +86,23 @@ function projectGrid(grid: GridState | null, rules: PlayerViewRules): PlayerGrid
     lineWidth: positiveOr(grid.lineWidth, 1, SCENE_RANGES.stroke),
     hexNumbers,
     hexNumberOpacity: hexNumbers ? unitOr(grid.hexNumberOpacity, DEFAULT_HEX_NUMBER_OPACITY) : null,
+  };
+}
+
+/** The settings Atlas's ruler and measure tool use for this map, field by field. */
+function projectMeasurement(collection: CollectionGridDefaults | null, grid: GridState | null): PlayerMeasurement {
+  const settings = resolveMeasurementSettings(collection ?? undefined, grid);
+  const rangeBands: unknown = settings.rangeBands;
+  const bands = Array.isArray(rangeBands) ? (rangeBands as unknown[]) : [];
+  return {
+    mode: oneOf(PLAYER_MEASUREMENT_MODES, settings.mode, 'metric'),
+    unitType: oneOf(PLAYER_UNIT_TYPES, settings.unitType, 'feet'),
+    unitDistance: finiteOr(settings.unitDistance, 5, SCENE_RANGES.unitDistance),
+    diagonalRule: oneOf(PLAYER_DIAGONAL_RULES, settings.diagonalRule, 'equidistant'),
+    rangeBands: bands.slice(0, SCENE_LIMITS.rangeBands).map((band) => {
+      const { name, maxSquares } = (typeof band === 'object' && band !== null ? band : {}) as { name?: unknown; maxSquares?: unknown };
+      return { name: textOr(name, '', SCENE_LIMITS.idLength), maxSquares: finiteOr(maxSquares, 1, SCENE_RANGES.rangeBand) };
+    }),
   };
 }
 

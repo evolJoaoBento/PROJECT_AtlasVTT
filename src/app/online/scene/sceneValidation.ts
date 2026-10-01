@@ -5,7 +5,7 @@
  * patch can never reach an object's prototype.
  */
 import {
-  PLAYER_DRAWING_TYPES, PLAYER_GRID_LINES, PLAYER_GRID_TYPES, PLAYER_HEX_NUMBERS, PLAYER_TEXT_ALIGNS, PLAYER_WIDGET_TYPES,
+  PLAYER_DIAGONAL_RULES, PLAYER_DRAWING_TYPES, PLAYER_GRID_LINES, PLAYER_GRID_TYPES, PLAYER_HEX_NUMBERS, PLAYER_MEASUREMENT_MODES, PLAYER_TEXT_ALIGNS, PLAYER_UNIT_TYPES, PLAYER_WIDGET_TYPES,
   SCENE_FIELD_KEYS, SCENE_LIMITS, SCENE_RANGES, SCENE_RECORD_KEYS, type SceneFieldKey, type SceneRecordKey,
 } from './sceneTypes';
 
@@ -152,11 +152,22 @@ function isIdList(value: unknown): boolean {
   return Array.isArray(value) && value.length <= SCENE_LIMITS.records && value.every((id) => isSceneId(id));
 }
 
+function isRangeBand(value: unknown): boolean {
+  return isFields(value) && isText(value.name, SCENE_LIMITS.idLength) && inRange(SCENE_RANGES.rangeBand)(value.maxSquares);
+}
+function isPlayerMeasurement(value: unknown): boolean {
+  return isFields(value) && oneOf(PLAYER_MEASUREMENT_MODES)(value.mode) && oneOf(PLAYER_UNIT_TYPES)(value.unitType)
+    && inRange(SCENE_RANGES.unitDistance)(value.unitDistance) && oneOf(PLAYER_DIAGONAL_RULES)(value.diagonalRule)
+    && Array.isArray(value.rangeBands) && value.rangeBands.length <= SCENE_LIMITS.rangeBands
+    && value.rangeBands.every((band) => isRangeBand(band));
+}
+
 const FIELD_CHECKS: Record<SceneFieldKey, Check> = {
   map: isPlayerMap,
   grid: nullable(isPlayerGrid),
   widgets: isPlayerWidgets,
   initiative: nullable(isPlayerInitiative),
+  measurement: isPlayerMeasurement,
 };
 const RECORD_CHECKS: Record<SceneRecordKey, Check> = {
   tokens: isPlayerToken,

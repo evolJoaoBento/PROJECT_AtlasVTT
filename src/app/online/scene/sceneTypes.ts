@@ -140,6 +140,26 @@ export interface PlayerInitiative {
   entries: PlayerInitiativeEntry[];
 }
 
+export const PLAYER_MEASUREMENT_MODES = ['metric', 'abstract'] as const;
+export const PLAYER_UNIT_TYPES = ['feet', 'yards', 'meters', 'units', 'custom'] as const;
+export const PLAYER_DIAGONAL_RULES = ['equidistant', 'alternating', 'euclidean'] as const;
+
+export interface PlayerRangeBand {
+  name: string;
+  /** The band covers distances up to this many squares. */
+  maxSquares: number;
+}
+
+/** The GM's measurement settings (Atlas's `MeasurementSettings`), so the page labels distances as Atlas does. */
+export interface PlayerMeasurement {
+  mode: typeof PLAYER_MEASUREMENT_MODES[number];
+  unitType: typeof PLAYER_UNIT_TYPES[number];
+  /** Units per cell. */
+  unitDistance: number;
+  diagonalRule: typeof PLAYER_DIAGONAL_RULES[number];
+  rangeBands: PlayerRangeBand[];
+}
+
 export interface PlayerScene {
   /** Random per presentation: a new presentation or scene gets a new id. */
   sceneId: string;
@@ -151,6 +171,7 @@ export interface PlayerScene {
   drawings: Record<string, PlayerDrawing>;
   widgets: PlayerWidget[];
   initiative: PlayerInitiative | null;
+  measurement: PlayerMeasurement;
 }
 
 /** A snapshot's scene: everything but the fog and the drawings, which follow in parts. */
@@ -160,7 +181,7 @@ export type PlayerSceneBody = Omit<PlayerScene, 'fog' | 'drawings'>;
 export const SCENE_RECORD_KEYS = ['tokens', 'fog', 'texts', 'drawings'] as const;
 export type SceneRecordKey = typeof SCENE_RECORD_KEYS[number];
 /** Fields replaced as a whole when they differ. */
-export const SCENE_FIELD_KEYS = ['map', 'grid', 'widgets', 'initiative'] as const;
+export const SCENE_FIELD_KEYS = ['map', 'grid', 'widgets', 'initiative', 'measurement'] as const;
 export type SceneFieldKey = typeof SCENE_FIELD_KEYS[number];
 
 export interface ScenePatchBody {
@@ -180,6 +201,7 @@ export const SCENE_LIMITS = {
   conditions: 64,
   widgets: 64,
   initiativeEntries: 200,
+  rangeBands: 32,
 } as const;
 
 /** Records in replay order: by `orderOf`, then by id, so both sides agree on ties. */
@@ -205,4 +227,6 @@ export const SCENE_RANGES = {
   tokenSize: [0.05, 100],
   textBox: [0, 200_000],
   opacity: [0, 1],
+  unitDistance: [0, 1_000_000],
+  rangeBand: [1, 1_000_000],
 } as const satisfies Record<string, Range>;

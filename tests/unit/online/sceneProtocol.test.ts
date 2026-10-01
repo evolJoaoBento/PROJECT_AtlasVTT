@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeControl, encodeControl, type ControlMessage } from '../../../src/app/online/protocol';
+import { diffScenes } from '../../../src/app/online/scene/sceneDiff';
 import { SCENE_LIMITS, sortedByOrder } from '../../../src/app/online/scene/sceneTypes';
 import { fogRect, playerScene, playerToken, sceneBody } from './sceneFixtures';
 
@@ -157,6 +158,24 @@ describe('scene value bounds', () => {
 
   it('tolerates keys it does not know, so newer GMs can add fields', () => {
     expect(valid(snapshot(withToken({ isHidden: true })))).toBe(true);
+  });
+
+  it('checks the measurement settings, which every snapshot carries', () => {
+    const withMeasurement = (overrides: object): unknown => ({ ...body, measurement: { ...body.measurement, ...overrides } });
+    expect(valid(snapshot(withMeasurement({ unitDistance: 1_000_000 })))).toBe(true);
+    expect(valid(snapshot(withMeasurement({ unitDistance: -1 })))).toBe(false);
+    expect(valid(snapshot(withMeasurement({ unitType: 'furlongs' })))).toBe(false);
+    expect(valid(snapshot(withMeasurement({ diagonalRule: 'taxicab' })))).toBe(false);
+    expect(valid(snapshot(withMeasurement({ rangeBands: [{ name: 'Near', maxSquares: 0 }] })))).toBe(false);
+    expect(valid(snapshot(withMeasurement({ rangeBands: Array.from({ length: 33 }, () => ({ name: 'Near', maxSquares: 1 })) })))).toBe(false);
+    const { measurement: _measurement, ...withoutMeasurement } = body;
+    expect(valid(snapshot(withoutMeasurement))).toBe(false);
+  });
+
+  it('patches a changed measurement as a whole', () => {
+    const previous = playerScene();
+    const next = playerScene({ measurement: { ...previous.measurement, unitDistance: 10 } });
+    expect(diffScenes(previous, next)?.set).toEqual({ measurement: next.measurement });
   });
 });
 

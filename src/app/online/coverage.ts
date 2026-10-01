@@ -13,6 +13,7 @@
 import type { GridState } from '../services/MapPersistence';
 import type { ViewAtlasState } from '../storeFactory';
 import type { DrawingStroke, TextElement, TokenEntity } from '../types';
+import type { CollectionGridDefaults } from '../types/collectionSettingsTypes';
 import type { FogOperation } from '../types/fogTypes';
 import type { ProjectedState } from './scene/projectForPlayers';
 
@@ -32,7 +33,6 @@ const notYet = (piece: string): Coverage => ({ status: 'not-yet', piece });
 
 const KIND = gmOnly('the record kind; players get each kind in its own list');
 const WALLS_AND_LIGHTING = notYet('walls and lighting (behind WALLS_AND_LIGHTING_ENABLED)');
-const MEASURING = notYet('measuring (a later piece)');
 const BARS_ONLY = gmOnly('the player window shows only the HP and stress bars');
 const LOCAL_PLAYER_LINK = gmOnly('links the token to a local player character, not to an online player');
 
@@ -151,9 +151,10 @@ export const GRID_FIELD_COVERAGE: CoverageTable<keyof GridState> = {
   scale: gmOnly('used while aligning the grid to the map'),
   mapScale: gmOnly('used while aligning the grid to the map'),
   autoDetect: gmOnly('a one-time request to align the grid on the first load'),
-  unitType: MEASURING,
-  unitDistance: MEASURING,
-  measurementType: MEASURING,
+  // Without a collection, these decide the measurement players get.
+  unitType: SENT,
+  unitDistance: SENT,
+  measurementType: SENT,
 };
 
 /** The store fields the projection reads (`sliceOf` in `sceneSources.ts` watches the same ones). */
@@ -165,4 +166,13 @@ export const SCENE_FIELD_COVERAGE: CoverageTable<keyof ProjectedState> = {
   widgetValues: SENT,
   initiative: SENT,
   initiativeTrackerOpen: SENT,
+};
+
+/** The collection's measurement settings, which decide how the page labels distances (ruler, measure tool). */
+export const MEASUREMENT_FIELD_COVERAGE: CoverageTable<keyof CollectionGridDefaults> = {
+  unitType: SENT,
+  unitDistance: SENT,
+  measurementMode: SENT,
+  abstractRangeBands: SENT,
+  diagonalRule: SENT,
 };

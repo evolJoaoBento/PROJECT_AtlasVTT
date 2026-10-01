@@ -129,7 +129,7 @@ export class PlayerSceneMirror {
     // Named fields only: the body is network data and may carry keys this version does not know.
     this.current = {
       sceneId: body.sceneId, map: body.map, grid: body.grid, tokens: body.tokens, texts: body.texts,
-      widgets: body.widgets, initiative: body.initiative,
+      widgets: body.widgets, initiative: body.initiative, measurement: body.measurement,
       fog: toRecord(pending.fog), drawings: toRecord(pending.drawings),
     };
     this.options.onChange(this.current);

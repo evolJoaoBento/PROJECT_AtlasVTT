@@ -3,10 +3,12 @@ import type { SessionHandler, SessionPlayer } from '../GmSession';
 import type { ControlMessage } from '../protocol';
 import type { PresentedSceneInfo, PresentedSceneListener } from '../../services/PresentedScene';
 import type { ViewAtlasState } from '../../storeFactory';
+import type { CollectionGridDefaults } from '../../types/collectionSettingsTypes';
 import type { FogOperation } from '../../types/fogTypes';
 import type { AssetRegistry } from './AssetRegistry';
 import { FogCoverage } from './FogCoverage';
 import type { PlayerViewRules } from './playerViewRules';
+import type { ProjectionContext } from './projectForPlayers';
 import { projectFog, type ProjectionMemo } from './projectRecords';
 import { SCENE_LIMITS } from './sceneTypes';
 
@@ -35,6 +37,8 @@ export interface SceneBroadcasterOptions {
   assets: Pick<AssetRegistry, 'idFor' | 'onChange'>;
   /** Tells the GM something; `OnlineSessionService` shows an Obsidian notice. */
   notify(message: string): void;
+  /** The grid defaults of the collection holding the map at `mapPath`; tests leave it out. */
+  collectionGrid?: (mapPath: string | null) => CollectionGridDefaults | null;
 }
 
 export type Slice = readonly unknown[];
@@ -82,4 +86,12 @@ export class FogCoverageCache {
     }
     return this.entry;
   }
+}
+
+/** What the projection needs of the presented scene besides its store's slice. */
+export function sceneContext(
+  scene: PresentedSceneInfo,
+  options: Pick<SceneBroadcasterOptions, 'collectionGrid'>,
+): Pick<ProjectionContext, 'mapSize' | 'collectionGrid'> {
+  return { mapSize: scene.mapSize(), collectionGrid: options.collectionGrid?.(scene.store.getState().mapPath ?? null) ?? null };
 }

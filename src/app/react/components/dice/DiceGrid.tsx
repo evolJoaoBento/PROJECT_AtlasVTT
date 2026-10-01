@@ -1,7 +1,8 @@
 import React from 'react';
-import { diceIcons, DiceType } from '../DiceIcons';
+import { diceIcons } from '../DiceIcons';
 import { cn } from '../../../../utils/cn';
 import { LabelTooltip } from '../../../packages/components/primitives/tooltip';
+import { DICE_TYPES } from '../../../tools/diceRolling';
 
 interface DiceSelection {
   [die: string]: number;
@@ -13,12 +14,10 @@ interface DiceGridProps {
   onRemove: (die: string, event: React.MouseEvent) => void;
 }
 
-const AVAILABLE_DICE: DiceType[] = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
-
 export function DiceGrid({ selection, onAdd, onRemove }: DiceGridProps): React.ReactElement {
   return (
     <div className="atlas-dice-grid">
-      {AVAILABLE_DICE.map(die => {
+      {DICE_TYPES.map(die => {
         const DiceIcon = diceIcons[die];
         const count = selection[die] ?? 0;
         const isSelected = count > 0;

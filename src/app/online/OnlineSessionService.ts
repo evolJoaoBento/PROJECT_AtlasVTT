@@ -1,6 +1,9 @@
 import { Notice, type App } from 'obsidian';
+import { AssetService } from '../services/AssetService';
+import { collectionGridDefaultsFor } from '../services/mapMeasurementSettings';
 import { presentedScene } from '../services/PresentedScene';
 import type { SettingsService } from '../services/SettingsService';
+import type { CollectionGridDefaults } from '../types/collectionSettingsTypes';
 import { GmSession, type SessionPlayer } from './GmSession';
 import { buildJoinUrl, parseJoinFragment } from './joinLink';
 import { createOnlineLog, loggedSession, logPresentedScene } from './onlineLog';
@@ -26,6 +29,8 @@ interface Deps {
   presented?: PresentedSceneSource;
   /** The vault's images; tests pass their own. */
   images?: ImageFiles;
+  /** The grid defaults of a map's collection; Atlas's asset index unless a test passes its own. */
+  collectionGrid?: (mapPath: string | null) => CollectionGridDefaults | null;
 }
 
 function errorText(error: unknown): string {
@@ -53,12 +58,15 @@ export class OnlineSessionService {
   private readonly notices = new Map<string, { hide(): void }>();
   private readonly createHost: (options: PeerServerOptions) => Promise<HostTransport>;
   private readonly showRequest: NonNullable<Deps['showRequest']>;
+  private readonly collectionGrid: (mapPath: string | null) => CollectionGridDefaults | null;
 
   constructor(private readonly app: App, private readonly settings: SettingsService, deps: Deps = {}) {
     this.createHost = deps.createHost ?? createPeerHost;
     this.showRequest = deps.showRequest ?? showJoinRequestNotice;
     this.presented = deps.presented ?? presentedScene;
     this.images = deps.images ?? vaultImageFiles(app);
+    this.collectionGrid = deps.collectionGrid
+      ?? ((mapPath) => (mapPath ? collectionGridDefaultsFor(AssetService.getInstance(app), mapPath) : null));
     OnlineSessionService.instances.set(app, this);
   }
 
@@ -124,7 +132,7 @@ export class OnlineSessionService {
     // The broadcaster and the camera sender send through the log, so diagnostics see every scene message.
     const scenes = loggedSession(session, log);
     const broadcaster = new SceneBroadcaster({
-      session: scenes, presented: this.presented, settings: this.settings, assets: registry, notify,
+      session: scenes, presented: this.presented, settings: this.settings, assets: registry, notify, collectionGrid: this.collectionGrid,
     });
     // The GM's view of the presented scene, which players follow by default; registered after the broadcaster.
     const cameraSender = new CameraSender({ session: scenes, presented: this.presented, projection: broadcaster });

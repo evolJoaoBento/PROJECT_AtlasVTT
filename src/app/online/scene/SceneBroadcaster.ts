@@ -19,7 +19,7 @@ import { createProjectionMemo, type ProjectionMemo } from './projectRecords';
 import { diffScenes } from './sceneDiff';
 import { patchMessage, snapshotMessages, type SceneOutgoing } from './sceneMessages';
 import {
-  FOG_TRUNCATED_NOTICE, FogCoverageCache, SCENE_TICK_MS, SCENE_TOO_LARGE_NOTICE, sameSlice, sliceOf,
+  FOG_TRUNCATED_NOTICE, FogCoverageCache, SCENE_TICK_MS, SCENE_TOO_LARGE_NOTICE, sameSlice, sceneContext, sliceOf,
   type LiveScene, type SceneBroadcasterOptions,
 } from './sceneSources';
 import type { PlayerScene } from './sceneTypes';
@@ -254,7 +254,7 @@ export class SceneBroadcaster implements SessionHandler {
       rules: this.rules,
       coverage: this.coverageOf(state.objects?.fog ?? {}),
       assets: this.options.assets,
-      mapSize: live.scene.mapSize(),
+      ...sceneContext(live.scene, this.options),
       memo: this.memo,
     });
   }

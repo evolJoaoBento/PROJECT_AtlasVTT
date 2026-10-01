@@ -2,6 +2,7 @@ import React from 'react';
 import { Dices, X } from 'lucide-react';
 import { Button } from '../../../packages/components/primitives/button';
 import { LabelTooltip } from '../../../packages/components/primitives/tooltip';
+import { diceTerms } from '../../../tools/diceRolling';
 
 interface DiceSelection {
   [die: string]: number;
@@ -14,10 +15,7 @@ interface DiceFormulaBarProps {
 }
 
 function buildFormula(selection: DiceSelection): string {
-  return Object.entries(selection)
-    .filter(([, count]) => count > 0)
-    .map(([die, count]) => (count > 1 ? `${count}${die}` : die))
-    .join(' + ');
+  return diceTerms(selection).join(' + ');
 }
 
 export function DiceFormulaBar({ selection, onClear, onRoll }: DiceFormulaBarProps): React.ReactElement {
