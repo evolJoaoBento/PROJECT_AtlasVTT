@@ -642,4 +642,25 @@ describe('SceneBroadcaster', () => {
     await tick();
     expect(player.scene?.map.asset).toBe(fingerprintOf('new map bytes'));
   });
+
+  it('tells projection listeners each change of what players have', async () => {
+    const h = setup();
+    const seen: Array<string[] | null> = [];
+    const stop = h.broadcaster.onProjection((scene) => seen.push(scene ? Object.keys(scene.tokens) : null));
+    const { view, store, tavern } = fakeView(sceneState({ hero: character('hero', 140) }));
+    h.presented.present(view, tavern);
+    expect(seen).toEqual([['hero']]);
+
+    store.setState((state) => ({ objects: { ...state.objects, tokens: { ...state.objects.tokens, orc: character('orc', 300) } } }));
+    await tick();
+    expect(seen).toEqual([['hero'], ['hero', 'orc']]);
+    await tick(); // nothing changed: no call
+    expect(seen).toHaveLength(2);
+
+    h.presented.clear();
+    expect(seen).toEqual([['hero'], ['hero', 'orc'], null]);
+    stop();
+    h.presented.present(view, tavern);
+    expect(seen).toHaveLength(3);
+  });
 });

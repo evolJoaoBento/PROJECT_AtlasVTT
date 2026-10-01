@@ -51,6 +51,21 @@ export function sameSlice(a: Slice, b: Slice): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+/** Changes are batched and sent at most this often. */
+export const SCENE_TICK_MS = 50;
+
+export const SCENE_TOO_LARGE_NOTICE = 'This scene is too large to send to online players.';
+export const FOG_TRUNCATED_NOTICE = 'This scene has too much fog to show to online players.';
+
+/** The presented scene while it is shown (not held). */
+export interface LiveScene {
+  readonly scene: PresentedSceneInfo;
+  readonly sceneId: string;
+  loading: boolean;
+  slice: Slice | null;
+  readonly unsubscribe: () => void;
+}
+
 /** Coverage rasterised from the fog players receive, rebuilt only when the fog reference changes. */
 export class FogCoverageCache {
   private entry: { fog: Readonly<Record<string, FogOperation>>; coverage: FogCoverage; truncated: boolean } | null = null;

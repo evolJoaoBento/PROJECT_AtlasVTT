@@ -19,30 +19,17 @@ import { createProjectionMemo, type ProjectionMemo } from './projectRecords';
 import { diffScenes } from './sceneDiff';
 import { patchMessage, snapshotMessages, type SceneOutgoing } from './sceneMessages';
 import {
-  FogCoverageCache, sameSlice, sliceOf, type Slice,
-  type SceneBroadcasterOptions,
+  FOG_TRUNCATED_NOTICE, FogCoverageCache, SCENE_TICK_MS, SCENE_TOO_LARGE_NOTICE, sameSlice, sliceOf,
+  type LiveScene, type SceneBroadcasterOptions,
 } from './sceneSources';
 import type { PlayerScene } from './sceneTypes';
 
 export type { PlayerViewSettingsSource, PresentedSceneSource, SceneBroadcasterOptions, SceneSession } from './sceneSources';
-
-/** Changes are batched and sent at most this often. */
-export const SCENE_TICK_MS = 50;
-
-export const SCENE_TOO_LARGE_NOTICE = 'This scene is too large to send to online players.';
-export const FOG_TRUNCATED_NOTICE = 'This scene has too much fog to show to online players.';
-
-/** The presented scene while it is shown (not held). */
-interface LiveScene {
-  readonly scene: PresentedSceneInfo;
-  readonly sceneId: string;
-  loading: boolean;
-  slice: Slice | null;
-  readonly unsubscribe: () => void;
-}
+export { FOG_TRUNCATED_NOTICE, SCENE_TICK_MS, SCENE_TOO_LARGE_NOTICE } from './sceneSources';
 
 export class SceneBroadcaster implements SessionHandler {
   private readonly stops: Array<() => void> = [];
+  private readonly projectionListeners = new Set<(scene: PlayerScene | null) => void>();
   private memo: ProjectionMemo = createProjectionMemo();
   private rules: PlayerViewRules;
   private live: LiveScene | null = null;
@@ -92,6 +79,12 @@ export class SceneBroadcaster implements SessionHandler {
     return this.lastSent;
   }
 
+  /** Tells `listener` each time the scene players have changes; the asset server serves only its images. */
+  onProjection(listener: (scene: PlayerScene | null) => void): () => void {
+    this.projectionListeners.add(listener);
+    return () => { this.projectionListeners.delete(listener); };
+  }
+
   /** Also fires when a newer tab of a player replaces an older one: always a full snapshot. */
   onAdmitted(player: SessionPlayer): void {
     this.sendCurrent(player.playerId);
@@ -128,10 +121,7 @@ export class SceneBroadcaster implements SessionHandler {
     this.detach();
     if (this.shown === scene) return;
     const hadScene = this.shown !== null;
-    this.shown = null;
-    this.sceneId = null;
-    this.lastSent = null;
-    this.snapshot = null;
+    this.forgetScene();
     if (hadScene) this.clearPlayers();
   }
 
@@ -172,11 +162,21 @@ export class SceneBroadcaster implements SessionHandler {
 
   private clearScene(): void {
     this.detach();
+    this.forgetScene();
+    this.clearPlayers();
+  }
+
+  private forgetScene(): void {
     this.shown = null;
     this.sceneId = null;
-    this.lastSent = null;
     this.snapshot = null;
-    this.clearPlayers();
+    this.setSent(null);
+  }
+
+  /** Every change of what players have goes through here, so projection listeners see each one. */
+  private setSent(scene: PlayerScene | null): void {
+    this.lastSent = scene;
+    for (const listener of [...this.projectionListeners]) listener(scene);
   }
 
   private clearPlayers(): void {
@@ -208,7 +208,7 @@ export class SceneBroadcaster implements SessionHandler {
     const next = this.project(live);
     const patch = diffScenes(previous, next);
     if (!patch) return;
-    this.lastSent = next;
+    this.setSent(next);
     const message = patchMessage(patch);
     for (const playerId of this.channels.admitted()) {
       if (message) this.channels.sendSequenced(playerId, message);
@@ -222,7 +222,7 @@ export class SceneBroadcaster implements SessionHandler {
       this.clearForTruncatedFog(live);
       return;
     }
-    this.lastSent = this.project(live);
+    this.setSent(this.project(live));
     for (const playerId of this.channels.admitted()) this.sendSnapshot(playerId);
   }
 
@@ -241,7 +241,7 @@ export class SceneBroadcaster implements SessionHandler {
       this.options.notify(FOG_TRUNCATED_NOTICE);
     }
     const hadScene = this.lastSent !== null;
-    this.lastSent = null;
+    this.setSent(null);
     this.snapshot = null;
     if (hadScene) this.clearPlayers();
   }
