@@ -333,4 +333,51 @@ describe('GmSession', () => {
     session.allow(requests[2]!.playerId);
     expect(bob.received).toEqual([]);
   });
+
+  it("passes admitted players' asset data to handlers and gives out their assets channel", async () => {
+    const { network, session, requests } = setup();
+    const received: Array<[string, unknown]> = [];
+    session.use({ onAssetData: (who, data) => received.push([who.name, data]) });
+    const anna = await player(network);
+    const atAnna: unknown[] = [];
+    anna.link.onMessage((channel, data) => { if (channel === 'assets') atAnna.push(data); });
+
+    anna.link.send('control', join('Anna', 'key-a'));
+    anna.link.send('assets', 'too early');
+    expect(received).toEqual([]);
+    const playerId = requests[0]!.playerId;
+    expect(session.assetChannel(playerId)).toBeNull();
+
+    session.allow(playerId);
+    anna.link.send('assets', 'hello');
+    expect(received).toEqual([['Anna', 'hello']]);
+    const port = session.assetChannel(playerId)!;
+    port.send('image');
+    expect(atAnna).toEqual(['image']);
+    expect(port.bufferedAmount()).toBe(0);
+    let closed = 0;
+    port.onClose(() => closed++);
+
+    session.kick(playerId);
+    expect(closed).toBe(1);
+    expect(session.assetChannel(playerId)).toBeNull();
+  });
+
+  it("ignores asset data from a replaced tab's old link and serves the new one", async () => {
+    const { network, session, requests } = setup();
+    const received: unknown[] = [];
+    session.use({ onAssetData: (_who, data) => received.push(data) });
+    const first = await player(network);
+    first.link.send('control', join('Anna', 'key-a'));
+    session.allow(requests[0]!.playerId);
+    const second = await player(network);
+    second.link.send('control', join('Anna', 'key-a'));
+    first.link.send('assets', 'stale');
+    second.link.send('assets', 'fresh');
+    expect(received).toEqual(['fresh']);
+    const atSecond: unknown[] = [];
+    second.link.onMessage((channel, data) => { if (channel === 'assets') atSecond.push(data); });
+    session.assetChannel(requests[0]!.playerId)!.send('to-new');
+    expect(atSecond).toEqual(['to-new']);
+  });
 });

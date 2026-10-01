@@ -40,3 +40,12 @@ export interface ClientTransport {
   /** Must settle (resolve or reject) within a bounded time; PlayerSession relies on it for its give-up. */
   connect(hostId: string): Promise<PeerLink>;
 }
+
+/** One channel of a link, for code that must reach nothing else of it (the image server). */
+export interface ChannelPort {
+  send(data: string | ArrayBuffer): void;
+  bufferedAmount(): number;
+  onDrain(threshold: number, cb: () => void): Unsubscribe;
+  /** The link closed: this port is dead. */
+  onClose(cb: () => void): Unsubscribe;
+}

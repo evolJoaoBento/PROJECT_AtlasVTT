@@ -25,6 +25,14 @@ export interface PlayerSessionState {
 export const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15000] as const;
 export const RECONNECT_GIVE_UP_MS = 300_000;
 
+/** The image loader's view of the session: the session only passes assets-channel data through. */
+export interface PlayerAssetHandler {
+  /** Admitted on a link: `send` reaches the GM's assets channel on that link until `disconnected`. */
+  connected(send: (data: string) => void): void;
+  receive(data: unknown): void;
+  disconnected(): void;
+}
+
 export interface PlayerSessionOptions {
   hostId: string;
   name: string;
@@ -34,6 +42,8 @@ export interface PlayerSessionOptions {
   onChange(state: PlayerSessionState): void;
   /** The presented scene changed: a snapshot or patch applied, or null when the GM shows none. */
   onScene?(scene: PlayerScene | null): void;
+  /** Gets the assets channel while admitted (the join page's image loader). */
+  assets?: PlayerAssetHandler;
 }
 
 export class PlayerSession {
@@ -45,6 +55,7 @@ export class PlayerSession {
   private attempt = 0;
   private droppedAt = 0;
   private retryTimer: number | null = null;
+  private assetLink: PeerLink | null = null;
 
   private readonly mirror: PlayerSceneMirror;
 
@@ -72,6 +83,7 @@ export class PlayerSession {
     if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
     this.retryTimer = null;
     this.mirror.dispose();
+    this.leaveAssets();
     this.link?.send('control', encodeControl({ v: 1, type: 'bye', reason: 'left' }));
     this.link?.close();
   }
@@ -89,8 +101,14 @@ export class PlayerSession {
       return;
     }
     this.link = link;
-    link.onMessage((channel, data) => { if (channel === 'control') this.receive(link, data); });
-    link.onClose(() => { if (this.link === link) { this.link = null; this.dropped(); } });
+    link.onMessage((channel, data) => {
+      if (channel === 'control') this.receive(link, data);
+      else if (this.assetLink === link && !this.finished) this.options.assets?.receive(data);
+    });
+    link.onClose(() => {
+      if (this.assetLink === link) this.leaveAssets();
+      if (this.link === link) { this.link = null; this.dropped(); }
+    });
     link.send('control', encodeControl({
       v: 1, type: 'join', name: this.options.name, playerKey: this.options.playerKey,
       client: { kind: 'web', version: this.options.clientVersion },
@@ -109,6 +127,8 @@ export class PlayerSession {
         this.wasAdmitted = true;
         this.attempt = 0;
         this.update({ status: 'admitted', playerId: message.playerId, title: message.session.title, reason: null });
+        this.assetLink = link;
+        this.options.assets?.connected((data) => link.send('assets', data));
         break;
       case 'denied':
         this.finish('denied', message.reason);
@@ -160,7 +180,14 @@ export class PlayerSession {
     if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
     this.retryTimer = null;
     this.mirror.dispose();
+    this.leaveAssets();
     this.update({ status, reason });
+  }
+
+  private leaveAssets(): void {
+    if (!this.assetLink) return;
+    this.assetLink = null;
+    this.options.assets?.disconnected();
   }
 
   private update(partial: Partial<PlayerSessionState>): void {

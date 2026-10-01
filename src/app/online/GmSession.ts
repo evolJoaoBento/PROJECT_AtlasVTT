@@ -1,40 +1,12 @@
 // src/app/online/GmSession.ts
+import { SESSION_LIMITS, type GmSessionOptions, type PlayerStatus, type SessionHandler, type SessionPlayer } from './gmSessionTypes';
 import { randomId } from './ids';
 import { decodeControl, encodeControl, normalizePlayerName, type ControlMessage, type DenyReason, type PresencePlayer } from './protocol';
-import type { HostTransport, PeerLink, Unsubscribe } from './transport/types';
+import { channelPort } from './transport/channelPort';
+import type { ChannelPort, HostTransport, PeerLink, Unsubscribe } from './transport/types';
 
-export const SESSION_LIMITS = {
-  joinTimeoutMs: 10_000,
-  requestTimeoutMs: 120_000,
-  pingIntervalMs: 5_000,
-  pingTimeoutMs: 15_000,
-  maxPlayers: 12,
-  maxPendingRequests: 12,
-  maxInvalidMessages: 3,
-} as const;
-
-export type PlayerStatus = 'pending' | 'admitted' | 'gone';
-
-export interface SessionPlayer {
-  playerId: string;
-  name: string;
-  status: PlayerStatus;
-}
-
-export interface SessionHandler {
-  onAdmitted?(player: SessionPlayer): void;
-  onMessage?(player: SessionPlayer, message: ControlMessage): void;
-  onGone?(player: SessionPlayer): void;
-}
-
-export interface GmSessionOptions {
-  title: string;
-  /** A new player is waiting; answer with `allow` or `deny`. */
-  onJoinRequest(player: SessionPlayer): void;
-  /** A request is no longer open: answered, expired, withdrawn or the session stopped. */
-  onRequestClosed(playerId: string): void;
-  onPlayersChanged(players: SessionPlayer[]): void;
-}
+export { SESSION_LIMITS } from './gmSessionTypes';
+export type { GmSessionOptions, PlayerStatus, SessionHandler, SessionPlayer } from './gmSessionTypes';
 
 interface Entry {
   player: SessionPlayer;
@@ -121,6 +93,12 @@ export class GmSession {
     if (entry?.player.status === 'admitted') entry.link?.send('control', encodeControl(message));
   }
 
+  /** An admitted player's assets channel on their current link, for the image server; null for anyone else. */
+  assetChannel(playerId: string): ChannelPort | null {
+    const entry = this.entries.get(playerId);
+    return entry?.player.status === 'admitted' && entry.link ? channelPort(entry.link, 'assets') : null;
+  }
+
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
@@ -146,7 +124,7 @@ export class GmSession {
     const state: LinkState = { entry: null, invalid: 0, warned: false, joinTimer: null, unsubscribe: [] };
     state.joinTimer = window.setTimeout(() => link.close(), SESSION_LIMITS.joinTimeoutMs);
     state.unsubscribe.push(
-      link.onMessage((channel, data) => { if (channel === 'control') this.receive(link, state, data); }),
+      link.onMessage((channel, data) => { if (channel === 'control') this.receive(link, state, data); else this.receiveAsset(link, state, data); }),
       link.onClose(() => this.linkClosed(link, state)),
     );
     this.links.set(link, state);
@@ -176,6 +154,13 @@ export class GmSession {
     else if (message.type === 'ping') link.send('control', encodeControl({ v: 1, type: 'pong', t: message.t }));
     else if (message.type === 'bye') link.close();
     else for (const handler of this.handlers) handler.onMessage?.({ ...entry.player }, message);
+  }
+
+  /** Assets-channel data counts only from an admitted player's current link; handlers decode it. */
+  private receiveAsset(link: PeerLink, state: LinkState, data: unknown): void {
+    const entry = state.entry;
+    if (!entry || entry.link !== link || entry.player.status !== 'admitted') return;
+    for (const handler of this.handlers) handler.onAssetData?.({ ...entry.player }, data);
   }
 
   private join(link: PeerLink, state: LinkState, message: Extract<ControlMessage, { type: 'join' }>): void {
