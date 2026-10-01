@@ -5,6 +5,7 @@ import { GmSession, type SessionPlayer } from './GmSession';
 import { buildJoinUrl, parseJoinFragment } from './joinLink';
 import { onlineSessionStore, resetOnlineSessionStore } from './onlineSessionStore';
 import { peerServerOptions } from './onlineSettings';
+import { AssetServer } from './assets/AssetServer';
 import { vaultImageFiles } from './assets/vaultImageFiles';
 import { AssetRegistry, type ImageFiles } from './scene/AssetRegistry';
 import { SceneBroadcaster, type PresentedSceneSource } from './scene/SceneBroadcaster';
@@ -38,6 +39,7 @@ export class OnlineSessionService {
   private current: GmSession | null = null;
   private broadcaster: SceneBroadcaster | null = null;
   private registry: AssetRegistry | null = null;
+  private assetServer: AssetServer | null = null;
   private readonly presented: PresentedSceneSource;
   private readonly images: ImageFiles;
   private generation = 0;
@@ -109,10 +111,14 @@ export class OnlineSessionService {
     const broadcaster = new SceneBroadcaster({
       session, presented: this.presented, settings: this.settings, assets: registry, notify,
     });
+    // Serves the images of the scene players have, over each player's assets channel.
+    const assetServer = new AssetServer({ session, projection: broadcaster, files: registry });
+    this.assetServer = assetServer;
     this.broadcaster = broadcaster;
     this.current = session;
     try {
       broadcaster.start();
+      assetServer.start();
     } catch (error) {
       // No session may keep running without its broadcaster; `start` reports the error.
       this.teardown();
@@ -133,6 +139,8 @@ export class OnlineSessionService {
   private teardown(): void {
     this.unsubscribeErrors?.();
     this.unsubscribeErrors = null;
+    this.assetServer?.stop();
+    this.assetServer = null;
     this.broadcaster?.stop();
     this.broadcaster = null;
     this.registry?.dispose();

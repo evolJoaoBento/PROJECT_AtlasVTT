@@ -6,6 +6,9 @@ import { MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport
 import { DEFAULT_ONLINE_SETTINGS } from '../../../src/app/online/onlineSettings';
 import { decodeControl, encodeControl } from '../../../src/app/online/protocol';
 import { PresentedScene } from '../../../src/app/services/PresentedScene';
+import { decodeAsset, encodeAsset } from '../../../src/app/online/assets/assetProtocol';
+import type { ImageFiles } from '../../../src/app/online/scene/AssetRegistry';
+import { fingerprintOf } from './assetFixtures';
 import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
 
@@ -20,12 +23,13 @@ const settings = {
 
 afterEach(() => { resetOnlineSessionStore(); vi.useRealTimers(); });
 
-function service(network = new MemoryNetwork(), presented = new PresentedScene()) {
+function service(network = new MemoryNetwork(), presented = new PresentedScene(), images?: ImageFiles) {
   const host = network.host('gm-id');
   const notices: Array<{ name: string; answer: (allow: boolean) => void; hidden: boolean }> = [];
   const svc = new OnlineSessionService(app, settings, {
     createHost: async () => host,
     presented,
+    ...(images ? { images } : {}),
     showRequest: (player, answer) => {
       const notice = { name: player.name, answer, hidden: false };
       notices.push(notice);
@@ -204,5 +208,48 @@ describe('OnlineSessionService', () => {
     expect(stop).not.toHaveBeenCalled();
     svc.stop();
     expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves the presented scene\'s images to the players it admitted', async () => {
+    const map = new TextEncoder().encode('map image bytes');
+    const images: ImageFiles = {
+      stat: (path) => (path === 'maps/cave.png' ? { size: map.byteLength, mtime: 1 } : null),
+      read: async () => map.slice().buffer,
+    };
+    const presented = new PresentedScene();
+    const tabs = createTabMetaStore();
+    const tabId = tabs.getState().addTab('maps/cave.atlasmap', 'Cave');
+    const store = createStore(() => ({
+      background: 'maps/cave.png', grid: null, isMapLoading: false, widgetValues: {}, initiativeTrackerOpen: false,
+      initiative: createDefaultInitiativeState(),
+      widgetSettings: { widgets: {}, globalVisible: true, position: 'top', scale: 1 },
+      objects: { tokens: {}, fog: {}, pins: {}, texts: {}, drawings: {}, walls: {}, lights: {}, audios: {} },
+    }));
+    presented.present({ tabMetaStore: tabs, atlasStore: store, register: () => {} } as never, tabId);
+    const { svc, notices, network } = service(new MemoryNetwork(), presented, images);
+    await svc.start();
+    const link = await network.client().connect('gm-id');
+    let mapAsset: string | null = null;
+    const assetKinds: string[] = [];
+    link.onMessage((channel, data) => {
+      if (channel === 'assets') {
+        const decoded = decodeAsset(data);
+        assetKinds.push(decoded.kind === 'message' ? decoded.message.type : decoded.kind);
+        return;
+      }
+      const decoded = decodeControl(data);
+      if (decoded.kind !== 'message') return;
+      if (decoded.message.type === 'scene-snapshot') mapAsset = decoded.message.scene.map.asset;
+      if (decoded.message.type === 'scene-patch' && decoded.message.set.map) mapAsset = decoded.message.set.map.asset;
+    });
+    link.send('control', encodeControl({ v: 1, type: 'join', name: 'Anna', playerKey: 'k', client: { kind: 'web', version: '1' } }));
+    notices[0]!.answer(true);
+
+    const id = fingerprintOf(map);
+    await vi.waitFor(() => expect(mapAsset).toBe(id));
+    link.send('assets', encodeAsset({ v: 1, type: 'asset-request', ids: [id] }));
+    await vi.waitFor(() => expect(assetKinds).toEqual(['asset-start', 'chunk', 'asset-end']));
+    svc.stop();
+    presented.clear();
   });
 });
