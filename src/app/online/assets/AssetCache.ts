@@ -69,12 +69,15 @@ export class AssetCache {
   private readonly now: () => number;
   private readonly limit: number;
   private readonly ready: Promise<void>;
+  /** The last queued storage-changing call. */
+  private tail: Promise<void>;
 
   constructor(private readonly options: AssetCacheOptions) {
     this.now = options.now ?? Date.now;
     this.limit = options.limitBytes ?? ASSET_LIMITS.cacheBytes;
     this.current = { keep: options.keep, available: true, usedBytes: 0 };
     this.ready = this.open();
+    this.tail = this.ready.catch(() => undefined);
   }
 
   get state(): AssetCacheState {
@@ -95,42 +98,73 @@ export class AssetCache {
       remembered.shownAt = now;
       return remembered.image;
     }
-    const entry = this.entries.get(id);
     const store = this.store;
-    if (!entry || !store) return null;
-    let image: StoredImage | null;
+    if (!this.entries.has(id) || !store) return null;
+    let image: StoredImage | null = null;
     try {
       image = await store.get(id);
     } catch {
       return null;
     }
-    if (!image || image.id !== id || !isArrayBuffer(image.bytes) || !isAssetMime(image.mime)) return null;
-    entry.shownAt = now;
-    void Promise.resolve().then(() => store.touch(id, now)).catch(() => undefined);
-    return image;
+    if (image && image.id === id && isArrayBuffer(image.bytes) && isAssetMime(image.mime)) {
+      void this.run(() => this.touchStored(store, id, now));
+      return image;
+    }
+    // The row says it is there but the storage has no usable image: forget the phantom.
+    void this.run(() => this.forget(store, id));
+    return null;
   }
 
   /** Keeps a finished image: stored when keeping is on and storage works, otherwise in memory. */
-  async put(image: StoredImage): Promise<void> {
-    await this.ready;
-    const now = this.now();
-    const store = this.store;
-    if (this.current.keep && this.current.available && store && await this.storeImage(store, image, now)) return;
-    this.remember(image, now);
+  put(image: StoredImage): Promise<void> {
+    return this.run(async () => {
+      const now = this.now();
+      const store = this.store;
+      if (this.current.keep && this.current.available && store && await this.storeImage(store, image, now)) return;
+      this.remember(image, now);
+    });
   }
 
   /** Switching keeping off deletes the stored images; images of this visit in memory stay. */
-  async setKeep(keep: boolean): Promise<void> {
-    await this.ready;
-    if (keep === this.current.keep) return;
-    this.update({ keep });
-    if (!keep) await this.clearStore();
+  setKeep(keep: boolean): Promise<void> {
+    return this.run(async () => {
+      if (keep === this.current.keep) return;
+      this.update({ keep });
+      if (!keep) await this.clearStore();
+    });
   }
 
   /** "Clear saved images": empties the storage; images of this visit in memory stay. */
-  async clearSaved(): Promise<void> {
-    await this.ready;
-    await this.clearStore();
+  clearSaved(): Promise<void> {
+    return this.run(() => this.clearStore());
+  }
+
+  /** Runs storage-changing work one call at a time, in call order, so limits and keeping hold. */
+  private run<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(work);
+    this.tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  private async touchStored(store: ImageStore, id: string, now: number): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    entry.shownAt = now;
+    try {
+      await store.touch(id, now);
+    } catch {
+      // Only the order of dropping is affected.
+    }
+  }
+
+  private async forget(store: ImageStore, id: string): Promise<void> {
+    if (!this.entries.delete(id)) return;
+    try {
+      await store.delete([id]);
+    } catch {
+      // The row is gone from the count either way.
+    }
+    this.update({ usedBytes: this.storedBytes() });
   }
 
   private async open(): Promise<void> {
@@ -157,7 +191,10 @@ export class AssetCache {
   private async storeImage(store: ImageStore, image: StoredImage, now: number): Promise<boolean> {
     const size = image.bytes.byteLength;
     if (size > this.limit) return false;
-    if (this.entries.has(image.id)) return true;
+    if (this.entries.has(image.id)) {
+      await this.touchStored(store, image.id, now);
+      return true;
+    }
     await this.evict(store, this.limit - size);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -194,11 +231,16 @@ export class AssetCache {
 
   private remember(image: StoredImage, now: number): void {
     const size = image.bytes.byteLength;
-    if (size > this.limit || this.memory.has(image.id)) return;
-    for (const [id, held] of [...this.memory].sort(([, a], [, b]) => a.shownAt - b.shownAt)) {
+    const held = this.memory.get(image.id);
+    if (held) {
+      held.shownAt = now;
+      return;
+    }
+    if (size > this.limit) return;
+    for (const [id, old] of [...this.memory].sort(([, a], [, b]) => a.shownAt - b.shownAt)) {
       if (this.memoryBytes + size <= this.limit) break;
       this.memory.delete(id);
-      this.memoryBytes -= held.image.bytes.byteLength;
+      this.memoryBytes -= old.image.bytes.byteLength;
     }
     this.memory.set(image.id, { image, shownAt: now });
     this.memoryBytes += size;

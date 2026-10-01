@@ -11,6 +11,7 @@ const DB_NAME = 'atlas-online-images';
 const DB_VERSION = 1;
 const IMAGES = 'images';
 const ENTRIES = 'entries';
+const OPEN_TIMEOUT_MS = 5000;
 
 function done<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -35,9 +36,27 @@ function openDatabase(): Promise<IDBDatabase> {
     if (!db.objectStoreNames.contains(ENTRIES)) db.createObjectStore(ENTRIES, { keyPath: 'id' });
   };
   return new Promise((resolve, reject) => {
-    request.onsuccess = (): void => resolve(request.result);
-    request.onerror = (): void => reject(request.error ?? new Error('IndexedDB open failed'));
-    request.onblocked = (): void => reject(new Error('IndexedDB open blocked'));
+    let settled = false;
+    const fail = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      reject(error);
+    };
+    // A hung open (blocked, or a browser that never answers) must not hang the cache.
+    const timer = globalThis.setTimeout(() => fail(new Error('IndexedDB open timed out')), OPEN_TIMEOUT_MS);
+    request.onsuccess = (): void => {
+      // Success after a failure was reported: nobody will use this connection.
+      if (settled) {
+        request.result.close();
+        return;
+      }
+      settled = true;
+      globalThis.clearTimeout(timer);
+      resolve(request.result);
+    };
+    request.onerror = (): void => fail(request.error ?? new Error('IndexedDB open failed'));
+    request.onblocked = (): void => fail(new Error('IndexedDB open blocked'));
   });
 }
 

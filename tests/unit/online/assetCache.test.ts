@@ -5,6 +5,8 @@ import { fingerprint as fp } from './sceneFixtures';
 
 const image = (n: number, size: number): StoredImage => ({ id: fp(n), mime: 'image/png', bytes: new ArrayBuffer(size) });
 
+const settleLater = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 1); });
+
 function clock(): () => number {
   let now = 0;
   return () => ++now;
@@ -112,5 +114,62 @@ describe('AssetCache', () => {
     store.clear = fail;
     await expect(cache.clearSaved()).resolves.toBeUndefined();
     await expect(cache.setKeep(false)).resolves.toBeUndefined();
+  });
+
+  it('keeps to its limit when puts overlap', async () => {
+    const store = new MemoryStore();
+    const put = store.put.bind(store);
+    store.put = async (stored, shownAt): Promise<void> => { await settleLater(); await put(stored, shownAt); };
+    const cache = new AssetCache({ keep: true, openStore: async () => store, now: clock(), limitBytes: 100 });
+    await Promise.all([cache.put(image(1, 60)), cache.put(image(2, 60)), cache.put(image(3, 60))]);
+    expect(cache.state.usedBytes).toBeLessThanOrEqual(100);
+    expect([...store.images.values()].reduce((sum, { image: held }) => sum + held.bytes.byteLength, 0)).toBeLessThanOrEqual(100);
+    expect(store.images.has(fp(3))).toBe(true);
+  });
+
+  it('leaves nothing stored when keeping is switched off during a write', async () => {
+    const store = new MemoryStore();
+    const put = store.put.bind(store);
+    store.put = async (stored, shownAt): Promise<void> => { await settleLater(); await put(stored, shownAt); };
+    const cache = new AssetCache({ keep: true, openStore: async () => store, now: clock() });
+    const writing = cache.put(image(1, 10));
+    const off = cache.setKeep(false);
+    await Promise.all([writing, off]);
+    expect(store.images.size).toBe(0);
+    expect(cache.state).toEqual({ keep: false, available: true, usedBytes: 0 });
+  });
+
+  it('forgets a row whose image the storage lost', async () => {
+    const store = new MemoryStore();
+    const first = new AssetCache({ keep: true, openStore: async () => store, now: clock() });
+    await first.put(image(1, 100));
+    store.get = async (): Promise<null> => null;
+    const second = new AssetCache({ keep: true, openStore: async () => store, now: clock() });
+    expect(second.state.usedBytes).toBe(0);
+    expect(await second.get(fp(1))).toBeNull();
+    await second.clearSaved();
+    expect(second.state.usedBytes).toBe(0);
+    const third = new AssetCache({ keep: true, openStore: async () => store, now: clock() });
+    await third.put(image(2, 5));
+    await third.get(fp(2));
+    expect(third.state.usedBytes).toBe(5);
+  });
+
+  it('counts a repeated put as shown and holds one copy', async () => {
+    const store = new MemoryStore();
+    const cache = new AssetCache({ keep: true, openStore: async () => store, now: clock(), limitBytes: 100 });
+    await cache.put(image(1, 40));
+    await cache.put(image(2, 40));
+    await cache.put(image(1, 40)); // shown again: image 2 is now the oldest
+    await cache.put(image(3, 40));
+    expect([...store.images.keys()].sort()).toEqual([fp(1), fp(3)].sort());
+
+    const inMemory = new AssetCache({ keep: false, openStore: async () => store, now: clock(), limitBytes: 100 });
+    await inMemory.put(image(4, 40));
+    await inMemory.put(image(4, 40));
+    await inMemory.put(image(5, 40));
+    await inMemory.put(image(6, 40)); // 4 twice would have used 80 already
+    expect(await inMemory.get(fp(4))).toBeNull();
+    expect(await inMemory.get(fp(5))).not.toBeNull();
   });
 });
