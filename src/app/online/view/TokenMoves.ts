@@ -131,13 +131,15 @@ export class TokenMoves implements TokenGrab {
     this.held = null;
     const { tokenId, position } = held;
     const token = this.scene ? tokenOf(this.scene, tokenId) : null;
-    if (token && position && this.options.send(tokenId, position.x, position.y)) {
+    if (token && position) {
+      // Registered before sending: a refusal delivered synchronously must find it to settle.
       this.settle(tokenId);
       const timer = window.setTimeout(() => {
         this.settle(tokenId);
         this.options.onChange();
       }, CONFIRM_TIMEOUT_MS);
       this.pending.set(tokenId, { position, token, timer });
+      if (!this.options.send(tokenId, position.x, position.y)) this.settle(tokenId);
     }
     this.options.onChange();
   }
