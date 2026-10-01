@@ -2,9 +2,10 @@
  * The online play wire format. Shared with the web player page, so this file
  * imports nothing but the scene wire format beside it: no Obsidian, no PIXI, no PeerJS.
  */
+import type { SceneCamera } from './scene/sceneCamera';
 import type { PlayerDrawing, PlayerFogOp, PlayerSceneBody, ScenePatchBody } from './scene/sceneTypes';
 import {
-  isDrawingRecords, isFogRecords, isLastSeq, isPlayerSceneBody, isSceneCount, isScenePatchBody, isSceneSeq,
+  isDrawingRecords, isFogRecords, isLastSeq, isPlayerSceneBody, isSceneCamera, isSceneCount, isScenePatchBody, isSceneSeq,
 } from './scene/sceneValidation';
 export const PROTOCOL_VERSION = 1;
 export const MAX_CONTROL_MESSAGE_BYTES = 256 * 1024;
@@ -35,7 +36,8 @@ export type ControlMessage =
     set: ScenePatchBody['set']; upsert: ScenePatchBody['upsert']; remove: ScenePatchBody['remove'];
   }
   | { v: 1; type: 'scene-clear'; seq: number }
-  | { v: 1; type: 'scene-resync'; seq: number };
+  | { v: 1; type: 'scene-resync'; seq: number }
+  | ({ v: 1; type: 'scene-camera' } & SceneCamera);
 
 export type Decoded =
   | { kind: 'message'; message: ControlMessage }
@@ -67,6 +69,7 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   'scene-patch': (m) => isSceneSeq(m.seq) && isScenePatchBody(m),
   'scene-clear': (m) => isSceneSeq(m.seq),
   'scene-resync': (m) => isLastSeq(m.seq),
+  'scene-camera': (m) => isSceneCamera(m),
 };
 
 export function encodeControl(message: ControlMessage): string {

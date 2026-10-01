@@ -76,4 +76,17 @@ describe('PlayerSession scenes', () => {
     expect(player.scene).toBeNull();
     expect(scenes.at(-1)).toBeNull();
   });
+
+  it('keeps the GM camera, whatever its scene', async () => {
+    const { gm, player, playerId } = await admittedPlayer();
+    gm.send(playerId, { v: 1, type: 'scene-camera', sceneId: 'later', centerX: 1, centerY: 2, width: 3, height: 4 });
+    expect(player.camera).toEqual({ sceneId: 'later', centerX: 1, centerY: 2, width: 3, height: 4 });
+  });
+
+  it('skips an invalid camera without asking for a snapshot', async () => {
+    const { gm, player, playerId, fromPlayer } = await admittedPlayer();
+    gm.send(playerId, { v: 1, type: 'scene-camera', sceneId: 's', centerX: 0, centerY: 0, width: 0, height: 4 });
+    expect(player.camera).toBeNull();
+    expect(fromPlayer).toEqual([]);
+  });
 });

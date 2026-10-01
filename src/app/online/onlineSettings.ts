@@ -11,6 +11,8 @@ export interface OnlineSettings {
   turnServers: TurnServer[];
   /** Where join links point: the published `online-client/` page. */
   playerPageUrl: string;
+  /** Developer diagnostics: log presented-scene events and messages to players to the console. */
+  logEvents: boolean;
 }
 
 export const DEFAULT_STUN = 'stun:stun.l.google.com:19302';
@@ -19,6 +21,7 @@ export const DEFAULT_ONLINE_SETTINGS: OnlineSettings = {
   signaling: { mode: 'cloud', host: '', port: 443, path: '/', key: 'peerjs', secure: true },
   turnServers: [],
   playerPageUrl: 'https://evoljoaobento.github.io/atlas-vtt/',
+  logEvents: false,
 };
 
 /** PeerJS options for these settings: the PeerJS cloud unless a custom server is set. */
@@ -76,5 +79,6 @@ export function resolveOnlineSettings(stored: unknown): OnlineSettings {
       ? source.turnServers.flatMap((entry) => validTurnServer(entry) ?? [])
       : [],
     playerPageUrl: typeof source.playerPageUrl === 'string' ? source.playerPageUrl : defaults.playerPageUrl,
+    logEvents: source.logEvents === true,
   };
 }

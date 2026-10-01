@@ -48,6 +48,13 @@ describe('online settings', () => {
       signaling: { mode: 'custom', host: 'h.example', port: 443, path: '/p', key: 'k', secure: false },
       turnServers: [{ urls: 'turn:a.example', username: 'u', credential: 'c' }],
       playerPageUrl: 'https://p.example/',
+      logEvents: false,
     });
+  });
+
+  it('logs online play events only when the stored switch is exactly true', () => {
+    expect(DEFAULT_ONLINE_SETTINGS.logEvents).toBe(false);
+    expect(resolveOnlineSettings({ logEvents: true }).logEvents).toBe(true);
+    expect(resolveOnlineSettings({ logEvents: 'yes' }).logEvents).toBe(false);
   });
 });

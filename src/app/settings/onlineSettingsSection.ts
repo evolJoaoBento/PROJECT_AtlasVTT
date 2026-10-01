@@ -77,6 +77,16 @@ export function onlineSettingsSection(settings: SettingsService): AtlasSettingSe
           });
         },
       },
+      {
+        name: 'Log online play events',
+        desc: 'For troubleshooting: writes what Atlas sends to online players, and every change of the presented scene, to the developer console.',
+        aliases: ['debug', 'diagnostics', 'console', 'online'],
+        render: (setting) => {
+          setting.addToggle((toggle) => toggle
+            .setValue(settings.getOnlineSettings().logEvents)
+            .onChange((logEvents) => settings.setOnlineSettings({ logEvents })));
+        },
+      },
     ],
   };
 }

@@ -58,6 +58,13 @@ export function isSceneCount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= SCENE_LIMITS.records;
 }
 
+/** A `scene-camera`: a centre within the coordinate range and a positive size within it. */
+export function isSceneCamera(message: Fields): boolean {
+  const isExtent = (value: unknown): boolean => isCoordinate(value) && value > 0;
+  return isSceneId(message.sceneId) && isCoordinate(message.centerX) && isCoordinate(message.centerY)
+    && isExtent(message.width) && isExtent(message.height);
+}
+
 function isPoint(value: unknown): boolean {
   return isFields(value) && isCoordinate(value.x) && isCoordinate(value.y);
 }

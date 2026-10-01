@@ -5,6 +5,7 @@
  */
 import { decodeControl, encodeControl, type PresencePlayer } from './protocol';
 import { PlayerSceneMirror } from './scene/PlayerSceneMirror';
+import { cameraOfMessage, type SceneCamera } from './scene/sceneCamera';
 import type { PlayerScene } from './scene/sceneTypes';
 import type { ClientTransport, PeerLink } from './transport/types';
 
@@ -42,6 +43,8 @@ export interface PlayerSessionOptions {
   onChange(state: PlayerSessionState): void;
   /** The presented scene changed: a snapshot or patch applied, or null when the GM shows none. */
   onScene?(scene: PlayerScene | null): void;
+  /** The GM's latest camera, whatever its scene: the map view uses it once that scene is shown. */
+  onCamera?(camera: SceneCamera): void;
   /** Gets the assets channel while admitted (the join page's image loader). */
   assets?: PlayerAssetHandler;
 }
@@ -56,6 +59,7 @@ export class PlayerSession {
   private droppedAt = 0;
   private retryTimer: number | null = null;
   private assetLink: PeerLink | null = null;
+  private lastCamera: SceneCamera | null = null;
 
   private readonly mirror: PlayerSceneMirror;
 
@@ -69,6 +73,11 @@ export class PlayerSession {
   /** The presented scene as this player has it; null while the GM shows none. */
   get scene(): PlayerScene | null {
     return this.mirror.scene;
+  }
+
+  /** The GM's latest camera; null before the first. */
+  get camera(): SceneCamera | null {
+    return this.lastCamera;
   }
 
   start(): void {
@@ -119,7 +128,8 @@ export class PlayerSession {
   private receive(link: PeerLink, data: unknown): void {
     if (this.finished || this.link !== link) return;
     const decoded = decodeControl(data);
-    if (decoded.kind === 'invalid' && decoded.reason.startsWith('bad-scene-')) this.mirror.invalid();
+    // A bad camera is only skipped: it is not scene data, so it asks for no snapshot.
+    if (decoded.kind === 'invalid' && decoded.reason.startsWith('bad-scene-') && decoded.reason !== 'bad-scene-camera') this.mirror.invalid();
     if (decoded.kind !== 'message') return;
     const message = decoded.message;
     switch (message.type) {
@@ -154,6 +164,10 @@ export class PlayerSession {
       case 'scene-patch':
       case 'scene-clear':
         this.mirror.receive(message);
+        break;
+      case 'scene-camera':
+        this.lastCamera = cameraOfMessage(message);
+        this.options.onCamera?.(this.lastCamera);
         break;
       default:
         break;

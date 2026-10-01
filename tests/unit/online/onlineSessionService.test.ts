@@ -9,6 +9,7 @@ import { PresentedScene } from '../../../src/app/services/PresentedScene';
 import { decodeAsset, encodeAsset } from '../../../src/app/online/assets/assetProtocol';
 import type { ImageFiles } from '../../../src/app/online/scene/AssetRegistry';
 import { fingerprintOf } from './assetFixtures';
+import { FakeViewport, viewWithViewport } from './cameraFixtures';
 import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
 
@@ -195,6 +196,26 @@ describe('OnlineSessionService', () => {
     svc.stop();
     presented.clear();
     expect(received.filter((type) => type === 'scene-clear')).toEqual([]);
+  });
+
+  it("sends the GM's camera of the presented scene to the players it admits, and stops watching on stop", async () => {
+    const presented = new PresentedScene();
+    const viewport = new FakeViewport();
+    const { view, tavern } = viewWithViewport(viewport);
+    presented.present(view, tavern);
+    const { svc, notices, network } = service(new MemoryNetwork(), presented);
+    await svc.start();
+    const link = await network.client().connect('gm-id');
+    const received: string[] = [];
+    link.onMessage((_channel, data) => {
+      const decoded = decodeControl(data);
+      if (decoded.kind === 'message') received.push(decoded.message.type);
+    });
+    link.send('control', encodeControl({ v: 1, type: 'join', name: 'Anna', playerKey: 'k', client: { kind: 'web', version: '1' } }));
+    notices[0]!.answer(true);
+    expect(received.filter((type) => type.startsWith('scene-'))).toEqual(['scene-snapshot', 'scene-camera']);
+    svc.stop();
+    expect(viewport.listenerCount).toBe(0);
   });
 
   it('disposes the image registry when the session stops', async () => {

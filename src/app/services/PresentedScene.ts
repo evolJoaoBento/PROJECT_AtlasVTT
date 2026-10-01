@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand';
 import type { MapSize } from '../online/scene/sceneTypes';
 import type { ViewAtlasState } from '../storeFactory';
 import type { TabMetaStore } from '../stores/tabMetaStore';
+import { viewCamera, watchViewCamera, type CameraViewport, type ViewCamera } from './presentedCamera';
 
 interface BackgroundSprite {
   width: number;
@@ -16,7 +17,7 @@ export interface PresentedView {
   register(callback: () => void): void;
   /** True once the view has closed; a closed view is never presented. */
   readonly isClosed?: boolean;
-  readonly renderer?: { getBackgroundSprite(): BackgroundSprite | null } | null;
+  readonly renderer?: { getBackgroundSprite(): BackgroundSprite | null; getViewportInstance?(): CameraViewport | null } | null;
 }
 
 export interface PresentedSceneInfo {
@@ -26,6 +27,10 @@ export interface PresentedSceneInfo {
   readonly store: StoreApi<ViewAtlasState>;
   /** The loaded background's size in world pixels; 0 × 0 without one. */
   mapSize(): MapSize;
+  /** The GM's working view of the scene now: the viewport's centre and visible world size; null without one. */
+  camera(): ViewCamera | null;
+  /** Calls `listener` after every frame of the view's viewport; returns the unsubscribe. */
+  watchCamera(listener: () => void): () => void;
 }
 
 export interface PresentedSceneListener {
@@ -96,7 +101,12 @@ export class PresentedScene {
     // Its close callback already ran, so nothing would ever clear the scene.
     if (view.isClosed) return;
     this.stopWatching?.();
-    const scene: PresentedSceneInfo = { view, tabId, store: view.atlasStore, mapSize: () => loadedMapSize(view) };
+    const scene: PresentedSceneInfo = {
+      view, tabId, store: view.atlasStore,
+      mapSize: () => loadedMapSize(view),
+      camera: () => viewCamera(view),
+      watchCamera: (listener) => watchViewCamera(view, listener),
+    };
     this.scene = scene;
     this.held = view.tabMetaStore.getState().activeTabId !== tabId;
     this.resumeToken++;

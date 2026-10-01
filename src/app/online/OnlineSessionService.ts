@@ -3,11 +3,13 @@ import { presentedScene } from '../services/PresentedScene';
 import type { SettingsService } from '../services/SettingsService';
 import { GmSession, type SessionPlayer } from './GmSession';
 import { buildJoinUrl, parseJoinFragment } from './joinLink';
+import { createOnlineLog, loggedSession, logPresentedScene } from './onlineLog';
 import { onlineSessionStore, resetOnlineSessionStore } from './onlineSessionStore';
 import { peerServerOptions } from './onlineSettings';
 import { AssetServer } from './assets/AssetServer';
 import { vaultImageFiles } from './assets/vaultImageFiles';
 import { AssetRegistry, type ImageFiles } from './scene/AssetRegistry';
+import { CameraSender } from './scene/CameraSender';
 import { SceneBroadcaster, type PresentedSceneSource } from './scene/SceneBroadcaster';
 import { createPeerHost, type PeerServerOptions } from './transport/PeerTransport';
 import type { HostTransport } from './transport/types';
@@ -40,6 +42,8 @@ export class OnlineSessionService {
   private broadcaster: SceneBroadcaster | null = null;
   private registry: AssetRegistry | null = null;
   private assetServer: AssetServer | null = null;
+  private cameraSender: CameraSender | null = null;
+  private stopLog: (() => void) | null = null;
   private readonly presented: PresentedSceneSource;
   private readonly images: ImageFiles;
   private generation = 0;
@@ -87,6 +91,8 @@ export class OnlineSessionService {
       host.close();
       throw new Error(BAD_PAGE_URL);
     }
+    // Diagnostics (Settings → Online play → Log online play events), read on every event.
+    const log = createOnlineLog(() => this.settings.getOnlineSettings().logEvents);
     const session = new GmSession(host, {
       title: this.app.vault.getName(),
       onJoinRequest: (player) => {
@@ -108,16 +114,23 @@ export class OnlineSessionService {
     // One registry per session: fingerprints are cached for the session, the size notice shows once.
     const registry = new AssetRegistry({ files: this.images, notify });
     this.registry = registry;
+    // The broadcaster and the camera sender send through the log, so diagnostics see every scene message.
+    const scenes = loggedSession(session, log);
     const broadcaster = new SceneBroadcaster({
-      session, presented: this.presented, settings: this.settings, assets: registry, notify,
+      session: scenes, presented: this.presented, settings: this.settings, assets: registry, notify,
     });
+    // The GM's view of the presented scene, which players follow by default; registered after the broadcaster.
+    const cameraSender = new CameraSender({ session: scenes, presented: this.presented, projection: broadcaster });
+    this.cameraSender = cameraSender;
     // Serves the images of the scene players have, over each player's assets channel.
     const assetServer = new AssetServer({ session, projection: broadcaster, files: registry });
     this.assetServer = assetServer;
     this.broadcaster = broadcaster;
     this.current = session;
     try {
+      this.stopLog = logPresentedScene(this.presented, log);
       broadcaster.start();
+      cameraSender.start();
       assetServer.start();
     } catch (error) {
       // No session may keep running without its broadcaster; `start` reports the error.
@@ -141,6 +154,10 @@ export class OnlineSessionService {
     this.unsubscribeErrors = null;
     this.assetServer?.stop();
     this.assetServer = null;
+    this.cameraSender?.stop();
+    this.cameraSender = null;
+    this.stopLog?.();
+    this.stopLog = null;
     this.broadcaster?.stop();
     this.broadcaster = null;
     this.registry?.dispose();
