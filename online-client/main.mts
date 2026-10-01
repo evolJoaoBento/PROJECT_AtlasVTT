@@ -2,7 +2,8 @@
 import { AssetCache } from '../src/app/online/assets/AssetCache';
 import { AssetLoader } from '../src/app/online/assets/AssetLoader';
 import { openIndexedDbImageStore } from '../src/app/online/assets/indexedDbImageStore';
-import { PlayerSession, type PlayerSessionState } from '../src/app/online/PlayerSession';
+import type { PlayerSessionState } from '../src/app/online/PlayerSession';
+import { createJoinSession } from '../src/app/online/preview/joinSession';
 import { createPeerClient } from '../src/app/online/transport/PeerTransport';
 import { parseJoinFragment } from '../src/app/online/joinLink';
 import { normalizePlayerName } from '../src/app/online/protocol';
@@ -135,7 +136,8 @@ if (!target) {
     try { localStorage.setItem('atlas-online:name', name); } catch { /* private window */ }
     started = true;
     form.hidden = true;
-    new PlayerSession({
+    createJoinSession({
+      loader,
       hostId: target.hostId,
       name,
       // One key per GM session, so different GMs cannot recognise or pose as the same player.
