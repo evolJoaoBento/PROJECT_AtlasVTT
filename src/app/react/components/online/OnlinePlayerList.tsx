@@ -1,13 +1,11 @@
-import React, { useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import React from 'react';
+import { X } from 'lucide-react';
 import { Button } from '../../../packages/components/primitives/button';
+import { LabelTooltip } from '../../../packages/components/primitives/tooltip';
 import type { TokenControl } from '../../../online/control/TokenControl';
 import type { SessionPlayer } from '../../../online/GmSession';
 import type { OnlineSessionService } from '../../../online/OnlineSessionService';
-import { REMOVE_PLAYER_LABEL, TOKEN_PICKER_LABEL } from '../../../online/ui/onlineCopy';
-import type { PresentedSceneSummary } from '../../../online/ui/presentedSceneSummary';
-import { tokenPickerEntries } from '../../../online/ui/tokenPickerMenu';
-import { useContextMenu } from '../../root/ContextMenuContext';
+import { REMOVE_PLAYER_LABEL } from '../../../online/ui/onlineCopy';
 import { usePresentedSceneSummary, useTokenControlVersion } from './useOnlineState';
 
 interface OnlinePlayerListProps {
@@ -16,31 +14,17 @@ interface OnlinePlayerListProps {
   service: Pick<OnlineSessionService, 'allow' | 'deny' | 'kick'>;
 }
 
-/** Why tokens cannot be given right now; null when they can. */
-function assignHint(scene: PresentedSceneSummary): string | null {
-  if (scene.tabId === null) return 'Present a scene to give players tokens.';
-  if (!scene.assignable) return `Switch back to ${scene.name ?? 'the presented scene'} to change tokens.`;
-  return null;
-}
-
-/** Players waiting to join, and the players in the session with their tokens. */
+/**
+ * Players waiting to join, and the players in the session with the tokens they control.
+ * Tokens are given on the map, with a token's "Controlled by" menu.
+ */
 export function OnlinePlayerList({ players, control, service }: OnlinePlayerListProps): React.ReactElement {
-  const { open, close } = useContextMenu();
   const scene = usePresentedSceneSummary();
   useTokenControlVersion(control);
-  // The picker belongs to this list: it closes when the session stops or the panel closes.
-  useEffect(() => close, [close]);
 
   const waiting = players.filter((player) => player.status === 'pending');
   const joined = players.filter((player) => player.status !== 'pending');
   const names = new Map(scene.characters.map((character) => [character.id, character.name]));
-  const hint = assignHint(scene);
-
-  const pick = (player: SessionPlayer, anchor: HTMLElement): void => {
-    if (!control) return;
-    const rect = anchor.getBoundingClientRect();
-    open(tokenPickerEntries(control, player.playerId, scene.characters), { x: rect.left, y: rect.bottom });
-  };
 
   return (
     <>
@@ -78,31 +62,22 @@ export function OnlinePlayerList({ players, control, service }: OnlinePlayerList
                   <div className="atlas-online-panel__player-row">
                     <span className="atlas-online-panel__name">{player.name}</span>
                     {player.status === 'gone' && <span className="atlas-online-panel__note">Disconnected</span>}
+                    <LabelTooltip label={`${REMOVE_PLAYER_LABEL} ${player.name}`}>
+                      <Button variant="ghost" size="icon" aria-label={`${REMOVE_PLAYER_LABEL} ${player.name}`} onClick={() => service.kick(player.playerId)}>
+                        <X />
+                      </Button>
+                    </LabelTooltip>
                   </div>
                   {tokens.length > 0 && (
                     <ul className="atlas-online-panel__chips" aria-label={`Tokens of ${player.name}`}>
                       {tokens.map((token) => <li key={token.id} className="atlas-online-panel__chip">{token.name}</li>)}
                     </ul>
                   )}
-                  <div className="atlas-online-panel__actions">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      aria-haspopup="menu"
-                      disabled={!control || !scene.assignable}
-                      onClick={(event) => pick(player, event.currentTarget)}
-                    >
-                      {TOKEN_PICKER_LABEL}
-                      <ChevronDown />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => service.kick(player.playerId)}>{REMOVE_PLAYER_LABEL}</Button>
-                  </div>
                 </li>
               );
             })}
           </ul>
         )}
-        {joined.length > 0 && hint && <p className="atlas-online-panel__help">{hint}</p>}
       </section>
     </>
   );

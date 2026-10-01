@@ -4,17 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
-const { service, presentViewToPlayers, stopPresenting, menu, ui } = vi.hoisted(() => ({
+const { service, presentViewToPlayers, stopPresenting, ui } = vi.hoisted(() => ({
   service: { start: vi.fn(() => Promise.resolve()), stop: vi.fn(), allow: vi.fn(), deny: vi.fn(), kick: vi.fn() },
   presentViewToPlayers: vi.fn(() => Promise.resolve()),
   stopPresenting: vi.fn(),
-  menu: { open: vi.fn(), close: vi.fn() },
   ui: { view: null as unknown },
 }));
 
 vi.mock('../../src/app/online/OnlineSessionService', () => ({ OnlineSessionService: { forApp: () => service } }));
 vi.mock('../../src/app/services/presentToPlayers', () => ({ presentViewToPlayers, stopPresenting }));
-vi.mock('../../src/app/react/root/ContextMenuContext', () => ({ useContextMenu: () => menu }));
 vi.mock('../../src/app/react/root/AtlasUIContext', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../src/app/react/root/AtlasUIContext')>(),
   useAtlasUI: () => ({ app: {}, view: ui.view }),
@@ -25,11 +23,8 @@ import { OnlinePanel } from '../../src/app/react/components/online/OnlinePanel';
 import { TokenControl } from '../../src/app/online/control/TokenControl';
 import type { SessionPlayer } from '../../src/app/online/GmSession';
 import { onlineSessionStore, resetOnlineSessionStore } from '../../src/app/online/onlineSessionStore';
-import type { ContextMenuEntry } from '../../src/app/react/root/ContextMenuContext';
 import { presentedScene, type PresentedView } from '../../src/app/services/PresentedScene';
 import { createTabMetaStore } from '../../src/app/stores/tabMetaStore';
-
-type Item = Extract<ContextMenuEntry, { type: 'item' }>;
 
 const TOKENS = {
   hero: { id: 'hero', kind: 'character', name: 'Hero' },
@@ -62,12 +57,6 @@ function renderPanel(): { setOnlinePanelOpen: ReturnType<typeof vi.fn> } {
 
 const anna: SessionPlayer = { playerId: 'p1', name: 'Anna', status: 'admitted' };
 const dan: SessionPlayer = { playerId: 'p4', name: 'Dan', status: 'gone' };
-
-function pickerEntries(): Item[] {
-  const call = menu.open.mock.calls.at(-1);
-  if (!call) throw new Error('the picker did not open');
-  return call[0] as Item[];
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -128,7 +117,7 @@ describe('online panel', () => {
     expect(service.deny).toHaveBeenCalledWith('p2');
   });
 
-  it('lists players with their tokens, a Tokens picker and removal', () => {
+  it('lists players with the tokens they control, and removes a player with its X button', () => {
     const { presented, tavern } = mapView();
     const control = hosting([anna, dan]);
     control.set('hero', 'p1', true);
@@ -137,16 +126,11 @@ describe('online panel', () => {
 
     const row = within(screen.getByRole('listitem', { name: 'Anna' }));
     expect(row.getByText('Hero')).toBeTruthy();
-    fireEvent.click(row.getByRole('button', { name: 'Tokens…' }));
-    expect(pickerEntries().map(({ label, checked }) => ({ label, checked }))).toEqual([
-      { label: 'Hero', checked: true },
-      { label: 'Goblin', checked: false },
-    ]);
-    act(() => { pickerEntries()[1]!.onClick(); });
-    expect(control.tokensOf('p1')).toEqual(['hero', 'goblin']);
+    expect(row.queryByRole('button', { name: 'Tokens…' })).toBeNull();
+    act(() => { control.set('goblin', 'p1', true); });
     expect(row.getByText('Goblin')).toBeTruthy();
 
-    fireEvent.click(row.getByRole('button', { name: 'Remove player' }));
+    fireEvent.click(row.getByRole('button', { name: 'Remove player Anna' }));
     expect(service.kick).toHaveBeenCalledWith('p1');
     expect(within(screen.getByRole('listitem', { name: 'Dan' })).getByText('Disconnected')).toBeTruthy();
   });
@@ -174,7 +158,7 @@ describe('online panel', () => {
   });
 
   // Review Focus
-  it('does not offer the characters of another map while the presented scene is held', () => {
+  it('does not show the characters of another map while the presented scene is held', () => {
     const { presented, tavern, tabMetaStore } = mapView();
     const control = hosting([anna]);
     control.set('hero', 'p1', true);
@@ -188,36 +172,15 @@ describe('online panel', () => {
       tabMetaStore.getState().setActiveTab(caves);
     });
     expect(presentedScene.isHeld()).toBe(true);
-    expect((row.getByRole('button', { name: 'Tokens…' }) as HTMLButtonElement).disabled).toBe(true);
     expect(row.queryByText('Hero')).toBeNull();
-    expect(screen.getByText('Switch back to Tavern to change tokens.')).toBeTruthy();
   });
 
-  it('ignores a pick for a player removed after the picker opened', () => {
-    const { presented, tavern } = mapView();
-    const control = hosting([anna]);
-    act(() => { presentedScene.present(presented, tavern); });
-    renderPanel();
-    fireEvent.click(within(screen.getByRole('listitem', { name: 'Anna' })).getByRole('button', { name: 'Tokens…' }));
-    const entries = pickerEntries();
-    act(() => { onlineSessionStore.setState({ players: [] }); });
-    entries[0]!.onClick();
-    expect(control.tokensOf('p1')).toEqual([]);
-  });
-
-  it('falls back to the start view and closes its picker when the session stops elsewhere', () => {
+  it('falls back to the start view when the session stops elsewhere', () => {
     hosting([anna]);
     renderPanel();
     act(() => { resetOnlineSessionStore(); });
     expect(screen.getByRole('button', { name: 'Start online session' })).toBeTruthy();
     expect(screen.queryByRole('listitem', { name: 'Anna' })).toBeNull();
-    expect(menu.close).toHaveBeenCalled();
   });
 
-  it('asks for a presented scene before tokens can be given', () => {
-    hosting([anna]);
-    renderPanel();
-    expect(screen.getByText('Present a scene to give players tokens.')).toBeTruthy();
-    expect((within(screen.getByRole('listitem', { name: 'Anna' })).getByRole('button', { name: 'Tokens…' }) as HTMLButtonElement).disabled).toBe(true);
-  });
 });
