@@ -3,7 +3,7 @@ import { MoreVertical } from 'lucide-react';
 import { App, FileView, Notice } from 'obsidian';
 import { getActiveWorkspaceLeaf } from '../../utils/embeddedLeafFocus';
 import { openContextMenuGlobal, type ContextMenuEntry } from '../root/ContextMenuContext';
-import { openOnlineSessionModal } from '../../online/ui/OnlineSessionModal';
+import { openOnlineSession } from '../../online/ui/openOnlineSession';
 import { presentedScene } from '../../services/PresentedScene';
 import { presentViewToPlayers, stopPresenting } from '../../services/presentToPlayers';
 import { LabelTooltip } from '../../packages/components/primitives/tooltip';
@@ -38,7 +38,7 @@ export const ViewActionsMenu: React.FC<ViewActionsMenuProps> = ({ app, filePath 
       { type: 'item', label: 'Split right', icon: 'separator-vertical', onClick: () => app.workspace.createLeafBySplit(activeLeaf, 'vertical') },
       { type: 'item', label: 'Split down', icon: 'separator-horizontal', onClick: () => app.workspace.createLeafBySplit(activeLeaf, 'horizontal') },
       { type: 'item', label: 'Move to new window', icon: 'maximize', onClick: () => app.workspace.moveLeafToPopout(activeLeaf) },
-      { type: 'item', label: 'Online session…', icon: 'radio-tower', onClick: () => openOnlineSessionModal(app) },
+      { type: 'item', label: 'Online session…', icon: 'radio-tower', onClick: () => openOnlineSession(app) },
       { type: 'item', label: 'Present to players', icon: 'cast', onClick: () => presentViewToPlayers(activeLeaf.view) },
     ];
     if (presentedScene.current()) {

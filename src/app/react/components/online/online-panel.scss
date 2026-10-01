@@ -1,0 +1,222 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// Online session panel — floating window of the map view (GM only), and the
+// marks on its toolbar button. Imported inside the `.atlas-vtt-plugin` scope
+// of styles/main.scss.
+// ═══════════════════════════════════════════════════════════════════════════
+
+@use '../../../../../styles/tokens' as *;
+@use '../../../../../styles/mixins' as *;
+
+$online-panel-width: 360px;
+$online-panel-top: 64px; // below the scene tabs, where the loot roller first opens
+$online-panel-padding: $spacing-m;
+$online-mark-size: 8px;
+$online-badge-size: 16px;
+
+.atlas-online-panel {
+  @include atlas-elevated-surface;
+  @include atlas-panel-radius($radius-2xl);
+  position: absolute;
+  top: $online-panel-top;
+  right: $spacing-m;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  width: $online-panel-width;
+  max-width: calc(100% - 2 * #{$spacing-m});
+  max-height: calc(100% - #{$online-panel-top} - #{$spacing-m});
+  overflow: hidden;
+  pointer-events: auto;
+  color: var(--text-normal);
+  font-size: $font-ui-small;
+  transform-origin: top center;
+}
+
+.atlas-online-panel__header {
+  @include atlas-flex-row($spacing-s);
+  @include atlas-close-header($spacing-m);
+  flex-shrink: 0;
+  border-bottom: $border-width-s solid var(--divider-color);
+}
+
+.atlas-online-panel__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $button-height-s;
+  height: $button-height-s;
+  flex-shrink: 0;
+  border-radius: $radius-m;
+  @include atlas-corner-shape;
+  color: var(--color-blue);
+  background: color-mix(in oklch, var(--color-blue) 16%, transparent);
+
+  svg {
+    width: $icon-s;
+    height: $icon-s;
+  }
+}
+
+.atlas-online-panel__title {
+  flex: 1;
+  margin: 0;
+  font-size: $font-ui-medium;
+  font-weight: $font-weight-semibold;
+  line-height: 1.2;
+}
+
+.atlas-online-panel__body {
+  @include atlas-flex-col($online-panel-padding);
+  @include atlas-scrollbar;
+  min-height: 0;
+  padding: $online-panel-padding;
+  overflow-y: auto;
+}
+
+.atlas-online-panel__section {
+  @include atlas-flex-col($spacing-s);
+  margin: 0;
+}
+
+.atlas-online-panel__heading {
+  margin: 0;
+  font-size: $font-ui-smaller;
+  font-weight: $font-weight-semibold;
+  color: var(--text-muted);
+}
+
+.atlas-online-panel__help {
+  @include atlas-help-text;
+  margin: 0;
+}
+
+.atlas-online-panel__error {
+  margin: 0;
+  color: var(--text-error);
+  font-size: $font-ui-small;
+}
+
+.atlas-online-panel__status {
+  @include atlas-flex-row($spacing-s);
+  margin: 0;
+  font-weight: $font-weight-medium;
+}
+
+.atlas-online-panel__dot {
+  width: $online-mark-size;
+  height: $online-mark-size;
+  flex-shrink: 0;
+  border-radius: $radius-full;
+  background: var(--color-green);
+}
+
+.atlas-online-panel__link {
+  @include atlas-flex-row($spacing-s);
+
+  input {
+    @include atlas-text-input;
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-monospace);
+    font-size: $font-ui-smaller;
+  }
+}
+
+.atlas-online-panel__players {
+  @include atlas-flex-col($spacing-s);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-online-panel__player {
+  @include atlas-flex-col($spacing-s);
+  padding: $spacing-s;
+  border-radius: $radius-l;
+  @include atlas-corner-shape;
+  background: var(--background-secondary);
+}
+
+.atlas-online-panel__player-row {
+  @include atlas-flex-row($spacing-s);
+}
+
+.atlas-online-panel__name {
+  @include atlas-truncate;
+  flex: 1;
+  font-weight: $font-weight-medium;
+}
+
+.atlas-online-panel__note {
+  font-size: $font-ui-smaller;
+  color: var(--text-muted);
+}
+
+.atlas-online-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-xs;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.atlas-online-panel__chip {
+  padding: $spacing-xs;
+  border-radius: $radius-s;
+  background: var(--background-modifier-hover);
+  font-size: $font-ui-smaller;
+  line-height: 1;
+}
+
+.atlas-online-panel__actions {
+  @include atlas-flex-row($spacing-s);
+  flex-wrap: wrap;
+}
+
+.atlas-online-panel__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+// ── Toolbar button marks ──────────────────────────────────────────────────
+.atlas-online-tool {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.atlas-online-tool__dot {
+  position: absolute;
+  top: $spacing-xs;
+  right: $spacing-xs;
+  width: $online-mark-size;
+  height: $online-mark-size;
+  border-radius: $radius-full;
+  background: var(--color-green);
+  pointer-events: none;
+}
+
+// A pill: fixed height, and it widens with the count, hence the inline padding only.
+.atlas-online-tool__badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: $online-badge-size;
+  height: $online-badge-size;
+  padding: 0 $spacing-xs;
+  border-radius: $radius-full;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-size: $font-ui-smaller;
+  font-weight: $font-weight-semibold;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.atlas-online-tool__hidden-text {
+  @include atlas-visually-hidden;
+}

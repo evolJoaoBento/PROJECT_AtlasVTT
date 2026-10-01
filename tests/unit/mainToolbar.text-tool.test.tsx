@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createViewAtlasStore } from '../../src/app/storeFactory';
 
@@ -12,6 +12,7 @@ const setSelection = vi.fn();
 const openAssetManager = vi.fn();
 const closeAssetManager = vi.fn();
 const setInitiativeTrackerOpen = vi.fn();
+const setOnlinePanelOpen = vi.fn();
 
 let capturedShortcuts: Record<string, (event: KeyboardEvent) => void> = {};
 
@@ -31,6 +32,8 @@ const storeState = {
   initiativeTrackerOpen: false,
   lootRoller: { open: false },
   setLootRollerOpen: vi.fn(),
+  isOnlinePanelOpen: false,
+  setOnlinePanelOpen,
   setInitiativeTrackerOpen,
   objects: { tokens: {} },
   setSelection,
@@ -138,6 +141,7 @@ describe('MainToolbar text tool', () => {
     openAssetManager.mockReset();
     closeAssetManager.mockReset();
     setInitiativeTrackerOpen.mockReset();
+    setOnlinePanelOpen.mockReset();
   });
 
   it('activates the text tool from the T shortcut', () => {
@@ -171,5 +175,13 @@ describe('MainToolbar text tool', () => {
     store.getState().setActiveTool('audio');
 
     expect(store.getState().activeTool).toBe('move');
+  });
+
+  it('opens the online session panel from its button', () => {
+    render(<MainToolbar viewId="view-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Online session' }));
+
+    expect(setOnlinePanelOpen).toHaveBeenCalledWith(true);
   });
 });

@@ -289,6 +289,7 @@ export interface ViewAtlasState {
   assetManagerInitialTab?: UISlice['assetManagerInitialTab'];
   isCommandPaletteOpen: UISlice['isCommandPaletteOpen'];
   isDiceTrayOpen: UISlice['isDiceTrayOpen'];
+  isOnlinePanelOpen: UISlice['isOnlinePanelOpen'];
   setGridSettingsOpen: UISlice['setGridSettingsOpen'];
   setDMDashboardOpen: UISlice['setDMDashboardOpen'];
   setGridAlignmentOpen: UISlice['setGridAlignmentOpen'];
@@ -297,6 +298,7 @@ export interface ViewAtlasState {
   closeAssetManager: UISlice['closeAssetManager'];
   setCommandPaletteOpen: UISlice['setCommandPaletteOpen'];
   setDiceTrayOpen: UISlice['setDiceTrayOpen'];
+  setOnlinePanelOpen: UISlice['setOnlinePanelOpen'];
 
   // Note: Undo/Redo functionality is added by temporal middleware
 }
