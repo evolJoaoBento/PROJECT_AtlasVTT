@@ -9,13 +9,17 @@ import { tokenHp, tokenStress } from './token-renderer/tokenResources';
 import { isNameplateVisible } from './token-renderer/nameplateVisibility';
 import type { ConditionDefinition } from '../types/collectionSettingsTypes';
 import type { TokenGestureEventDetail } from '../types/atlasWindowEvents';
-import { AnimatedBarFill, type BarFillRect } from './token-renderer/AnimatedBarFill';
+import { AnimatedBarFill } from './token-renderer/AnimatedBarFill';
 import { ResourceBarLabel } from './ResourceBarLabel';
 import { destroyTree } from './utils/destroyTree';
 import { computeTokenStrokeWidth, restingTokenUIScale, selectedTokenUIScale } from './token-renderer/tokenSizing';
 import { getTokenRingCenterRadius } from './token-renderer/tokenRingMetrics';
 import { ValueTransition } from './utils/ValueTransition';
 import { MOTION_SLOW_MS, prefersReducedMotion } from '../utils/motion';
+import {
+  BAR_BORDER, BAR_STYLE, barFillRect, barInnerRect, barTickXs, NAMEPLATE, NAMEPLATE_STYLE, nameplateRect, tokenBarRects,
+  type UiRect,
+} from './token-renderer/tokenUiLayout';
 
 /**
  * Text is drawn at scale 0.333 and the viewport zooms to at most 5x, so a
@@ -28,12 +32,6 @@ const MAX_TEXT_RESOLUTION = 12;
 
 function textResolutionFor(uiScale: number): number {
   return Math.min(TEXT_RESOLUTION * Math.max(1, uiScale), MAX_TEXT_RESOLUTION);
-}
-
-/** A bar's fill sits 1 unit inside its dark background, so it looks contained. */
-function insetFillRect(x: number, y: number, width: number, height: number): BarFillRect {
-  const inset = 1;
-  return { x: x + inset, y: y + inset, width: width - inset * 2, height: height - inset * 2 };
 }
 
 export class TokenUIRenderer {
@@ -153,14 +151,14 @@ export class TokenUIRenderer {
     this.nameText = new Text({
       text: '',
       style: new TextStyle({
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial',
-        fontSize: 24, // Base font size for 70px token
-        fill: 0xffffff,
-        fontWeight: '600'
+        fontFamily: NAMEPLATE.fontFamily,
+        fontSize: NAMEPLATE.fontSize, // Base font size for 70px token
+        fill: NAMEPLATE_STYLE.text,
+        fontWeight: NAMEPLATE.fontWeight,
         // No stroke for cleaner look in the badge.
       })
     });
-    this.nameText.scale.set(0.333);
+    this.nameText.scale.set(NAMEPLATE.textScale);
     this.nameText.resolution = TEXT_RESOLUTION;
     this.nameText.zIndex = 2; // Name text above name badge background
     
@@ -384,107 +382,30 @@ export class TokenUIRenderer {
     
     this.container.visible = true;
 
-    // Use design tokens for consistent sizing
-    const barWidth = barDimensions.token.width;
-    const barHeight = barDimensions.token.height;
-    const barRadius = barDimensions.token.radius;
-    const gap = barDimensions.token.gap;
-    
-    const baseGap = 2; // Gap between token and first bar
-    let currentY = baseGap; // Start below token
-    
-    // HP Bar
-    if (hpValue) {
-      const hp = hpValue;
-      const hpPercentage = hp ? Math.max(0, Math.min(100, (hp.current / hp.max) * 100)) : 0;
-      const isDefeated = hp ? hp.current <= 0 : false;
-      
-      // Bar styling - layered approach for proper pill shape
-      const borderThickness = 0.75;  // Very thin outer border
-      const pillRadius = barHeight / 2;  // True pill shape
-      const innerPadding = borderThickness / 2;  // No gap - content sits at stroke's inner edge
-      
-      // Layer 1: Thin gray outer stroke
-      this.hpBar.roundRect(-barWidth/2, currentY, barWidth, barHeight, pillRadius)
-        .stroke({ width: borderThickness, color: 0x888888, alpha: 1 });
-      
-      // Layer 2: Dark inner background
-      const innerX = -barWidth/2 + innerPadding;
-      const innerY = currentY + innerPadding;
-      const innerWidth = barWidth - innerPadding * 2;
-      const innerHeight = barHeight - innerPadding * 2;
-      const innerRadius = innerHeight / 2;  // True pill for inner
-      
-      this.hpBar.roundRect(innerX, innerY, innerWidth, innerHeight, innerRadius)
-        .fill({ color: 0x1a1a1a, alpha: 1 });
-      
-      // Layer 3: Tick marks on the dark background (every 10%)
-      const tickSpacing = innerWidth / 10;
-      for (let i = 1; i < 10; i++) {
-        const tickX = innerX + (tickSpacing * i);
-        this.hpBar.moveTo(tickX, innerY + 1);
-        this.hpBar.lineTo(tickX, innerY + innerHeight - 1);
-        this.hpBar.stroke({ width: 0.5, color: 0x333333, alpha: 0.5 });
-      }
-      
-      // Layer 4: Colored HP fill with metallic/energy gradient (slightly inset)
-      this.hpFill.set(hpPercentage / 100, insetFillRect(innerX, innerY, innerWidth, innerHeight), this.canAnimateValues());
-      
-      // Text
-      this.hpText.setValue(hp ?? { current: 0, max: 0 });
-      this.hpText.position.set(0, currentY + barHeight/2);
-      
+    // Bars below the token, laid out in UI units by the layout the online player view shares
+    const bars = tokenBarRects(hpValue !== null, stressResource !== null);
+
+    if (hpValue && bars.hp) {
+      const hpPercentage = Math.max(0, Math.min(100, (hpValue.current / hpValue.max) * 100));
+      this.drawBarFrame(this.hpBar, bars.hp);
+      this.hpFill.set(hpPercentage / 100, barFillRect(barInnerRect(bars.hp)), this.canAnimateValues());
+      this.hpText.setValue(hpValue);
+      this.hpText.position.set(0, bars.hp.y + bars.hp.height / 2);
       // Defeated overlay - just darken the HP bar, no X icon
-      if (isDefeated) {
-        this.defeatedOverlay.roundRect(-barWidth/2, currentY, barWidth, barHeight, barRadius)
-          .fill({ color: 0x000000, alpha: 0.4 });
+      if (hpValue.current <= 0) {
+        this.defeatedOverlay.roundRect(bars.hp.x, bars.hp.y, bars.hp.width, bars.hp.height, barDimensions.token.radius)
+          .fill({ color: 0x000000, alpha: BAR_STYLE.defeatedAlpha });
       }
-      
-      currentY += barHeight + gap;
     }
-    
-    // Stress Bar
-    if (stressResource) {
-      const stressValue = stressResource.current;
-      const maxStress = stressResource.max;
-      const stressPercentage = Math.max(0, Math.min(100, (stressValue / maxStress) * 100));
-      
-      // Bar styling - layered approach for proper pill shape
-      const borderThickness = 0.75;  // Very thin outer border
-      const pillRadius = barHeight / 2;  // True pill shape
-      const innerPadding = borderThickness / 2;  // No gap - content sits at stroke's inner edge
-      
-      // Layer 1: Thin gray outer stroke
-      this.stressBar.roundRect(-barWidth/2, currentY, barWidth, barHeight, pillRadius)
-        .stroke({ width: borderThickness, color: 0x888888, alpha: 1 });
-      
-      // Layer 2: Dark inner background
-      const innerX = -barWidth/2 + innerPadding;
-      const innerY = currentY + innerPadding;
-      const innerWidth = barWidth - innerPadding * 2;
-      const innerHeight = barHeight - innerPadding * 2;
-      const innerRadius = innerHeight / 2;  // True pill for inner
-      
-      this.stressBar.roundRect(innerX, innerY, innerWidth, innerHeight, innerRadius)
-        .fill({ color: 0x1a1a1a, alpha: 1 });
-      
-      // Layer 3: Tick marks on the dark background (every 10%)
-      const tickSpacing = innerWidth / 10;
-      for (let i = 1; i < 10; i++) {
-        const tickX = innerX + (tickSpacing * i);
-        this.stressBar.moveTo(tickX, innerY + 1);
-        this.stressBar.lineTo(tickX, innerY + innerHeight - 1);
-        this.stressBar.stroke({ width: 0.5, color: 0x333333, alpha: 0.5 });
-      }
-      
-      // Layer 4: Colored stress fill with metallic/energy gradient (slightly inset)
-      this.stressFill.set(stressPercentage / 100, insetFillRect(innerX, innerY, innerWidth, innerHeight), this.canAnimateValues());
-      
-      // Text
-      this.stressText.setValue({ current: stressValue, max: maxStress });
-      this.stressText.position.set(0, currentY + barHeight/2);
+
+    if (stressResource && bars.stress) {
+      const stressPercentage = Math.max(0, Math.min(100, (stressResource.current / stressResource.max) * 100));
+      this.drawBarFrame(this.stressBar, bars.stress);
+      this.stressFill.set(stressPercentage / 100, barFillRect(barInnerRect(bars.stress)), this.canAnimateValues());
+      this.stressText.setValue({ current: stressResource.current, max: stressResource.max });
+      this.stressText.position.set(0, bars.stress.y + bars.stress.height / 2);
     }
-    
+
     // Name badge - only show if showNameplate is true AND there's a meaningful name
     // Determine displayName first to decide whether to show the nameplate
     let displayName: string | null = null;
@@ -502,43 +423,23 @@ export class TokenUIRenderer {
 
     // Only show nameplate if enabled AND we have a name to display
     if (showNameplate && displayName) {
-      // Get theme colors
       const isDarkMode = document.body.classList.contains('theme-dark');
-      const bgColor = isDarkMode ? 0x2a2a2a : 0xe3e3e3;
-      const strokeColor = isDarkMode ? 0xffffff : 0x000000;
-      
+      const plate = isDarkMode ? NAMEPLATE_STYLE.dark : NAMEPLATE_STYLE.light;
       this.nameText.text = displayName;
-      // In PIXI v8, text updates automatically when setting the text property
-      const textBounds = this.nameText.getLocalBounds();
-      
-      this.nameText.alpha = 0.85;
-      
-      // Badge dimensions - use fixed sizes  
-      const scaledTextScale = 0.333; // Fixed text scale
-      const scaledWidth = textBounds.width * scaledTextScale;
-      const padding = 6; // Fixed padding
-      const badgeWidth = Math.max(scaledWidth + padding * 2, 40); // Fixed min width
-      const badgeHeight = 14; // Fixed height
-      const badgeRadius = badgeHeight / 2;
-      
-      // Position the name badge so its bottom edge aligns with the token's bottom edge
-      const nameY = -badgeHeight / 2;
-      
-      // Draw rounded rectangle background
+      this.nameText.alpha = NAMEPLATE.textAlpha;
+      // The badge's bottom edge sits on the token's bottom edge
+      const badge = nameplateRect(this.nameText.getLocalBounds().width);
       this.nameBadge.clear();
-      this.nameBadge.roundRect(-badgeWidth/2, nameY - badgeHeight/2, badgeWidth, badgeHeight, badgeRadius)
-        .fill({ color: bgColor, alpha: 1 }); // Fully opaque background
-      
+      this.nameBadge.roundRect(badge.x, badge.y, badge.width, badge.height, badge.height / 2)
+        .fill({ color: plate.fill, alpha: 1 }); // Fully opaque background
       // Add border — softened so it doesn't overpower the nameplate
-      this.nameBadge.roundRect(-badgeWidth/2, nameY - badgeHeight/2, badgeWidth, badgeHeight, badgeRadius)
-        .stroke({ width: 0.5, color: strokeColor, alpha: isDarkMode ? 0.4 : 0.3 });
-      
-      // Position text in center of badge
+      this.nameBadge.roundRect(badge.x, badge.y, badge.width, badge.height, badge.height / 2)
+        .stroke({ width: NAMEPLATE_STYLE.borderWidth, color: plate.border, alpha: plate.borderAlpha });
       this.nameText.anchor.set(0.5, 0.5);
-      this.nameText.position.set(0, nameY);
-      this.nameText.scale.set(0.333); // Fixed text scale
+      this.nameText.position.set(0, badge.textY);
+      this.nameText.scale.set(NAMEPLATE.textScale);
     }
-    
+
     // Hide unused elements (but respect resize and rotation hidden state)
     const isHidden = this.isHiddenDuringResize || this.isHiddenDuringRotation;
     this.hpBar.visible = hasHP && !isHidden;
@@ -562,6 +463,20 @@ export class TokenUIRenderer {
   
   private canAnimateValues(): boolean {
     return !prefersReducedMotion(document.body);
+  }
+
+  /** A bar's thin grey outline, its dark inside and a tick mark every tenth. */
+  private drawBarFrame(graphics: Graphics, bar: UiRect): void {
+    graphics.roundRect(bar.x, bar.y, bar.width, bar.height, bar.height / 2)
+      .stroke({ width: BAR_BORDER, color: BAR_STYLE.border, alpha: 1 });
+    const inner = barInnerRect(bar);
+    graphics.roundRect(inner.x, inner.y, inner.width, inner.height, inner.height / 2)
+      .fill({ color: BAR_STYLE.inside, alpha: 1 });
+    for (const tickX of barTickXs(inner)) {
+      graphics.moveTo(tickX, inner.y + 1);
+      graphics.lineTo(tickX, inner.y + inner.height - 1);
+      graphics.stroke({ width: BAR_STYLE.tickWidth, color: BAR_STYLE.tick, alpha: BAR_STYLE.tickAlpha });
+    }
   }
 
   public getContainer(): Container {
@@ -845,11 +760,8 @@ export class TokenUIRenderer {
       const textBounds = this.nameText.getLocalBounds();
       
       // Badge dimensions (same as normal badge) - use fixed sizes
-      const scaledTextScale = 0.333; // Fixed text scale
-      const scaledTextWidth = textBounds.width * scaledTextScale;
-      const padding = 6; // Fixed padding
-      const badgeWidth = Math.max(scaledTextWidth + padding * 2, 40); // Fixed min width
-      const badgeHeight = 14; // Fixed height
+      const scaledTextScale = NAMEPLATE.textScale;
+      const { width: badgeWidth, height: badgeHeight } = nameplateRect(textBounds.width);
       const badgeRadius = badgeHeight / 2;
       
       // Get current name badge position

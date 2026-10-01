@@ -49,6 +49,7 @@ import { mapMeasurementSettings } from './services/mapMeasurementSettings';
 import { findAtlasLeafByViewId } from './utils/atlasLeafLookup';
 import { destroyTree } from './pixi/utils/destroyTree';
 import { requestRender } from './pixi/RenderScheduler';
+import { SCENE_LAYER_Z } from './pixi/sceneLayerOrder';
 
 export class PixiRendererOrchestrator { // Renamed class
   private _isDestroyed: boolean = false;
@@ -395,7 +396,7 @@ export class PixiRendererOrchestrator { // Renamed class
     viewport.addChild(fogContainer);
     
     // Set the fog container to a high z-index to ensure it's on top when visible
-    fogContainer.zIndex = 1000;
+    fogContainer.zIndex = SCENE_LAYER_Z.fog;
 
     // Initialize VisionRenderer (z-index 900 — between tokens and fog)
     this.visionRenderer = new VisionRenderer(viewport, this.pixiAppManager.app, this.store, this.obsApp);
@@ -466,7 +467,7 @@ export class PixiRendererOrchestrator { // Renamed class
     const drawingContainer = this.drawingRenderer.getContainer();
     viewport.addChild(drawingContainer);
     // Above tokens/text, below fog so hidden areas stay hidden
-    drawingContainer.zIndex = 900;
+    drawingContainer.zIndex = SCENE_LAYER_Z.drawings;
     
     // Initialize TextRenderer if GridSystem is ready
     if (this.gridSystem) {
@@ -481,7 +482,7 @@ export class PixiRendererOrchestrator { // Renamed class
       const textContainer = this.textRenderer.getContainer?.() || viewport.children.find(child => child.label === 'textContainer');
       if (textContainer) {
         // Set z-index between tokens and fog
-        textContainer.zIndex = 500;
+        textContainer.zIndex = SCENE_LAYER_Z.texts;
       }
     }
     
@@ -616,7 +617,7 @@ export class PixiRendererOrchestrator { // Renamed class
       const textContainer = this.textRenderer.getContainer?.() || currentViewport.children.find(child => child.label === 'textContainer');
       if (textContainer) {
         // Set z-index between tokens and fog
-        textContainer.zIndex = 500;
+        textContainer.zIndex = SCENE_LAYER_Z.texts;
       }
     }
     

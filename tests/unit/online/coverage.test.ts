@@ -1,0 +1,200 @@
+import { describe, expect, it } from 'vitest';
+import {
+  DRAWING_FIELD_COVERAGE, FOG_FIELD_COVERAGE, GRID_FIELD_COVERAGE, OBJECT_COVERAGE, SCENE_FIELD_COVERAGE, TEXT_FIELD_COVERAGE,
+  TOKEN_FIELD_COVERAGE, type CoverageTable, type KeysOfUnion,
+} from '../../../src/app/online/coverage';
+import { projectForPlayers, type ProjectedState } from '../../../src/app/online/scene/projectForPlayers';
+import { createProjectionMemo, projectDrawings, projectFog, projectTexts } from '../../../src/app/online/scene/projectRecords';
+import type { PlayerViewRules } from '../../../src/app/online/scene/playerViewRules';
+import type { GridState } from '../../../src/app/services/MapPersistence';
+import type { ViewAtlasState } from '../../../src/app/storeFactory';
+import type { Character, DrawingStroke, TextElement } from '../../../src/app/types';
+import type { FogBrushStroke, FogOperation, FogRectangleFill } from '../../../src/app/types/fogTypes';
+import { createDefaultInitiativeState, type InitiativeEntry } from '../../../src/app/types/initiativeTypes';
+import type { AnyWidget } from '../../../src/app/types/widgetTypes';
+import { coverageOfFog, fakeAssetIds } from './sceneFixtures';
+
+type Variants<K extends PropertyKey, T> = Record<K, (base: T) => T>;
+
+/** A `sent` field changes the projection; a `gm-only` or `not-yet` field never does. */
+function expectCoverage<K extends string, T>(table: CoverageTable<K>, variants: Variants<K, T>, base: T, project: (value: T) => unknown): void {
+  expect(Object.keys(variants).sort()).toEqual(Object.keys(table).sort());
+  const before = project(base);
+  for (const key of Object.keys(table) as K[]) {
+    const after = project(variants[key](base));
+    if (table[key].status === 'sent') expect(after, `${key} is marked sent`).not.toEqual(before);
+    else expect(after, `${key} is marked ${table[key].status}`).toEqual(before);
+  }
+}
+
+const RULES: PlayerViewRules = {
+  showGrid: true, showTokenHP: true, showTokenStress: true, showTokenNameplates: true, showWidgets: true, showInitiative: true,
+};
+// One id per path for the whole file, so a changed image path always gets a different id.
+const assets = fakeAssetIds();
+const project = (state: ProjectedState): unknown => projectForPlayers(state, {
+  sceneId: 'scene-1', rules: RULES, coverage: coverageOfFog({}), assets, mapSize: { width: 1000, height: 800 }, memo: createProjectionMemo(),
+});
+
+const TOKEN: Character = {
+  id: 'hero', kind: 'character', x: 140, y: 140, imagePath: 'art/hero.png', name: '', size: 1, rotation: 0, layer: 0,
+  showRing: true, ringColor: '#ff0000', conditions: ['frightened'], conditionValues: { frightened: 2 }, isHidden: false,
+  hp: { current: 7, max: 10 }, stress: 2, maxStress: 6, maxHpOverridden: false, maxStressOverridden: false,
+  hope: { current: 1, max: 6 }, difficulty: '3', notePath: 'notes/hero.md', statblockPath: 'statblocks/hero.md', statblockName: 'Hero',
+  playerLinked: false, playerId: 'p1', playerCharacterId: 'c1', statblockResources: { focus: { current: 1, max: 3 } },
+  tags: ['party'], hasVision: true, showNameplate: false, visionInnerRadius: 100, visionOuterRadius: 200, instanceNumber: 1,
+};
+const TEXT: TextElement = {
+  id: 'tx', kind: 'text', x: 50, y: 50, text: 'Tavern', fontSize: 24, fontFamily: 'serif', color: '#000000',
+  backgroundColor: '#ffffff', padding: 4, borderRadius: 2, opacity: 0.8, width: 120, height: 40, align: 'left',
+  bold: false, italic: false, rotation: 0, scale: 1,
+};
+const DRAWING: DrawingStroke = {
+  id: 'd1', kind: 'drawing', timestamp: 2, type: 'icon', points: [{ x: 10, y: 10 }], color: '#ff0000', width: 70, opacity: 1, icon: 'flame',
+};
+const GRID: GridState = {
+  enabled: true, visible: true, type: 'hex-vertical', size: 70, offsetX: 0, offsetY: 0, color: '#000000', opacity: 0.5,
+  lineType: 'solid', lineWidth: 1, hexNumbers: 'column-row', hexNumberOpacity: 0.8, snapToGrid: true, scale: 1, mapScale: 1,
+  unitType: 'feet', unitDistance: 5, measurementType: 'units', autoDetect: false,
+};
+const COUNTER = { id: 'w1', type: 'counter', label: 'Torches', icon: 'flame', visible: true, visibleToPlayers: true, value: 1, order: 0 } as AnyWidget;
+const ENTRY: InitiativeEntry = {
+  id: 'e1', tokenId: 'hero', name: 'Hero', initiative: 15, initiativeModifier: 1, hp: { current: 7, max: 10 },
+  stress: { current: 2, max: 6 }, imagePath: 'art/hero.png', statblockPath: 'statblocks/hero.md',
+  isActive: true, isDefeated: false, isNPC: false, order: 0,
+};
+
+function sceneState(overrides: Partial<ProjectedState> = {}): ProjectedState {
+  return {
+    background: 'maps/tavern.png',
+    grid: GRID,
+    objects: { tokens: { hero: TOKEN }, fog: {}, pins: {}, texts: { tx: TEXT }, drawings: { d1: DRAWING }, walls: {}, lights: {}, audios: {} },
+    widgetSettings: { widgets: { w1: COUNTER }, globalVisible: true, position: 'top', scale: 1 },
+    widgetValues: { w1: 3 },
+    initiative: { ...createDefaultInitiativeState(), isActive: true, round: 2, entries: [ENTRY] },
+    initiativeTrackerOpen: true,
+    ...overrides,
+  };
+}
+
+const withToken = (token: Character): ProjectedState => {
+  const base = sceneState();
+  return { ...base, objects: { ...base.objects, tokens: { [token.id]: token } } };
+};
+
+describe('coverage of map objects', () => {
+  type Objects = ViewAtlasState['objects'];
+  const add = (kind: keyof Objects, record: unknown) => (state: ProjectedState): ProjectedState => ({
+    ...state, objects: { ...state.objects, [kind]: { ...state.objects[kind], extra: record } },
+  });
+  it('sends every kind marked sent and nothing of the others', () => {
+    const variants: Variants<keyof Objects, ProjectedState> = {
+      tokens: add('tokens', { ...TOKEN, id: 'extra', x: 400 }),
+      fog: add('fog', { id: 'extra', kind: 'fog', type: 'rectangle', timestamp: 9, isErasing: false, x: 0, y: 0, width: 5, height: 5 }),
+      texts: add('texts', { ...TEXT, id: 'extra' }),
+      drawings: add('drawings', { ...DRAWING, id: 'extra' }),
+      pins: add('pins', { id: 'extra', kind: 'pin', x: 1, y: 1, notePath: 'notes/secret.md' }),
+      walls: add('walls', { id: 'extra' }),
+      lights: add('lights', { id: 'extra' }),
+      audios: add('audios', { id: 'extra' }),
+    };
+    expectCoverage(OBJECT_COVERAGE, variants, sceneState(), project);
+  });
+});
+
+describe('coverage of token fields', () => {
+  it('sends every field marked sent and nothing of the others', () => {
+    const set = (patch: Partial<Character>) => (token: Character): Character => ({ ...token, ...patch });
+    const variants: Variants<keyof Character, Character> = {
+      id: set({ id: 'hero-2' }), kind: (token) => ({ ...token, kind: 'token' }) as unknown as Character,
+      x: set({ x: 300 }), y: set({ y: 300 }), imagePath: set({ imagePath: 'art/other.png' }), size: set({ size: 2 }),
+      rotation: set({ rotation: 45 }), layer: set({ layer: 3 }), showRing: set({ showRing: false }), ringColor: set({ ringColor: '#00ff00' }),
+      conditions: set({ conditions: ['prone'] }), conditionValues: set({ conditionValues: { frightened: 3 } }),
+      isHidden: set({ isHidden: true }), name: set({ name: 'Bob' }),
+      statblockPath: ({ statblockPath: _path, ...token }) => token, statblockName: set({ statblockName: 'Orc' }),
+      hp: set({ hp: { current: 3, max: 10 } }), stress: set({ stress: 4 }), maxStress: set({ maxStress: 8 }),
+      showNameplate: set({ showNameplate: true }), tags: set({ tags: ['secret'] }), notePath: set({ notePath: 'notes/other.md' }),
+      difficulty: set({ difficulty: '5' }), hope: set({ hope: { current: 2, max: 6 } }),
+      statblockResources: set({ statblockResources: { focus: { current: 2, max: 3 } } }),
+      maxHpOverridden: set({ maxHpOverridden: true }), maxStressOverridden: set({ maxStressOverridden: true }),
+      playerLinked: set({ playerLinked: true }), playerId: set({ playerId: 'p2' }), playerCharacterId: set({ playerCharacterId: 'c2' }),
+      hasVision: set({ hasVision: false }), visionInnerRadius: set({ visionInnerRadius: 150 }), visionOuterRadius: set({ visionOuterRadius: 250 }),
+      instanceNumber: set({ instanceNumber: 2 }),
+    };
+    expectCoverage(TOKEN_FIELD_COVERAGE, variants, TOKEN, (token) => project(withToken(token)));
+  });
+});
+
+describe('coverage of text, drawing and fog fields', () => {
+  it('sends every text field marked sent', () => {
+    const set = (patch: Partial<TextElement>) => (text: TextElement): TextElement => ({ ...text, ...patch });
+    const variants: Variants<keyof TextElement, TextElement> = {
+      id: set({ id: 'tx-2' }), kind: (text) => ({ ...text, kind: 'other' }) as unknown as TextElement,
+      x: set({ x: 60 }), y: set({ y: 60 }), rotation: set({ rotation: 30 }), text: set({ text: 'Inn' }), fontSize: set({ fontSize: 30 }),
+      fontFamily: set({ fontFamily: 'sans-serif' }), color: set({ color: '#ff0000' }), backgroundColor: set({ backgroundColor: '#000000' }),
+      padding: set({ padding: 6 }), borderRadius: set({ borderRadius: 4 }), opacity: set({ opacity: 0.5 }), width: set({ width: 200 }),
+      height: set({ height: 60 }), align: set({ align: 'right' }), bold: set({ bold: true }), italic: set({ italic: true }), scale: set({ scale: 2 }),
+    };
+    expectCoverage(TEXT_FIELD_COVERAGE, variants, TEXT, (text) => projectTexts({ [text.id]: text }, coverageOfFog({})));
+  });
+
+  it('sends every drawing field marked sent', () => {
+    const set = (patch: Partial<DrawingStroke>) => (drawing: DrawingStroke): DrawingStroke => ({ ...drawing, ...patch });
+    const variants: Variants<keyof DrawingStroke, DrawingStroke> = {
+      id: set({ id: 'd2' }), kind: (drawing) => ({ ...drawing, kind: 'other' }) as unknown as DrawingStroke,
+      color: set({ color: '#00ff00' }), opacity: set({ opacity: 0.5 }), width: set({ width: 80 }), timestamp: set({ timestamp: 3 }),
+      type: set({ type: 'pen' }), points: set({ points: [{ x: 20, y: 20 }] }), icon: set({ icon: 'skull' }),
+    };
+    expectCoverage(DRAWING_FIELD_COVERAGE, variants, DRAWING, (drawing) =>
+      projectDrawings({ [drawing.id]: drawing }, coverageOfFog({}), createProjectionMemo()));
+  });
+
+  it('sends every fog field marked sent', () => {
+    interface FogPair { brush: FogBrushStroke; rect: FogRectangleFill }
+    const base: FogPair = {
+      brush: {
+        id: 'b', kind: 'fog', type: 'brush', timestamp: 1, isErasing: false, brushRadius: 20,
+        points: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }], offsetX: 0, offsetY: 0,
+      },
+      rect: { id: 'r', kind: 'fog', type: 'rectangle', timestamp: 2, isErasing: false, x: 100, y: 100, width: 50, height: 50, offsetX: 0, offsetY: 0 },
+    };
+    const brush = (patch: object) => (pair: FogPair): FogPair => ({ ...pair, brush: { ...pair.brush, ...patch } as FogBrushStroke });
+    const rect = (patch: Partial<FogRectangleFill>) => (pair: FogPair): FogPair => ({ ...pair, rect: { ...pair.rect, ...patch } });
+    const variants: Variants<KeysOfUnion<FogOperation>, FogPair> = {
+      id: brush({ id: 'b2' }), kind: brush({ kind: 'other' }), timestamp: brush({ timestamp: 5 }), type: brush({ type: 'lasso' }),
+      isErasing: brush({ isErasing: true }), offsetX: brush({ offsetX: 5 }), offsetY: brush({ offsetY: 5 }),
+      points: brush({ points: [{ x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 60 }] }), brushRadius: brush({ brushRadius: 30 }),
+      x: rect({ x: 110 }), y: rect({ y: 110 }), width: rect({ width: 60 }), height: rect({ height: 60 }),
+    };
+    expectCoverage(FOG_FIELD_COVERAGE, variants, base, (pair) =>
+      projectFog({ [pair.brush.id]: pair.brush, [pair.rect.id]: pair.rect }, createProjectionMemo()));
+  });
+});
+
+describe('coverage of grid and scene fields', () => {
+  it('sends every grid field marked sent', () => {
+    const set = (patch: Partial<GridState>) => (grid: GridState): GridState => ({ ...grid, ...patch });
+    const variants: Variants<keyof GridState, GridState> = {
+      enabled: set({ enabled: false }), visible: set({ visible: false }), type: set({ type: 'square' }), size: set({ size: 80 }),
+      offsetX: set({ offsetX: 5 }), offsetY: set({ offsetY: 5 }), color: set({ color: '#ff0000' }), opacity: set({ opacity: 0.3 }),
+      lineType: set({ lineType: 'dashed' }), lineWidth: set({ lineWidth: 3 }), hexNumbers: set({ hexNumbers: 'sequential' }),
+      hexNumberOpacity: set({ hexNumberOpacity: 0.2 }), snapToGrid: set({ snapToGrid: false }), scale: set({ scale: 2 }),
+      mapScale: set({ mapScale: 2 }), unitType: set({ unitType: 'meters' }), unitDistance: set({ unitDistance: 10 }),
+      measurementType: set({ measurementType: 'abstract' }), autoDetect: set({ autoDetect: true }),
+    };
+    expectCoverage(GRID_FIELD_COVERAGE, variants, GRID, (grid) => project(sceneState({ grid })));
+  });
+
+  it('sends every store field the projection reads', () => {
+    const variants: Variants<keyof ProjectedState, ProjectedState> = {
+      background: (state) => ({ ...state, background: 'maps/other.png' }),
+      grid: (state) => ({ ...state, grid: { ...GRID, size: 80 } }),
+      objects: (state) => ({ ...state, objects: { ...state.objects, tokens: {} } }),
+      widgetSettings: (state) => ({ ...state, widgetSettings: { ...state.widgetSettings, globalVisible: false } }),
+      widgetValues: (state) => ({ ...state, widgetValues: { w1: 7 } }),
+      initiative: (state) => ({ ...state, initiative: { ...state.initiative, round: 3 } }),
+      initiativeTrackerOpen: (state) => ({ ...state, initiativeTrackerOpen: false }),
+    };
+    expectCoverage(SCENE_FIELD_COVERAGE, variants, sceneState(), project);
+  });
+});

@@ -19,6 +19,8 @@ export interface HexNumberStyle {
 }
 
 export const DEFAULT_HEX_NUMBER_OPACITY = 0.8;
+/** Numbers smaller than this on screen (CSS pixels) are unreadable noise, so they hide until zoomed in. */
+export const MIN_HEX_NUMBER_SCREEN_SIZE = 7;
 
 /** The hex number style a grid's settings ask for, or undefined when numbers are off. */
 export function hexNumberStyleOfGrid(

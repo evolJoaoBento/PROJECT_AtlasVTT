@@ -1,5 +1,5 @@
 import { BitmapText, Cache, Container, DynamicBitmapFont, TextStyle } from 'pixi.js';
-import { hexNumberAnchor, hexNumberFontSize } from './hexNumbering';
+import { hexNumberAnchor, hexNumberFontSize, MIN_HEX_NUMBER_SCREEN_SIZE } from './hexNumbering';
 import type { NumberedHex } from './hexNumbering';
 import type { HexLayout, Point } from './hexGeometry';
 
@@ -10,8 +10,6 @@ import type { HexLayout, Point } from './hexGeometry';
  */
 const RASTER_SIZES = [16, 32, 64, 128, 256] as const;
 type RasterSize = (typeof RASTER_SIZES)[number];
-/** Numbers smaller than this on screen (CSS pixels) are unreadable noise, so they hide until zoomed in. */
-const MIN_SCREEN_FONT_SIZE = 7;
 
 function fontName(size: RasterSize): string {
   return `atlas-hex-numbers-${size}`;
@@ -92,7 +90,7 @@ export class HexNumberLabels {
   }
 
   private isReadable(zoom: number): boolean {
-    return this.fontSize * zoom >= MIN_SCREEN_FONT_SIZE;
+    return this.fontSize * zoom >= MIN_HEX_NUMBER_SCREEN_SIZE;
   }
 
   /** Picks the glyph atlas for the numbers' size on screen and hides them while too small to read. */
