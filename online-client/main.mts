@@ -71,7 +71,7 @@ let sessionState: PlayerSessionState | null = null;
 let scene: PlayerScene | null = null;
 let started = false;
 
-/** Diagnostics: run `localStorage.setItem('atlas-online:log', 'on')` in this page's console, then reload. */
+/** Diagnostics: run `localStorage.setItem('atlas-online:log', 'on')` in this page's console; the switch is read on every event, so no reload is needed. */
 const log = createOnlineLog(() => {
   try {
     return localStorage.getItem('atlas-online:log') === 'on';
