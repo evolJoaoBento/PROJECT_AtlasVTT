@@ -1,4 +1,5 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { TokenControl } from './control/TokenControl';
 import type { SessionPlayer } from './GmSession';
 
 export interface OnlineSessionState {
@@ -7,9 +8,11 @@ export interface OnlineSessionState {
   joinUrl: string | null;
   players: SessionPlayer[];
   error: string | null;
+  /** Who may move which token while hosting; null otherwise. The token menu reads it. */
+  tokenControl: TokenControl | null;
 }
 
-const INITIAL_STATE: OnlineSessionState = { status: 'idle', peerId: null, joinUrl: null, players: [], error: null };
+const INITIAL_STATE: OnlineSessionState = { status: 'idle', peerId: null, joinUrl: null, players: [], error: null, tokenControl: null };
 
 /** The online session as the GM's UI sees it, written by `OnlineSessionService`. */
 export const onlineSessionStore: StoreApi<OnlineSessionState> = createStore<OnlineSessionState>(() => INITIAL_STATE);

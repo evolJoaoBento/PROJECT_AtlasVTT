@@ -5,11 +5,13 @@
 import type { SceneCamera } from './scene/sceneCamera';
 import type { PlayerDrawing, PlayerFogOp, PlayerSceneBody, ScenePatchBody } from './scene/sceneTypes';
 import {
-  isDrawingRecords, isFogRecords, isLastSeq, isPlayerSceneBody, isSceneCamera, isSceneCount, isScenePatchBody, isSceneSeq,
+  isDrawingRecords, isFogRecords, isLastSeq, isPlayerSceneBody, isSceneCamera, isSceneCount, isSceneId, isScenePatchBody, isSceneSeq,
 } from './scene/sceneValidation';
 export const PROTOCOL_VERSION = 1;
 export const MAX_CONTROL_MESSAGE_BYTES = 256 * 1024;
 export const MAX_PLAYER_NAME_LENGTH = 40;
+/** The most tokens one player may control, and so the longest `token-control` list. */
+export const MAX_CONTROLLED_TOKENS = 256;
 
 export type DenyReason = 'denied' | 'kicked' | 'full' | 'version' | 'ended';
 const DENY_REASONS: readonly DenyReason[] = ['denied', 'kicked', 'full', 'version', 'ended'];
@@ -37,7 +39,16 @@ export type ControlMessage =
   }
   | { v: 1; type: 'scene-clear'; seq: number }
   | { v: 1; type: 'scene-resync'; seq: number }
-  | ({ v: 1; type: 'scene-camera' } & SceneCamera);
+  | ({ v: 1; type: 'scene-camera' } & SceneCamera)
+  /** GM to one player: the tokens that player may move, for this session. */
+  | { v: 1; type: 'token-control'; tokenIds: string[] }
+  /** Player to GM, once per drop: where the player let go of one of their tokens, in world units. */
+  | { v: 1; type: 'token-move'; sceneId: string; tokenId: string; x: number; y: number }
+  /** GM to the player who sent the move: it failed a check, so the token stays where the scene has it. */
+  | { v: 1; type: 'token-move-refused'; tokenId: string };
+
+/** What an admitted player may send besides `ping`, `pong` and `bye`; the GM drops every other type from a player. */
+export const PLAYER_MESSAGE_TYPES: ReadonlySet<ControlMessage['type']> = new Set<ControlMessage['type']>(['scene-resync', 'token-move']);
 
 export type Decoded =
   | { kind: 'message'; message: ControlMessage }
@@ -70,6 +81,11 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   'scene-clear': (m) => isSceneSeq(m.seq),
   'scene-resync': (m) => isLastSeq(m.seq),
   'scene-camera': (m) => isSceneCamera(m),
+  'token-control': (m) => Array.isArray(m.tokenIds) && m.tokenIds.length <= MAX_CONTROLLED_TOKENS
+    && m.tokenIds.every((id) => isSceneId(id)),
+  // Any number: one JSON reads as Infinity (`1e400`) is the GM's check to refuse, not a broken message.
+  'token-move': (m) => isSceneId(m.sceneId) && isSceneId(m.tokenId) && typeof m.x === 'number' && typeof m.y === 'number',
+  'token-move-refused': (m) => isSceneId(m.tokenId),
 };
 
 export function encodeControl(message: ControlMessage): string {

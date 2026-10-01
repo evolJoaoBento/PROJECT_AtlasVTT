@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { decodeControl, encodeControl, normalizePlayerName, MAX_CONTROL_MESSAGE_BYTES } from '../../../src/app/online/protocol';
+import {
+  decodeControl, encodeControl, normalizePlayerName, MAX_CONTROL_MESSAGE_BYTES, MAX_CONTROLLED_TOKENS, PLAYER_MESSAGE_TYPES,
+} from '../../../src/app/online/protocol';
 import { randomId } from '../../../src/app/online/ids';
 
 describe('online protocol', () => {
@@ -65,5 +67,46 @@ describe('online protocol', () => {
     const a = randomId();
     expect(a).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(randomId()).not.toBe(a);
+  });
+
+  it('round-trips the token control, move and refusal messages', () => {
+    const messages = [
+      { v: 1, type: 'token-control', tokenIds: ['hero', 'ally'] },
+      { v: 1, type: 'token-control', tokenIds: [] },
+      { v: 1, type: 'token-move', sceneId: 's1', tokenId: 'hero', x: 12.5, y: -3 },
+      { v: 1, type: 'token-move-refused', tokenId: 'hero' },
+    ] as const;
+    for (const message of messages) {
+      expect(decodeControl(encodeControl(message))).toEqual({ kind: 'message', message });
+    }
+  });
+
+  it('refuses malformed token messages', () => {
+    const tooMany = Array.from({ length: MAX_CONTROLLED_TOKENS + 1 }, (_, index) => `t${index}`);
+    const bad = [
+      { v: 1, type: 'token-control', tokenIds: tooMany },
+      { v: 1, type: 'token-control', tokenIds: ['__proto__'] },
+      { v: 1, type: 'token-control', tokenIds: 'hero' },
+      { v: 1, type: 'token-move', sceneId: 's1', tokenId: 'hero', x: '1', y: 0 },
+      { v: 1, type: 'token-move', sceneId: 's1', tokenId: 'hero', x: null, y: 0 },
+      { v: 1, type: 'token-move', tokenId: 'hero', x: 1, y: 0 },
+      { v: 1, type: 'token-move', sceneId: 's1', tokenId: '', x: 1, y: 0 },
+      { v: 1, type: 'token-move-refused', tokenId: 'x'.repeat(129) },
+    ];
+    for (const message of bad) {
+      expect(decodeControl(JSON.stringify(message)), JSON.stringify(message).slice(0, 80)).toEqual({
+        kind: 'invalid', reason: `bad-${message.type}`,
+      });
+    }
+  });
+
+  it('decodes a move whose coordinate JSON reads as Infinity, so the GM refuses it instead of counting it invalid', () => {
+    expect(decodeControl('{"v":1,"type":"token-move","sceneId":"s1","tokenId":"hero","x":1e400,"y":0}')).toEqual({
+      kind: 'message', message: { v: 1, type: 'token-move', sceneId: 's1', tokenId: 'hero', x: Infinity, y: 0 },
+    });
+  });
+
+  it('names what players may send: a resync and a token move', () => {
+    expect([...PLAYER_MESSAGE_TYPES].sort()).toEqual(['scene-resync', 'token-move']);
   });
 });

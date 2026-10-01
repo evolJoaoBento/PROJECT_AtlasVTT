@@ -75,3 +75,14 @@ export function placeMapObjects(
   while (steps < MAX_CASCADE_STEPS && overlapsAt(offsetAt(steps))) steps++;
   return translateMapObjects(content, offsetAt(steps), placeToken);
 }
+
+/**
+ * Where a token dropped at `point` lands, as the GM's drag puts it (`InteractionController`): on its
+ * cell's centre while snapping is on (the default), also on a grid that is switched off, since the
+ * drag snaps to it too. Without grid state nothing snaps. Online players' moves land through here.
+ */
+export function snapDroppedToken(grid: GridState | null, point: Point): Point {
+  if (!grid || !(grid.snapToGrid ?? true)) return point;
+  const geometry = formationGridFromOptions({ ...grid, enabled: true });
+  return geometry ? snapToCellCenter(geometry, point) : point;
+}

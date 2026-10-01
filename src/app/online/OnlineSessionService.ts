@@ -10,6 +10,7 @@ import { AssetServer } from './assets/AssetServer';
 import { vaultImageFiles } from './assets/vaultImageFiles';
 import { AssetRegistry, type ImageFiles } from './scene/AssetRegistry';
 import { CameraSender } from './scene/CameraSender';
+import { TokenControlHost } from './control/TokenControlHost';
 import { SceneBroadcaster, type PresentedSceneSource } from './scene/SceneBroadcaster';
 import { createPeerHost, type PeerServerOptions } from './transport/PeerTransport';
 import type { HostTransport } from './transport/types';
@@ -43,6 +44,7 @@ export class OnlineSessionService {
   private registry: AssetRegistry | null = null;
   private assetServer: AssetServer | null = null;
   private cameraSender: CameraSender | null = null;
+  private tokenControlHost: TokenControlHost | null = null;
   private stopLog: (() => void) | null = null;
   private readonly presented: PresentedSceneSource;
   private readonly images: ImageFiles;
@@ -104,6 +106,8 @@ export class OnlineSessionService {
       },
       onPlayersChanged: (players) => {
         log.event('players', { players: players.map((player) => `${player.name}: ${player.status}`).join(', ') });
+        // A kick reaches no handler: the host keeps only the players the session still knows.
+        this.tokenControlHost?.playersChanged(players);
         onlineSessionStore.setState({ players, error: null });
       },
     });
@@ -125,6 +129,9 @@ export class OnlineSessionService {
     // The GM's view of the presented scene, which players follow by default; registered after the broadcaster.
     const cameraSender = new CameraSender({ session: scenes, presented: this.presented, projection: broadcaster });
     this.cameraSender = cameraSender;
+    // Players move the tokens the GM assigns them; registered last, so control lists follow snapshots and cameras.
+    const tokenControlHost = new TokenControlHost({ session: scenes, presented: this.presented, projection: broadcaster });
+    this.tokenControlHost = tokenControlHost;
     // Serves the images of the scene players have, over each player's assets channel.
     const assetServer = new AssetServer({ session, projection: broadcaster, files: registry });
     this.assetServer = assetServer;
@@ -135,13 +142,14 @@ export class OnlineSessionService {
       broadcaster.start();
       cameraSender.start();
       assetServer.start();
+      tokenControlHost.start();
     } catch (error) {
       // No session may keep running without its broadcaster; `start` reports the error.
       this.teardown();
       throw error;
     }
     onlineSessionStore.setState({
-      status: 'hosting', peerId: host.id, joinUrl, error: linkWorks ? null : RELAY_TOO_LONG,
+      status: 'hosting', peerId: host.id, joinUrl, error: linkWorks ? null : RELAY_TOO_LONG, tokenControl: tokenControlHost.control,
     });
   }
 
@@ -157,6 +165,8 @@ export class OnlineSessionService {
     this.unsubscribeErrors = null;
     this.assetServer?.stop();
     this.assetServer = null;
+    this.tokenControlHost?.stop();
+    this.tokenControlHost = null;
     this.cameraSender?.stop();
     this.cameraSender = null;
     this.stopLog?.();

@@ -1,7 +1,7 @@
 // src/app/online/GmSession.ts
 import { SESSION_LIMITS, type GmSessionOptions, type PlayerStatus, type SessionHandler, type SessionPlayer } from './gmSessionTypes';
 import { randomId } from './ids';
-import { decodeControl, encodeControl, normalizePlayerName, type ControlMessage, type DenyReason, type PresencePlayer } from './protocol';
+import { decodeControl, encodeControl, normalizePlayerName, PLAYER_MESSAGE_TYPES, type ControlMessage, type DenyReason, type PresencePlayer } from './protocol';
 import { channelPort } from './transport/channelPort';
 import type { ChannelPort, HostTransport, PeerLink, Unsubscribe } from './transport/types';
 
@@ -153,7 +153,7 @@ export class GmSession {
     if (message.type === 'pong') entry.lastPong = Date.now();
     else if (message.type === 'ping') link.send('control', encodeControl({ v: 1, type: 'pong', t: message.t }));
     else if (message.type === 'bye') link.close();
-    else for (const handler of this.handlers) handler.onMessage?.({ ...entry.player }, message);
+    else if (PLAYER_MESSAGE_TYPES.has(message.type)) for (const handler of this.handlers) handler.onMessage?.({ ...entry.player }, message);
   }
 
   /** Assets-channel data counts only from an admitted player's current link; handlers decode it. */

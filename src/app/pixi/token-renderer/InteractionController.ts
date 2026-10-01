@@ -32,6 +32,7 @@ import type { DragRuler } from './DragRuler';
 import { runInBackground } from '../../utils/backgroundTask';
 import { tokenSizeSubmenu } from '../../react/components/context-menu/tokenSizeMenu';
 import { conditionsSubmenu } from '../../react/components/context-menu/conditionsMenu';
+import { controlledBySubmenu } from '../../online/ui/controlledByMenu';
 
 interface DragState {
   isDragging: boolean;
@@ -539,6 +540,10 @@ export class InteractionController implements ITokenInteractionController {
         hideTargets.map((id) => ({ id, changes: { isHidden: !isHidden } })),
       ),
     });
+
+    // Which online players may move this token, while a session runs (DM only)
+    const controlledBy = !this.isPlayerView && character ? controlledBySubmenu(token.id) : null;
+    if (controlledBy) entries.push(controlledBy);
 
     // Vision source toggle (player character token)
     if (WALLS_AND_LIGHTING_ENABLED) {

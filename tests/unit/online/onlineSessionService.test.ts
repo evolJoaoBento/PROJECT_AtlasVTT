@@ -4,11 +4,12 @@ import { OnlineSessionService } from '../../../src/app/online/OnlineSessionServi
 import { onlineSessionStore, resetOnlineSessionStore } from '../../../src/app/online/onlineSessionStore';
 import { MemoryNetwork } from '../../../src/app/online/transport/MemoryTransport';
 import { DEFAULT_ONLINE_SETTINGS } from '../../../src/app/online/onlineSettings';
-import { decodeControl, encodeControl } from '../../../src/app/online/protocol';
+import { decodeControl, encodeControl, type ControlMessage } from '../../../src/app/online/protocol';
 import { PresentedScene } from '../../../src/app/services/PresentedScene';
 import { decodeAsset, encodeAsset } from '../../../src/app/online/assets/assetProtocol';
 import type { ImageFiles } from '../../../src/app/online/scene/AssetRegistry';
 import { fingerprintOf } from './assetFixtures';
+import { moveSceneStore } from './tokenMoveFixtures';
 import { FakeViewport, viewWithViewport } from './cameraFixtures';
 import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
@@ -299,5 +300,38 @@ describe('OnlineSessionService', () => {
     expect(events).toContain('send scene-clear');
     svc.stop();
     debug.mockRestore();
+  });
+
+  it('lets admitted players move the tokens the GM assigns, until they are removed or the session stops', async () => {
+    const presented = new PresentedScene();
+    const { store } = moveSceneStore();
+    const tabs = createTabMetaStore();
+    const tavern = tabs.getState().addTab('maps/tavern.atlasmap', 'Tavern');
+    tabs.getState().setActiveTab(tavern);
+    presented.present({
+      tabMetaStore: tabs, atlasStore: store, register: () => {},
+      renderer: { getBackgroundSprite: () => ({ width: 2000, height: 1500, destroyed: false }) },
+    } as never, tavern);
+    const { svc, notices, network } = service(new MemoryNetwork(), presented);
+    await svc.start();
+    const link = await network.client().connect('gm-id');
+    const received: ControlMessage[] = [];
+    link.onMessage((_channel, data) => {
+      const decoded = decodeControl(data);
+      if (decoded.kind === 'message') received.push(decoded.message);
+    });
+    link.send('control', encodeControl({ v: 1, type: 'join', name: 'Anna', playerKey: 'k', client: { kind: 'web', version: '1' } }));
+    notices[0]!.answer(true);
+    const { players, tokenControl } = onlineSessionStore.getState();
+    const playerId = players[0]!.playerId;
+    tokenControl!.set('hero', playerId, true);
+    expect(received.filter((message) => message.type === 'token-control').at(-1)).toEqual({ v: 1, type: 'token-control', tokenIds: ['hero'] });
+    const snapshot = received.find((message) => message.type === 'scene-snapshot') as Extract<ControlMessage, { type: 'scene-snapshot' }>;
+    link.send('control', encodeControl({ v: 1, type: 'token-move', sceneId: snapshot.scene.sceneId, tokenId: 'hero', x: 300, y: 150 }));
+    expect(store.getState().objects.tokens.hero).toMatchObject({ x: 315, y: 175 });
+    svc.kick(playerId);
+    expect(tokenControl!.tokensOf(playerId)).toEqual([]);
+    svc.stop();
+    expect(onlineSessionStore.getState().tokenControl).toBeNull();
   });
 });

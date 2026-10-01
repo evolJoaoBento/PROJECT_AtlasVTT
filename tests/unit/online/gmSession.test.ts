@@ -380,4 +380,25 @@ describe('GmSession', () => {
     session.assetChannel(requests[0]!.playerId)!.send('to-new');
     expect(atSecond).toEqual(['to-new']);
   });
+
+  it('hands handlers only what players may send: scene-resync and token-move', async () => {
+    const { network, session, requests } = setup();
+    const seen: string[] = [];
+    session.use({ onMessage: (_p, m) => seen.push(m.type) });
+    const anna = await player(network);
+    anna.link.send('control', join('Anna', 'key-a'));
+    session.allow(requests[0]!.playerId);
+    const sent: ControlMessage[] = [
+      { v: 1, type: 'scene-clear', seq: 1 },
+      { v: 1, type: 'token-control', tokenIds: ['hero'] },
+      { v: 1, type: 'token-move-refused', tokenId: 'hero' },
+      { v: 1, type: 'presence', players: [] },
+      { v: 1, type: 'scene-resync', seq: 0 },
+      { v: 1, type: 'token-move', sceneId: 's1', tokenId: 'hero', x: 1, y: 2 },
+    ];
+    for (const message of sent) anna.link.send('control', encodeControl(message));
+    expect(seen).toEqual(['scene-resync', 'token-move']);
+    // Dropped, not invalid: no strikes, the connection stays.
+    expect(anna.closed()).toBe(false);
+  });
 });
