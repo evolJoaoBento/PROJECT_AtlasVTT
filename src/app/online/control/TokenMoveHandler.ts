@@ -14,13 +14,13 @@ import { runHistoryTransaction } from '../../stores/history';
 import type { SessionHandler, SessionPlayer } from '../GmSession';
 import { sceneWorldBounds, type PreviewRect } from '../preview/previewLayout';
 import type { ControlMessage } from '../protocol';
+import { RateLimit } from '../rateLimit';
 import type { CameraProjection } from '../scene/CameraSender';
 import type { PresentedSceneSource, SceneSession } from '../scene/sceneSources';
 import type { ScenePoint } from '../scene/sceneTypes';
 import type { TokenControl } from './TokenControl';
 
 export const MOVES_PER_SECOND = 10;
-const RATE_WINDOW_MS = 1000;
 
 type TokenMove = Extract<ControlMessage, { type: 'token-move' }>;
 
@@ -33,20 +33,9 @@ export interface TokenMoveHandlerOptions {
 }
 
 /** At most `MOVES_PER_SECOND` moves per player in any one-second window; refused ones count. */
-export class MoveRateLimit {
-  private readonly recent = new Map<string, number[]>();
-
-  allow(playerId: string, now: number): boolean {
-    const times = (this.recent.get(playerId) ?? []).filter((time) => now - time < RATE_WINDOW_MS);
-    const allowed = times.length < MOVES_PER_SECOND;
-    if (allowed) times.push(now);
-    this.recent.set(playerId, times);
-    return allowed;
-  }
-
-  /** Forgets every player not in `known`; a player who is only gone keeps their window. */
-  retain(known: ReadonlySet<string>): void {
-    for (const playerId of [...this.recent.keys()]) if (!known.has(playerId)) this.recent.delete(playerId);
+export class MoveRateLimit extends RateLimit {
+  constructor() {
+    super(MOVES_PER_SECOND);
   }
 }
 

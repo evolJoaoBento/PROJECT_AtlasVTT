@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, RotateCw } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
-import type { DiceRollResult } from '../../../tools/DiceTool';
+import { rollerName, type DiceRollResult } from '../../../tools/diceRolling';
 import { TokenPortrait } from '../../../packages/components/shared/TokenPortrait';
 import { useDiceAvatar } from '../dice/useDiceAvatar';
 import { LabelTooltip } from '../../../packages/components/primitives/tooltip';
@@ -43,6 +43,7 @@ export function DiceRollEntry({ result, isNew, onRepeat }: DiceRollEntryProps): 
   const avatar = useDiceAvatar(source);
 
   const hasSource = source?.type === 'statblock' && source.tokenName;
+  const name = rollerName(result);
 
   return (
     <div
@@ -77,8 +78,8 @@ export function DiceRollEntry({ result, isNew, onRepeat }: DiceRollEntryProps): 
 
       {/* Content column */}
       <div className="dice-log-entry__body">
-        {hasSource && (
-          <span className="dice-log-entry__token-name">{sourceTokenName}</span>
+        {name && (
+          <span className="dice-log-entry__token-name">{name}</span>
         )}
         {source?.abilityName && (
           <span className="dice-log-entry__ability-name">{source.abilityName}</span>

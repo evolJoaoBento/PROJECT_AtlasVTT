@@ -1,5 +1,6 @@
 import type { StoreApi } from 'zustand';
 import type { MapSize } from '../online/scene/sceneTypes';
+import type { LaserHub } from '../pixi/laser/LaserHub';
 import type { ViewAtlasState } from '../storeFactory';
 import type { TabMetaStore } from '../stores/tabMetaStore';
 import { viewCamera, watchViewCamera, type CameraViewport, type ViewCamera } from './presentedCamera';
@@ -17,7 +18,11 @@ export interface PresentedView {
   register(callback: () => void): void;
   /** True once the view has closed; a closed view is never presented. */
   readonly isClosed?: boolean;
-  readonly renderer?: { getBackgroundSprite(): BackgroundSprite | null; getViewportInstance?(): CameraViewport | null } | null;
+  readonly renderer?: {
+    getBackgroundSprite(): BackgroundSprite | null;
+    getViewportInstance?(): CameraViewport | null;
+    getLaserHub?(): LaserHub;
+  } | null;
 }
 
 export interface PresentedSceneInfo {
@@ -31,6 +36,8 @@ export interface PresentedSceneInfo {
   camera(): ViewCamera | null;
   /** Calls `listener` after every frame of the view's viewport; returns the unsubscribe. */
   watchCamera(listener: () => void): () => void;
+  /** The view's lasers: the GM's own as drawn, and where online players' are shown; null without a renderer. */
+  laser(): LaserHub | null;
 }
 
 export interface PresentedSceneListener {
@@ -106,6 +113,7 @@ export class PresentedScene {
       mapSize: () => loadedMapSize(view),
       camera: () => viewCamera(view),
       watchCamera: (listener) => watchViewCamera(view, listener),
+      laser: () => view.renderer?.getLaserHub?.() ?? null,
     };
     this.scene = scene;
     this.held = view.tabMetaStore.getState().activeTabId !== tabId;

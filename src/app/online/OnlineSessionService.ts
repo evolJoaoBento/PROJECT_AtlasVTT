@@ -14,6 +14,9 @@ import { vaultImageFiles } from './assets/vaultImageFiles';
 import { AssetRegistry, type ImageFiles } from './scene/AssetRegistry';
 import { CameraSender } from './scene/CameraSender';
 import { TokenControlHost } from './control/TokenControlHost';
+import { DiceHost } from './tools/DiceHost';
+import { documentDiceFeed, type DiceFeed } from './tools/diceFeed';
+import { LaserRelay } from './tools/LaserRelay';
 import { SceneBroadcaster, type PresentedSceneSource } from './scene/SceneBroadcaster';
 import { createPeerHost, type PeerServerOptions } from './transport/PeerTransport';
 import type { HostTransport } from './transport/types';
@@ -31,6 +34,8 @@ interface Deps {
   images?: ImageFiles;
   /** The grid defaults of a map's collection; Atlas's asset index unless a test passes its own. */
   collectionGrid?: (mapPath: string | null) => CollectionGridDefaults | null;
+  /** Atlas's dice rolls; the `atlas-dice-rolled` document event unless a test passes its own. */
+  diceFeed?: DiceFeed;
 }
 
 function errorText(error: unknown): string {
@@ -50,6 +55,9 @@ export class OnlineSessionService {
   private assetServer: AssetServer | null = null;
   private cameraSender: CameraSender | null = null;
   private tokenControlHost: TokenControlHost | null = null;
+  private diceHost: DiceHost | null = null;
+  private laserRelay: LaserRelay | null = null;
+  private readonly diceFeed: DiceFeed;
   private stopLog: (() => void) | null = null;
   private readonly presented: PresentedSceneSource;
   private readonly images: ImageFiles;
@@ -64,6 +72,7 @@ export class OnlineSessionService {
     this.createHost = deps.createHost ?? createPeerHost;
     this.showRequest = deps.showRequest ?? showJoinRequestNotice;
     this.presented = deps.presented ?? presentedScene;
+    this.diceFeed = deps.diceFeed ?? documentDiceFeed();
     this.images = deps.images ?? vaultImageFiles(app);
     this.collectionGrid = deps.collectionGrid
       ?? ((mapPath) => (mapPath ? collectionGridDefaultsFor(AssetService.getInstance(app), mapPath) : null));
@@ -116,6 +125,8 @@ export class OnlineSessionService {
         log.event('players', { players: players.map((player) => `${player.name}: ${player.status}`).join(', ') });
         // A kick reaches no handler: the host keeps only the players the session still knows.
         this.tokenControlHost?.playersChanged(players);
+        this.diceHost?.playersChanged(players);
+        this.laserRelay?.playersChanged(players);
         onlineSessionStore.setState({ players, error: null });
       },
     });
@@ -140,6 +151,11 @@ export class OnlineSessionService {
     // Players move the tokens the GM assigns them; registered last, so control lists follow snapshots and cameras.
     const tokenControlHost = new TokenControlHost({ session: scenes, presented: this.presented, projection: broadcaster });
     this.tokenControlHost = tokenControlHost;
+    // Players' dice and lasers; registered after the token control host.
+    const diceHost = new DiceHost({ session: scenes, presented: this.presented, feed: this.diceFeed });
+    this.diceHost = diceHost;
+    const laserRelay = new LaserRelay({ session: scenes, presented: this.presented, projection: broadcaster });
+    this.laserRelay = laserRelay;
     // Serves the images of the scene players have, over each player's assets channel.
     const assetServer = new AssetServer({ session, projection: broadcaster, files: registry });
     this.assetServer = assetServer;
@@ -151,6 +167,8 @@ export class OnlineSessionService {
       cameraSender.start();
       assetServer.start();
       tokenControlHost.start();
+      diceHost.start();
+      laserRelay.start();
     } catch (error) {
       // No session may keep running without its broadcaster; `start` reports the error.
       this.teardown();
@@ -175,6 +193,10 @@ export class OnlineSessionService {
     this.assetServer = null;
     this.tokenControlHost?.stop();
     this.tokenControlHost = null;
+    this.laserRelay?.stop();
+    this.laserRelay = null;
+    this.diceHost?.stop();
+    this.diceHost = null;
     this.cameraSender?.stop();
     this.cameraSender = null;
     this.stopLog?.();

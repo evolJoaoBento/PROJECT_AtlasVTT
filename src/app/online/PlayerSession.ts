@@ -3,10 +3,12 @@
  * the player list, and reconnect after a drop. Shared with the web player page,
  * so it imports nothing from Obsidian.
  */
+import type { DiceSelection } from '../tools/diceRolling';
 import { decodeControl, encodeControl, type PresencePlayer } from './protocol';
 import { PlayerSceneMirror } from './scene/PlayerSceneMirror';
 import { cameraOfMessage, type SceneCamera } from './scene/sceneCamera';
-import type { PlayerScene } from './scene/sceneTypes';
+import type { PlayerScene, ScenePoint } from './scene/sceneTypes';
+import type { DiceLogEntry, PlayerLaser } from './tools/toolMessages';
 import type { ClientTransport, PeerLink } from './transport/types';
 
 export type PlayerStatus = 'connecting' | 'waiting' | 'admitted' | 'denied' | 'lost';
@@ -49,6 +51,10 @@ export interface PlayerSessionOptions {
   onControl?(tokenIds: readonly string[]): void;
   /** The GM refused this player's move of the token. */
   onMoveRefused?(tokenId: string): void;
+  /** Dice log entries from the GM, newest first; `replay` replaces the log (sent on every admission). */
+  onDiceLog?(entries: readonly DiceLogEntry[], replay: boolean): void;
+  /** Someone else's laser: its new points, for the scene `sceneId`. */
+  onLaser?(laser: PlayerLaser): void;
   /** Gets the assets channel while admitted (the join page's image loader). */
   assets?: PlayerAssetHandler;
 }
@@ -93,6 +99,21 @@ export class PlayerSession {
     const scene = this.mirror.scene;
     if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
     this.link.send('control', encodeControl({ v: 1, type: 'token-move', sceneId: scene.sceneId, tokenId, x, y }));
+    return true;
+  }
+
+  /** Asks the GM to roll; false when it cannot go (not admitted, no link). */
+  sendDiceRoll(dice: DiceSelection, modifier: number): boolean {
+    if (this.finished || this.state.status !== 'admitted' || !this.link) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'dice-roll', dice, modifier }));
+    return true;
+  }
+
+  /** Sends new points of this player's laser for the scene they have; false when it cannot go. */
+  sendLaser(points: readonly ScenePoint[], lifted: boolean): boolean {
+    const scene = this.mirror.scene;
+    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'laser', sceneId: scene.sceneId, points: [...points], lifted }));
     return true;
   }
 
@@ -190,6 +211,15 @@ export class PlayerSession {
         break;
       case 'token-move-refused':
         this.options.onMoveRefused?.(message.tokenId);
+        break;
+      case 'dice-log':
+        this.options.onDiceLog?.(message.entries, message.replay);
+        break;
+      case 'laser':
+        // Only the GM's relays carry `from`.
+        if (message.from !== undefined) {
+          this.options.onLaser?.({ from: message.from, sceneId: message.sceneId, points: message.points, lifted: message.lifted });
+        }
         break;
       default:
         break;

@@ -8,8 +8,10 @@ import { decodeControl, encodeControl, type ControlMessage } from '../../../src/
 import { PresentedScene } from '../../../src/app/services/PresentedScene';
 import { decodeAsset, encodeAsset } from '../../../src/app/online/assets/assetProtocol';
 import type { ImageFiles } from '../../../src/app/online/scene/AssetRegistry';
+import { rollFormula } from '../../../src/app/tools/diceRolling';
 import { fingerprintOf } from './assetFixtures';
 import { moveSceneStore } from './tokenMoveFixtures';
+import { memoryDiceFeed } from './toolsFixtures';
 import { emptySceneState, FakeViewport, viewWithViewport } from './cameraFixtures';
 import { createTabMetaStore } from '../../../src/app/stores/tabMetaStore';
 import { createDefaultInitiativeState } from '../../../src/app/types/initiativeTypes';
@@ -365,5 +367,35 @@ describe('OnlineSessionService', () => {
     expect(snapshot.scene.measurement).toEqual({ mode: 'metric', unitType: 'meters', unitDistance: 1.5, diagonalRule: 'euclidean', rangeBands: [] });
     expect(asked).toContain('maps/tavern.atlasmap');
     svc.stop();
+  });
+
+  it("rolls admitted players' dice and relays the dice log while hosting, and stops listening on stop", async () => {
+    const presented = new PresentedScene();
+    const { view, tavern } = viewWithViewport(null);
+    presented.present(view, tavern);
+    const feed = memoryDiceFeed();
+    const network = new MemoryNetwork();
+    const host = network.host('gm-id');
+    const answers: Array<(allow: boolean) => void> = [];
+    const svc = new OnlineSessionService(app, settings, {
+      createHost: async () => host, presented, diceFeed: feed,
+      showRequest: (_player, answer) => { answers.push(answer); return { hide: () => {} }; },
+    });
+    await svc.start();
+    const link = await network.client().connect('gm-id');
+    const received: ControlMessage[] = [];
+    link.onMessage((_channel, data) => {
+      const decoded = decodeControl(data);
+      if (decoded.kind === 'message') received.push(decoded.message);
+    });
+    link.send('control', encodeControl({ v: 1, type: 'join', name: 'Anna', playerKey: 'k', client: { kind: 'web', version: '1' } }));
+    answers[0]!(true);
+    expect(received.filter((message) => message.type === 'dice-log')).toEqual([{ v: 1, type: 'dice-log', entries: [], replay: true }]);
+    link.send('control', encodeControl({ v: 1, type: 'dice-roll', dice: { d20: 1 }, modifier: 2 }));
+    expect(feed.published[0]).toMatchObject({ formula: 'd20+2', rolledBy: 'Anna' });
+    expect(received.filter((message) => message.type === 'dice-log')).toHaveLength(2);
+    svc.stop();
+    expect(feed.listening()).toBe(0);
+    feed.publish(rollFormula('d6'));
   });
 });
