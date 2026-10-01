@@ -63,6 +63,28 @@ describe('token moves on the GM side', () => {
     w.finish();
   });
 
+  it('refuses a token hidden in the store before the broadcaster has ticked', async () => {
+    const w = moveWorld();
+    const a = await withHero(w);
+    w.store.setState((state) => { state.objects.tokens.hero!.isHidden = true; });
+    const steps = w.history().pastStates.length;
+    // No tick: the projection still shows the token, the live store no longer does.
+    a.move('hero', 300, 150);
+    expect(a.refusals()).toEqual(['hero']);
+    expect(w.token('hero')).toMatchObject({ x: 140, y: 140 });
+    expect(w.history().pastStates).toHaveLength(steps);
+    w.finish();
+  });
+
+  it('refuses any truthy hidden value, as the projection hides it', async () => {
+    const w = moveWorld();
+    const a = await withHero(w);
+    w.store.setState((state) => { (state.objects.tokens.hero as unknown as { isHidden: unknown }).isHidden = 1; });
+    a.move('hero', 300, 150);
+    expect(a.refusals()).toEqual(['hero']);
+    w.finish();
+  });
+
   it('refuses a move while the scene is held, and writes nothing into the map the view shows now', async () => {
     const w = moveWorld();
     const a = await withHero(w);
