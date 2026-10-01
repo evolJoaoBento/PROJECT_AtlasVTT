@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RESYNC_MIN_INTERVAL_MS } from '../../../src/app/online/scene/PlayerSceneMirror';
 import { encodeControl } from '../../../src/app/online/protocol';
 import type { PeerLink } from '../../../src/app/online/transport/types';
 import { moveWorld } from './tokenMoveFixtures';
@@ -36,6 +37,26 @@ describe('control lists', () => {
     expect(a.session.state.status).toBe('admitted');
     expect(a.session.state.playerId).toBe(a.playerId);
     expect(a.controlLists().at(-1)).toEqual(['hero']);
+    w.finish();
+  });
+
+  it('holds the list back with a snapshot the throttle defers, so it still follows it', async () => {
+    const w = moveWorld();
+    w.present();
+    const a = await w.join('A');
+    w.control.set('hero', a.playerId, true);
+    a.sendRaw(encodeControl({ v: 1, type: 'scene-resync', seq: 0 }));
+    const snapshots = a.received.filter((message) => message.type === 'scene-snapshot').length;
+    const lists = a.controlLists().length;
+    a.sendRaw(encodeControl({ v: 1, type: 'scene-resync', seq: 0 }));
+    // Deferred together: neither the snapshot nor the list went out yet.
+    expect(a.received.filter((message) => message.type === 'scene-snapshot')).toHaveLength(snapshots);
+    expect(a.controlLists()).toHaveLength(lists);
+    await vi.advanceTimersByTimeAsync(RESYNC_MIN_INTERVAL_MS);
+    const types = a.received.map((message) => message.type);
+    expect(types.filter((type) => type === 'scene-snapshot')).toHaveLength(snapshots + 1);
+    expect(a.controlLists()).toHaveLength(lists + 1);
+    expect(types.lastIndexOf('token-control')).toBeGreaterThan(types.lastIndexOf('scene-snapshot'));
     w.finish();
   });
 
