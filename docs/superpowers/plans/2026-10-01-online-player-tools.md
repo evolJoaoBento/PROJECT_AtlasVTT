@@ -1782,7 +1782,7 @@ Rulings this task needs: 2 (roller names), 3 (replay), 4 (what the 50 are), 5 (p
 - Modify: `src/app/online/PlayerSession.ts` (imports, options, two send methods, two `receive` cases)
 - Modify: `src/app/online/OnlineSessionService.ts` (deps, fields, `onPlayersChanged`, `host`, `teardown`)
 - Modify: `src/app/react/components/dice-log/DiceRollEntry.tsx:40-80`, `src/app/react/components/dice/DiceToast.tsx:20-65`
-- Test: `tests/unit/online/toolMessages.test.ts`, `tests/unit/online/laserBatcher.test.ts`, `tests/unit/remoteLasers.test.ts`, `tests/unit/remoteLaserRenderer.test.ts`, `tests/unit/laserPointerRenderer.hub.test.ts`, `tests/unit/online/toolsFixtures.ts`, `tests/unit/online/diceHost.test.ts`, `tests/unit/online/laserRelay.test.ts`, `tests/unit/online/playerToolsEndToEnd.test.ts`, `tests/unit/diceRollerName.test.tsx`, `tests/unit/online/onlineSessionService.test.ts`
+- Test: `tests/unit/online/protocol.test.ts:109-111` (the test that lists what players may send), `tests/unit/online/toolMessages.test.ts`, `tests/unit/online/laserBatcher.test.ts`, `tests/unit/remoteLasers.test.ts`, `tests/unit/remoteLaserRenderer.test.ts`, `tests/unit/laserPointerRenderer.hub.test.ts`, `tests/unit/online/toolsFixtures.ts`, `tests/unit/online/diceHost.test.ts`, `tests/unit/online/laserRelay.test.ts`, `tests/unit/online/playerToolsEndToEnd.test.ts`, `tests/unit/diceRollerName.test.tsx`, `tests/unit/online/onlineSessionService.test.ts`
 
 **Interfaces:**
 - Consumes (Task 1):
@@ -2124,6 +2124,14 @@ export const PLAYER_MESSAGE_TYPES: ReadonlySet<ControlMessage['type']> = new Set
   'dice-log': (m) => isDiceLogEntries(m.entries) && typeof m.replay === 'boolean',
   laser: (m) => isSceneId(m.sceneId) && isLaserPoints(m.points) && typeof m.lifted === 'boolean'
     && (m.from === undefined || isSceneId(m.from)),
+```
+
+In `tests/unit/online/protocol.test.ts`, the test that lists what players may send now names four types. Replace it with:
+
+```ts
+  it('names what players may send: a resync, a token move, a dice roll and a laser', () => {
+    expect([...PLAYER_MESSAGE_TYPES].sort()).toEqual(['dice-roll', 'laser', 'scene-resync', 'token-move']);
+  });
 ```
 
 - [ ] **Step 4: Run the message tests and the existing protocol tests**
@@ -3593,6 +3601,7 @@ Expected: no type errors, no lint warnings, all tests pass.
 
 ```bash
 git add src/app/online/rateLimit.ts src/app/online/control/TokenMoveHandler.ts src/app/online/tools/ src/app/online/protocol.ts \
+  tests/unit/online/protocol.test.ts \
   src/app/pixi/laser/remoteLasers.ts src/app/pixi/laser/LaserHub.ts src/app/pixi/laser/RemoteLaserRenderer.ts \
   src/app/pixi/LaserPointerRenderer.ts src/app/PixiRendererOrchestrator.ts src/app/services/PresentedScene.ts \
   src/app/online/PlayerSession.ts src/app/online/OnlineSessionService.ts \
