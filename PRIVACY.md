@@ -17,6 +17,8 @@ The join link you share carries your signaling and relay settings, including any
 
 Players can move the tokens you assign to them under **Controlled by**. For each move, their page sends Atlas only the token and the spot where they let go, and Atlas checks every move before applying it to your scene; players cannot send anything else that changes it. Each player receives the ids of their own tokens, and nothing else about them. Assignments are kept only while the session runs.
 
+While a session runs, players also receive every dice roll Atlas makes: the formula, each die and the total, and who rolled it. That is the player's name, or the statblock token's name unless that token is hidden on the presented scene, or "GM". While you point with the laser on the presented scene, players receive where it is. Players' measurements and drag rulers stay on their device. Their lasers and dice rolls go to you and to the other players in the session, and nothing of either is stored.
+
 Players open the join page from `evoljoaobento.github.io` (GitHub Pages) by default. Their browsers load it from there, so GitHub sees their IP address like for any web page. Atlas itself never contacts that address, it only builds links to it. You can change the address in **Settings → Online play**.
 
 With **Keep images on this device** on (the default), the join page keeps the images it received in the player's browser storage for later sessions, up to 500 MB, until the player switches it off or chooses **Clear saved images**; with it off, images are kept only while the page is open. Browsers give every site under `evoljoaobento.github.io` the same storage, so the join page should stay the only site published there, or move to its own address.

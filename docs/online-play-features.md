@@ -34,10 +34,13 @@ A new Atlas layer goes into `SCENE_LAYER_ORDER` (and `SCENE_LAYER_Z` when it is 
 
 Layout that Atlas and the player view both need lives in modules without PIXI or Obsidian imports, which both renderers use:
 
-- `grid/hexGeometry.ts` and `grid/hexNumbering.ts`
-- `pixi/token-renderer/tokenSizing.ts`, `tokenUiLayout.ts` (bars, nameplate) and `conditionBadgeLayout.ts`
-- `pixi/textBoxLayout.ts`
-- `pixi/mapIcons.ts`
+- `grid/hexGeometry.ts`, `grid/hexNumbering.ts` and `grid/gridDistance.ts` (path lengths, `cellCenterAt`)
+- `grid/measurementFormat.ts` (distance labels)
+- `pixi/token-renderer/tokenSizing.ts`, `tokenUiLayout.ts` (bars, nameplate), `conditionBadgeLayout.ts` and `dragRulerPath.ts`
+- `pixi/textBoxLayout.ts`, `pixi/mapIcons.ts` and `pixi/measureGeometry.ts` (measure strokes, shapes and labels)
+- `pixi/laser/laserBeamGeometry.ts`, `laserTrail.ts` and `remoteLasers.ts`
+- `tools/diceRolling.ts` and `tools/laserPointerSettings.ts`
+- `packages/components/toolbar/toolbarFit.ts`
 
 Change the shared module, never a copy in one renderer.
 
@@ -67,3 +70,28 @@ Players change the GM's scene only through messages the GM checks. Token moves (
 - Answer a refusal with only what the player sent, so refusals reveal nothing.
 - Validate numbers as numbers and check finiteness in the handler, because `1e400` reads as `Infinity`. A bad value then gets a refusal, not an invalid-message strike.
 - Test it end to end over `MemoryTransport` with the history-backed store in `tests/unit/online/tokenMoveFixtures.ts`. A store without history passes undo tests for the wrong reason.
+
+## 9. Player tools
+
+The join page has Atlas's table tools: the drag ruler, the measure tool, the laser and the dice tray. Each one follows the same split as a map feature.
+
+- **Shared geometry.** The maths both sides need lives in the shared modules of step 5, which Atlas's PIXI renderers use too. Change the shared module, never a copy on one side.
+- **The gesture.** `PlayerTools` (`src/app/online/view/tools/`) takes the one-finger presses `ViewInput` hands it. Move drags the player's own tokens with the drag ruler. Measure and Laser take every one-finger press. Two fingers always pinch and pan the map, and end the gesture. A new tool needs:
+  - a `PlayerTool` value and its gesture in `PlayerTools`;
+  - what it draws in `toolsLayer.ts`, through `ViewSurface`, over the fog;
+  - a control in `TOOLBAR_CONTROLS` (`src/app/online/page/playerToolbar.ts`) with a priority, a label and one of Atlas's icons in `toolIcons.ts` (the test checks each icon against Atlas's component).
+  - The toolbar fit is Atlas's own `overflowingToolbarItems`, so the tool in use never moves into More tools.
+- **What stays local.** Measurements and the drag ruler are never sent; `playerToolsPage.test.ts` checks that a measurement sends nothing. Keep a new tool local unless the spec says others see it.
+- **What others see.** A tool others see sends a message from the player (step 8). The GM either applies it or relays it:
+  - Relays, such as lasers (`LaserRelay`), go to every other admitted player with `from` set to the session's id for the sender. Never trust a `from` the player sent.
+  - Relays drop a message for another scene than the one players have, and store nothing.
+  - Senders batch with `LaserBatcher`, so a player's page stays under the GM's rate limit.
+  - Receivers let a laser go after `LASER_STALE_MS`, and the GM lets a player's laser go when the player leaves.
+- **Rolls.** Dice are rolled on the GM's side (`DiceHost`), never on the page, so a roll cannot be faked.
+  - Every roll reaches Atlas's dice log, toasts and sounds through the `atlas-dice-rolled` event (`DiceFeed`). Anything that rolls in Atlas, the toolbar, statblocks or a future physical-dice integration, must dispatch it.
+  - The relay names a roll with `rollerName` after `withoutHiddenToken`, so a roll for a token hidden from players is "GM".
+- **Tests.**
+  - The shared modules have their own tests (`tests/unit/playerToolsShared.test.ts`, `diceRolling.test.ts`, `remoteLasers.test.ts`), and Atlas's renderer tests must pass unchanged.
+  - Gestures are tested on `PlayerTools` with `ViewInput`, drawings on `RecordingSurface`, and the page's DOM under jsdom (`pageToolbar.test.ts`, `diceTrayView.test.ts`, `diceLogView.test.ts`).
+  - Messages are tested end to end over `MemoryTransport` with `tests/unit/online/toolsFixtures.ts`.
+  - `online-client/main.mts` is neither linted nor tested. After `npm run build:online`, search `dist-online/` for the new message types, element ids and copy.
