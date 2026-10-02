@@ -12,7 +12,7 @@
 
 ## Bundled packages
 
-Atlas VTT bundles the following open-source packages in `main.js`.
+Atlas VTT bundles the following open-source packages in `main.js`. The join page players open (`online-client/`) bundles some of them too, among them peerjs, and loads three and cannon-es, with the Default dice pack's face sheets, the first time a player throws physical dice.
 
 The build disables script-element creation in React DOM and replaces JSZip's legacy fallbacks with native Promise support and Node timers. These adaptations are maintained in `vite/desktop-dependencies.mts`; the original licenses below still apply.
 
