@@ -60,13 +60,18 @@ export class PlayerTools implements TokenGrab {
   private readonly lasers = new RemoteLasers();
   /** The tool whose press is in progress: it gets the moves and the release. */
   private pressed: PlayerTool | null = null;
+  private connected = false;
 
   constructor(private readonly options: PlayerToolsOptions) {
     this.ruler = new DragRulerTool(() => options.onChange());
     this.laser = new LaserTool({
-      send: (points, lifted) => { options.sendLaser(points, lifted); },
+      send: (points, lifted) => {
+        options.sendLaser(points, lifted);
+        // A held laser sends empty batches to stay alive: they keep it alive here too.
+        if (points.length === 0 && !lifted) this.lasers.receive(SELF, this.selfColor(), [], false, options.now());
+      },
       echo: (points, lifted) => {
-        this.lasers.receive(SELF, laserColor(this.self ?? SELF, this.order), points, lifted, options.now());
+        this.lasers.receive(SELF, this.selfColor(), points, lifted, options.now());
       },
     });
   }
@@ -132,6 +137,7 @@ export class PlayerTools implements TokenGrab {
 
   /** Only an admitted player uses the tools: losing the connection ends the gesture and lets the laser go. */
   setConnected(connected: boolean): void {
+    this.connected = connected;
     if (connected || !this.pressed) return;
     this.endGesture();
     this.options.onChange();
@@ -147,6 +153,8 @@ export class PlayerTools implements TokenGrab {
   grab(point: ScreenPoint, kind: PointerKind): boolean {
     const grid = this.grid;
     if (!grid) return false;
+    // Measure and laser need the session: tokens check their own connection.
+    if (this.current !== 'move' && !this.connected) return false;
     if (this.current === 'move') {
       if (!this.options.moves.grab(point)) return false;
       const origin = this.options.moves.dragged()?.origin;
@@ -203,6 +211,10 @@ export class PlayerTools implements TokenGrab {
     this.endGesture();
     this.laser.dispose();
     this.lasers.clear();
+  }
+
+  private selfColor(): string {
+    return laserColor(this.self ?? SELF, this.order);
   }
 
   /** Released: the measurement goes, the ruler goes, the laser is let go. */

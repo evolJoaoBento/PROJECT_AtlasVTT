@@ -20,9 +20,9 @@ import { TokenMoves } from '../src/app/online/view/TokenMoves';
 import type { MeasureChoice } from '../src/app/online/view/tools/MeasureTool';
 import { PlayerTools, type PlayerTool } from '../src/app/online/view/tools/PlayerTools';
 import { createToolsLayer } from '../src/app/online/view/tools/toolsLayer';
-import { ViewInput, type PointerInput, type PointerKind } from '../src/app/online/view/ViewInput';
+import { ViewInput } from '../src/app/online/view/ViewInput';
 import type { ViewSurface } from '../src/app/online/view/ViewSurface';
-import { WAYPOINT_KEY } from '../src/app/pixi/token-renderer/dragRulerPath';
+import { bindMapInput } from './mapInput.mts';
 
 export interface MapViewOptions {
   canvas: HTMLCanvasElement;
@@ -44,10 +44,6 @@ export interface MapViewOptions {
   frames?: { request(draw: () => void): number; cancel(handle: number): void };
   isHidden?: () => boolean;
   now?: () => number;
-}
-
-function pointerKind(type: string): PointerKind {
-  return type === 'touch' || type === 'pen' ? type : 'mouse';
 }
 
 export class MapView {
@@ -242,55 +238,13 @@ export class MapView {
   private bind(): void {
     const { canvas, followButton, fitButton } = this.options;
     const { signal } = this.listeners;
-    const point = (event: MouseEvent): ScreenPoint => {
-      const rect = canvas.getBoundingClientRect();
-      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    };
-    const pointer = (event: PointerEvent): PointerInput => ({
-      id: event.pointerId, ...point(event), kind: pointerKind(event.pointerType), button: event.button, time: event.timeStamp,
+    bindMapInput({
+      canvas, input: this.input, tools: this.tools, signal,
+      onHover: (point) => {
+        this.hover = point;
+        this.updateCursor();
+      },
     });
-    canvas.addEventListener('pointerdown', (event) => {
-      // The map takes the keyboard from a toolbar button, so Space mid-drag cannot press it.
-      const focused = document.activeElement;
-      if (focused instanceof HTMLElement && focused !== document.body) focused.blur();
-      try {
-        // Moves keep coming to the canvas when the finger leaves it.
-        canvas.setPointerCapture(event.pointerId);
-      } catch {
-        // The pointer is already gone, or the environment has no pointer capture.
-      }
-      this.input.down(pointer(event));
-    }, { signal });
-    canvas.addEventListener('pointermove', (event) => {
-      const input = pointer(event);
-      this.input.move(input);
-      if (input.kind !== 'mouse') return;
-      this.hover = { x: input.x, y: input.y };
-      this.updateCursor();
-    }, { signal });
-    canvas.addEventListener('pointerleave', () => {
-      this.hover = null;
-      this.updateCursor();
-    }, { signal });
-    canvas.addEventListener('pointerup', (event) => this.input.up(pointer(event)), { signal });
-    canvas.addEventListener('pointercancel', (event) => this.input.cancel(event.pointerId), { signal });
-    canvas.addEventListener('wheel', (event) => {
-      event.preventDefault();
-      this.input.wheel(point(event), event.deltaY, event.deltaMode);
-    }, { passive: false, signal });
-    canvas.addEventListener('dblclick', (event) => {
-      event.preventDefault();
-      this.input.doubleClick(point(event));
-    }, { signal });
-    // Escape ends a drag or a measurement and returns to Move; the menu and panels close on Escape on their own.
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') this.tools.escape();
-      // Atlas's waypoint key: it must not also scroll the page or press a focused button.
-      if (event.key === WAYPOINT_KEY && this.tools.isDragging()) {
-        event.preventDefault();
-        if (!event.repeat) this.tools.addWaypoint();
-      }
-    }, { signal });
     followButton.addEventListener('click', () => this.camera.followGm(), { signal });
     fitButton.addEventListener('click', () => this.camera.fitMap(), { signal });
     document.addEventListener('visibilitychange', () => this.renderer.visibilityChanged(), { signal });

@@ -103,6 +103,12 @@ const log = createOnlineLog(() => {
     return false;
   }
 });
+// An open tray takes Escape first, before the map returns to Move.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !diceTray.isOpen) return;
+  event.stopImmediatePropagation();
+  setDiceOpen(false);
+}, { capture: true });
 let tableShown = false;
 let shownScene: PlayerScene | null = null;
 
@@ -173,6 +179,8 @@ function render(state: PlayerSessionState): void {
     loader.dispose();
     panel.showProgress(loader.progress());
     setDiceOpen(false);
+    diceLog.setOpen(false);
+    diceLog.dispose();
     ended = true;
   }
   fillList(playerList, playerLines(state.players));

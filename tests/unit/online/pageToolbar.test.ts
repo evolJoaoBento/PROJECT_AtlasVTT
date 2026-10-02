@@ -68,6 +68,22 @@ describe('the join page toolbar', () => {
     expect(shown('laser')).toBe(true);
   });
 
+  it('does not fit while the table is hidden, and fits once it has a width', () => {
+    let available = 0;
+    document.body.innerHTML = '<section><nav id="toolbar"></nav></section>';
+    const root = document.getElementById('toolbar')!;
+    const toolbar = new PageToolbar({
+      root, onTool: () => {}, onShape: () => {}, onDice: () => {},
+      measure: (element) => (element.dataset.control === 'measure' ? 56 : 36),
+      layout: () => ({ available, chrome: 19, gap: 8, overflowButtonWidth: 36 }),
+    });
+    toolbar.fit();
+    expect(root.querySelectorAll('.toolbar-item[hidden]:not(.toolbar-more)').length).toBe(0);
+    available = 170;
+    toolbar.fit();
+    expect(root.querySelectorAll('.toolbar-item[hidden]:not(.toolbar-more)').length).toBe(2);
+  });
+
   it('closes an open menu on Escape before the rest of the page hears it', () => {
     const { root, button } = setup();
     const heard: string[] = [];

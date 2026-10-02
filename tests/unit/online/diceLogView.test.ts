@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiceLogView } from '../../../online-client/diceLogView.mts';
 import type { DiceLogEntry } from '../../../src/app/online/tools/toolMessages';
 
+const views: DiceLogView[] = [];
+
 function setup() {
   document.body.innerHTML = [
     '<button id="dice-log-button" aria-expanded="false"></button>',
@@ -14,6 +16,7 @@ function setup() {
     panel: element('dice-log'), list: element('dice-log-list'), empty: element('dice-log-empty'),
     closeButton: element('dice-log-close'), toggleButton: element('dice-log-button'), toast: element('dice-toast'),
   });
+  views.push(view);
   return { view, element };
 }
 const entry = (id: string, name = 'Anna'): DiceLogEntry => ({
@@ -22,7 +25,11 @@ const entry = (id: string, name = 'Anna'): DiceLogEntry => ({
 
 describe('the join page dice log', () => {
   beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  afterEach(() => {
+    vi.useRealTimers();
+    // Views listen on the document: a view left open would take the next test's Escape.
+    for (const view of views.splice(0)) view.dispose();
+  });
 
   it('lists rolls newest first as text, never as markup', () => {
     const { view, element } = setup();
@@ -58,7 +65,10 @@ describe('the join page dice log', () => {
     element('dice-log-close').click();
     expect(element('dice-log').hidden).toBe(true);
     element('dice-log-button').click();
+    const heard: string[] = [];
+    document.addEventListener('keydown', () => heard.push('page'));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(element('dice-log').hidden).toBe(true);
+    expect(heard).toEqual([]);
   });
 });

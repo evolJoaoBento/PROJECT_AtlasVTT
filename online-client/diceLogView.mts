@@ -56,9 +56,12 @@ export class DiceLogView {
     options.toggleButton.addEventListener('click', () => this.setOpen(!this.log.isOpen), { signal });
     options.closeButton.addEventListener('click', () => this.close(), { signal });
     options.toast.addEventListener('click', () => this.setOpen(true), { signal });
+    // An open log takes Escape first: closing it is all Escape does then.
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && this.log.isOpen) this.close();
-    }, { signal });
+      if (event.key !== 'Escape' || !this.log.isOpen) return;
+      event.stopImmediatePropagation();
+      this.close();
+    }, { capture: true, signal });
     this.render();
   }
 

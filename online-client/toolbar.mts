@@ -139,6 +139,8 @@ export class PageToolbar {
 
   /** Moves controls into More tools until the rest fit; run once the bar is shown and on every resize. */
   fit(): void {
+    // A hidden table has no width: fit once it is shown and has a real size.
+    if (this.layout().available <= 0) return;
     for (const [id, control] of this.controls) if (!control.item.hidden) this.widths.set(id, this.measureOf(control.item));
     if (!this.more.hidden) this.moreWidth = this.measureOf(this.more);
     const hidden = hiddenControls(this.widths, this.state, this.layout());

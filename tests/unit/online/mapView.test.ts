@@ -198,6 +198,7 @@ describe('MapView', () => {
   it('measures with the Measure tool without breaking away, and Escape returns to Move', () => {
     const t = setup();
     t.view.setScene(playerScene());
+    t.view.setConnected(true);
     t.view.selectTool('measure');
     expect(t.canvas.dataset.tool).toBe('measure');
     pointer(t.canvas, 'pointerdown', 116, 87);

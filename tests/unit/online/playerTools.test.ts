@@ -35,6 +35,7 @@ function setup(options: { grid?: boolean } = {}) {
   moves.setConnected(true);
   tools.setScene(scene);
   tools.setPlayers(['other', 'me'], 'me');
+  tools.setConnected(true);
   const input = new ViewInput({ pan: (dx, dy) => { pans.push([dx, dy]); }, zoomAt: () => {} }, tools);
   return { tools, moves, input, sent, moved, pans };
 }
@@ -98,6 +99,26 @@ describe('PlayerTools', () => {
     vi.advanceTimersByTime(LASER_FADE_TIME);
     expect(tools.overlay().lasers).toEqual([]);
     expect(tools.isAnimating()).toBe(false);
+  });
+
+  it('keeps a laser held still alive for longer than the stale time', () => {
+    const { tools } = setup();
+    tools.select('laser');
+    tools.grab({ x: 10, y: 10 }, 'mouse');
+    tools.move({ x: 50, y: 10 });
+    vi.advanceTimersByTime(3000);
+    expect(tools.overlay().lasers[0]?.head).not.toBeNull();
+  });
+
+  it('starts neither measure nor laser while disconnected', () => {
+    const { tools, sent } = setup();
+    tools.setConnected(false);
+    tools.select('laser');
+    expect(tools.grab({ x: 10, y: 10 }, 'mouse')).toBe(false);
+    tools.select('measure');
+    expect(tools.grab({ x: 10, y: 10 }, 'mouse')).toBe(false);
+    expect(sent).toEqual([]);
+    expect(tools.overlay().lasers).toEqual([]);
   });
 
   it('lets the laser go when the stroke is interrupted', () => {
