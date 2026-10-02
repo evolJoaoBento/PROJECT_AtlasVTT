@@ -21,7 +21,7 @@ While a session runs, players also receive every dice roll Atlas makes: the form
 
 Players open the join page from `evoljoaobento.github.io` (GitHub Pages) by default. Their browsers load it from there, so GitHub sees their IP address like for any web page. Atlas itself never contacts that address, it only builds links to it. You can change the address in **Settings → Online play**.
 
-With **Keep images on this device** on (the default), the join page keeps the images it received in the player's browser storage for later sessions, up to 500 MB, until the player switches it off or chooses **Clear saved images**; with it off, images are kept only while the page is open. Browsers give every site under `evoljoaobento.github.io` the same storage, so the join page should stay the only site published there, or move to its own address.
+With **Keep images on this device** on (the default), the join page keeps the images it received in the player's browser storage for later sessions, up to 500 MB, until the player switches it off or chooses **Clear saved images**; with it off, images are kept only while the page is open. Browsers give every site under `evoljoaobento.github.io` the same storage, so other pages published there (such as the join page of the `atlas-vtt` fork) can read these images; the join page should move to its own address before wider use.
 
 ## Files outside the vault
 

@@ -20,7 +20,7 @@ export const DEFAULT_STUN = 'stun:stun.l.google.com:19302';
 export const DEFAULT_ONLINE_SETTINGS: OnlineSettings = {
   signaling: { mode: 'cloud', host: '', port: 443, path: '/', key: 'peerjs', secure: true },
   turnServers: [],
-  playerPageUrl: 'https://evoljoaobento.github.io/atlas-vtt/',
+  playerPageUrl: 'https://evoljoaobento.github.io/PROJECT_AtlasVTT/',
   logEvents: false,
 };
 
