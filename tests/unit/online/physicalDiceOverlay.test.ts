@@ -102,6 +102,17 @@ describe('the physical dice overlay', () => {
     expect(w.status()).toBe('The roll could not be sent. Throw again once you are connected.');
   });
 
+  it('asks for a new throw instead of sending a die it could not read', async () => {
+    const w = setup();
+    await w.overlay.open({ d6: 1 }, 0, 'd6');
+    w.stage.drop({ index: 0, value: 0 });
+    expect(w.sent).toEqual([]);
+    expect(w.root.hidden).toBe(false);
+    expect(w.status()).toBe('A die could not be read. Throw again.');
+    w.stage.drop({ index: 0, value: 5 });
+    expect(w.sent).toEqual([{ dice: [{ type: 'd6', value: 5 }], modifier: 0 }]);
+  });
+
   it('says so when the 3D dice cannot start, and tries again next time', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const w = setup({ load: async () => { throw new Error('WebGL is not available'); } });

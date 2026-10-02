@@ -67,6 +67,16 @@ describe('a physical throw', () => {
     expect(decodeControl(encodeControl(message))).toEqual({ kind: 'message', message });
   });
 
+  it('gives no result for a reading its die does not have, so the GM is never sent one it refuses', () => {
+    const roll = new PhysicalThrow({ d6: 1, d20: 1 }, 0);
+    expect(roll.take([{ value: 7 }, { value: 20 }])).toBe(true);
+    expect(roll.result()).toBeNull();
+    roll.take([{ index: 0, value: -1 }]);
+    expect(roll.result()).toBeNull();
+    roll.take([{ index: 0, value: 6 }]);
+    expect(roll.result()).toEqual([{ type: 'd6', value: 6 }, { type: 'd20', value: 20 }]);
+  });
+
   it('starts again after a reset', () => {
     const roll = new PhysicalThrow({ d6: 1 }, 0);
     roll.take([{ value: 6 }]);

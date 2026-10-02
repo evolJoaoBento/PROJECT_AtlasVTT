@@ -9,7 +9,7 @@
  */
 import {
   CANCEL_THROW_LABEL, LOADING_DICE_TEXT, NO_3D_DICE_TEXT, NOT_SENT_TEXT, PhysicalThrow, ROLLED_TEXT, rerollCaughtLabel, THROW_LABEL,
-  type TableReading,
+  UNREADABLE_TEXT, type TableReading,
 } from '../src/app/online/page/physicalDice';
 import { toolIconUrl } from '../src/app/online/page/toolIcons';
 import type { PhysicalDie } from '../src/app/online/tools/physicalRolls';
@@ -183,10 +183,11 @@ export class PhysicalDiceOverlay {
       this.status.textContent = roll.progressText();
       return;
     }
+    // Checked here as the GM checks it: a reading the GM would refuse is thrown again, not sent.
     const dice = roll.result();
     if (!dice || !this.options.send(dice, roll.modifier)) {
       roll.reset();
-      this.status.textContent = NOT_SENT_TEXT;
+      this.status.textContent = dice ? NOT_SENT_TEXT : UNREADABLE_TEXT;
       return;
     }
     this.stopPolling();

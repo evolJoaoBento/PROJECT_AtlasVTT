@@ -6,7 +6,7 @@
  */
 import { planTableDice, readPlannedDice, type TableDicePlan } from '../../physical-dice/physicalDiceValues';
 import { isDieType, type DiceSelection, type DieType } from '../../tools/diceRolling';
-import { dieSides, type PhysicalDie } from '../tools/physicalRolls';
+import { dieSides, isPhysicalDice, type PhysicalDie } from '../tools/physicalRolls';
 
 export type PageDiceMode = 'rng' | 'physical';
 export const DICE_MODE_KEY = 'atlas-online:dice-mode';
@@ -23,6 +23,7 @@ export const LOADING_DICE_TEXT = 'Loading the 3D dice…';
 export const NO_3D_DICE_TEXT = 'The 3D dice could not start on this device. Close this and roll with RNG.';
 export const NOT_SENT_TEXT = 'The roll could not be sent. Throw again once you are connected.';
 export const ROLLED_TEXT = 'Rolled';
+export const UNREADABLE_TEXT = 'A die could not be read. Throw again.';
 
 /** The page passes `() => localStorage`: reaching for it can throw, so it is read inside the guard. */
 type Reader = () => Pick<Storage, 'getItem'>;
@@ -103,11 +104,15 @@ export class PhysicalThrow {
     return read === 0 ? 'Drag a die to throw it, or throw them all' : `${read} of ${this.readings.length} dice read. Throw the rest`;
   }
 
-  /** The dice to send, as a player calls them; null until every die has a reading. */
+  /**
+   * The dice to send, as a player calls them; null until every die has a reading, or when a
+   * reading is not a face its die has (the GM would refuse it), so the dice are thrown again.
+   */
   result(): PhysicalDie[] | null {
     if (!this.isDone()) return null;
     const faces = this.readings.map((value) => value ?? 0);
     const values = readPlannedDice(this.dice.map(dieSides), this.plan, faces, () => 0);
-    return this.dice.map((type, i) => ({ type, value: values[i] ?? 0 }));
+    const dice = this.dice.map((type, i) => ({ type, value: values[i] ?? 0 }));
+    return isPhysicalDice(dice) ? dice : null;
   }
 }
