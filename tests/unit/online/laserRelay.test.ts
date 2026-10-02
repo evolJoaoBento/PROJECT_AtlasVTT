@@ -82,6 +82,25 @@ describe('LaserRelay', () => {
     w.finish();
   });
 
+  it('relays an over-limit lift only for a laser being held, and without points', async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join('A');
+    const b = await w.join('B');
+    for (let i = 0; i < 40; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
+    // Over the limit and holding: the lift goes on, its points do not; then there is nothing to lift.
+    a.session.sendLaser([{ x: 9, y: 9 }], true);
+    a.session.sendLaser([{ x: 9, y: 9 }], true);
+    const sent = w.lasersOf(b);
+    expect(sent).toHaveLength(41);
+    expect(sent.at(-1)).toMatchObject({ from: a.playerId, points: [], lifted: true });
+    // Never held: a flood of lifts carries nothing.
+    const c = await w.join('C');
+    for (let i = 0; i < 60; i++) c.session.sendLaser([{ x: i, y: 1 }], true);
+    expect(w.lasersOf(b).filter((laser) => laser.from === c.playerId)).toHaveLength(40);
+    w.finish();
+  });
+
   it("lets a leaving player's laser go for everyone", async () => {
     const w = toolsWorld();
     w.present();

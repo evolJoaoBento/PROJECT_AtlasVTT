@@ -3,7 +3,7 @@
  * `from`, the sender's session id (anything the player put there is ignored), and shows in the
  * GM's view while the presented scene is live. The GM's own laser in that view goes to every
  * player from `gm`, batched like the page's. Lasers for another scene than the one players have
- * are dropped, more than 40 a second from one player (never a lift) are ignored, and nothing is stored. A
+ * are dropped, more than 40 a second from one player are ignored (a lift of a laser being held still goes on, without points), and nothing is stored. A
  * player who leaves or is removed mid-stroke is let go everywhere. A `GmSession` handler.
  */
 import type { PresentedSceneInfo } from '../../services/PresentedScene';
@@ -58,13 +58,16 @@ export class LaserRelay implements SessionHandler {
   }
 
   onMessage(player: SessionPlayer, message: ControlMessage): void {
-    // A lift is never limited, so a laser is never left held; other messages: 40 a second, twice the sender's rate.
-    if (message.type !== 'laser' || (!message.lifted && !this.limit.allow(player.playerId, Date.now()))) return;
+    if (message.type !== 'laser') return;
+    // Over the limit (40 a second, twice the sender's rate) only a lift of a laser being held goes on, with no points.
+    const allowed = this.limit.allow(player.playerId, Date.now());
+    if (!allowed && !(message.lifted && this.drawing.has(player.playerId))) return;
+    const points = allowed ? message.points : [];
     if (message.sceneId !== this.options.projection.currentProjection()?.sceneId) return;
     if (message.lifted) this.drawing.delete(player.playerId);
     else this.drawing.add(player.playerId);
     // Field by field: a page may add keys to its points.
-    this.relay(player.playerId, message.points.map(({ x, y }) => ({ x, y })), message.lifted, player.playerId);
+    this.relay(player.playerId, points.map(({ x, y }) => ({ x, y })), message.lifted, player.playerId);
   }
 
   onGone(player: SessionPlayer): void {
