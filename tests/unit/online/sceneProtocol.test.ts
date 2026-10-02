@@ -169,7 +169,12 @@ describe('scene value bounds', () => {
     expect(valid(snapshot(withMeasurement({ rangeBands: [{ name: 'Near', maxSquares: 0 }] })))).toBe(false);
     expect(valid(snapshot(withMeasurement({ rangeBands: Array.from({ length: 33 }, () => ({ name: 'Near', maxSquares: 1 })) })))).toBe(false);
     const { measurement: _measurement, ...withoutMeasurement } = body;
-    expect(valid(snapshot(withoutMeasurement))).toBe(false);
+    // An older GM sends none (the mirror fills it in); a bad one is refused.
+    expect(valid(snapshot(withoutMeasurement))).toBe(true);
+    expect(valid(snapshot({ ...body, measurement: null }))).toBe(false);
+    expect(valid(snapshot(withMeasurement({ snapToGrid: 'yes' })))).toBe(false);
+    const { snapToGrid: _snap, ...olderMeasurement } = body.measurement;
+    expect(valid(snapshot({ ...body, measurement: olderMeasurement }))).toBe(true);
   });
 
   it('patches a changed measurement as a whole', () => {

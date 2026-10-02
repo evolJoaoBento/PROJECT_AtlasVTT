@@ -191,7 +191,7 @@ describe('wire ranges', () => {
     const fog = projectFog({ r: big, b: brush }, createProjectionMemo());
     expect(Object.keys(fog)).toEqual(['r', 'b']);
     expect(isPlayerSceneBody({
-      sceneId: 's', map: { asset: null, width: 10, height: 10, cellSize: 70 }, grid: null, widgets: [], initiative: null, measurement: { mode: 'metric', unitType: 'feet', unitDistance: 5, diagonalRule: 'equidistant', rangeBands: [] }, tokens: {}, texts,
+      sceneId: 's', map: { asset: null, width: 10, height: 10, cellSize: 70 }, grid: null, widgets: [], initiative: null, measurement: { mode: 'metric', unitType: 'feet', unitDistance: 5, diagonalRule: 'equidistant', rangeBands: [], snapToGrid: true }, tokens: {}, texts,
     })).toBe(true);
     expect(isDrawingRecords(drawings)).toBe(true);
     expect(isFogRecords(fog)).toBe(true);

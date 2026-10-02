@@ -158,6 +158,15 @@ export interface PlayerMeasurement {
   unitDistance: number;
   diagonalRule: typeof PLAYER_DIAGONAL_RULES[number];
   rangeBands: PlayerRangeBand[];
+  /** The GM's snap-to-grid: the drag ruler snaps to cell centres only when it is on. */
+  snapToGrid: boolean;
+}
+
+/** A GM from before the page's tools sent no measurement, or no snap flag: Atlas's defaults. */
+export function withMeasurementDefaults(measurement: Partial<PlayerMeasurement> | undefined): PlayerMeasurement {
+  return {
+    mode: 'metric', unitType: 'feet', unitDistance: 5, diagonalRule: 'equidistant', rangeBands: [], snapToGrid: true, ...measurement,
+  };
 }
 
 export interface PlayerScene {

@@ -47,4 +47,18 @@ describe('DragRulerTool', () => {
     expect(ruler.overlay()).toBeNull();
     expect(changes).toBe(0);
   });
+
+  it("snaps only when the GM's snap-to-grid is on, even with the grid hidden from players", () => {
+    const scene = playerScene();
+    const trace = (snapToGrid: boolean, hidden: boolean): ReturnType<DragRulerTool['overlay']> => {
+      const ruler = new DragRulerTool(() => {});
+      ruler.begin({ x: 100, y: 100 }, toolGridOf({ ...scene, grid: hidden ? null : scene.grid, measurement: { ...scene.measurement, snapToGrid } }), 'mouse');
+      ruler.update({ x: 240, y: 100 }, { x: 240, y: 100 });
+      return ruler.overlay();
+    };
+    expect(trace(true, false)?.points).toEqual([{ x: 105, y: 105 }, { x: 245, y: 105 }]);
+    expect(trace(false, false)?.points).toEqual([{ x: 100, y: 100 }, { x: 240, y: 100 }]);
+    expect(trace(true, true)?.points.length).toBe(2);
+    expect(trace(false, true)?.points).toEqual([{ x: 100, y: 100 }, { x: 240, y: 100 }]);
+  });
 });

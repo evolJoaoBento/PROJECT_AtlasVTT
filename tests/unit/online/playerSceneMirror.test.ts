@@ -27,6 +27,16 @@ describe('PlayerSceneMirror', () => {
     expect(changes).toHaveLength(1);
   });
 
+  it("fills in the measurement an older GM's snapshot and patch lack", () => {
+    const { mirror } = setup();
+    const { measurement, ...older } = sceneBody(scene);
+    mirror.receive({ v: 1, type: 'scene-snapshot', seq: 1, scene: older as never, fogParts: 0, drawingParts: 0 });
+    expect(mirror.scene?.measurement).toEqual(measurement);
+    const { snapToGrid: _snap, ...noSnap } = measurement;
+    mirror.receive({ v: 1, type: 'scene-patch', seq: 2, set: { measurement: { ...noSnap, unitDistance: 10 } as never }, upsert: {}, remove: {} });
+    expect(mirror.scene?.measurement).toEqual({ ...measurement, unitDistance: 10 });
+  });
+
   it('waits for the drawing parts too', () => {
     const { mirror, changes } = setup();
     mirror.receive({ v: 1, type: 'scene-snapshot', seq: 1, scene: sceneBody(scene), fogParts: 0, drawingParts: 1 });

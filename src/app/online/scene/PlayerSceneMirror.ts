@@ -7,7 +7,7 @@
  */
 import type { ControlMessage } from '../protocol';
 import { applyPatch } from './sceneDiff';
-import type { PlayerDrawing, PlayerFogOp, PlayerScene, PlayerSceneBody } from './sceneTypes';
+import { withMeasurementDefaults, type PlayerDrawing, type PlayerFogOp, type PlayerScene, type PlayerSceneBody } from './sceneTypes';
 
 export const RESYNC_MIN_INTERVAL_MS = 1000;
 
@@ -76,7 +76,8 @@ export class PlayerSceneMirror {
           break;
         }
         this.lastSeq = message.seq;
-        this.current = applyPatch(this.current, message);
+        const patched = applyPatch(this.current, message);
+        this.current = { ...patched, measurement: withMeasurementDefaults(patched.measurement) };
         this.options.onChange(this.current);
         break;
       case 'scene-clear': {
@@ -129,7 +130,8 @@ export class PlayerSceneMirror {
     // Named fields only: the body is network data and may carry keys this version does not know.
     this.current = {
       sceneId: body.sceneId, map: body.map, grid: body.grid, tokens: body.tokens, texts: body.texts,
-      widgets: body.widgets, initiative: body.initiative, measurement: body.measurement,
+      widgets: body.widgets, initiative: body.initiative,
+      measurement: withMeasurementDefaults(body.measurement),
       fog: toRecord(pending.fog), drawings: toRecord(pending.drawings),
     };
     this.options.onChange(this.current);

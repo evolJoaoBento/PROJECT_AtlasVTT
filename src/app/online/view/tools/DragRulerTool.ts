@@ -32,7 +32,7 @@ export class DragRulerTool {
   begin(origin: ScenePoint, grid: ToolGrid, kind: PointerKind): void {
     this.end();
     this.grid = grid;
-    this.path = new DragRulerPath((point) => grid.snap(point));
+    this.path = new DragRulerPath((point) => grid.snapDrag(point));
     this.path.begin(origin);
     this.touch = kind === 'touch';
   }

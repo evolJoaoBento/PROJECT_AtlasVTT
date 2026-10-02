@@ -99,6 +99,7 @@ function projectMeasurement(collection: CollectionGridDefaults | null, grid: Gri
     unitType: oneOf(PLAYER_UNIT_TYPES, settings.unitType, 'feet'),
     unitDistance: finiteOr(settings.unitDistance, 5, SCENE_RANGES.unitDistance),
     diagonalRule: oneOf(PLAYER_DIAGONAL_RULES, settings.diagonalRule, 'equidistant'),
+    snapToGrid: grid?.snapToGrid ?? true,
     rangeBands: bands.slice(0, SCENE_LIMITS.rangeBands).map((band) => {
       const { name, maxSquares } = (typeof band === 'object' && band !== null ? band : {}) as { name?: unknown; maxSquares?: unknown };
       return { name: textOr(name, '', SCENE_LIMITS.idLength), maxSquares: finiteOr(maxSquares, 1, SCENE_RANGES.rangeBand) };

@@ -5,7 +5,8 @@
  * patch can never reach an object's prototype.
  */
 import {
-  PLAYER_DIAGONAL_RULES, PLAYER_DRAWING_TYPES, PLAYER_GRID_LINES, PLAYER_GRID_TYPES, PLAYER_HEX_NUMBERS, PLAYER_MEASUREMENT_MODES, PLAYER_TEXT_ALIGNS, PLAYER_UNIT_TYPES, PLAYER_WIDGET_TYPES,
+  PLAYER_DIAGONAL_RULES, PLAYER_DRAWING_TYPES, PLAYER_GRID_LINES, PLAYER_GRID_TYPES, PLAYER_HEX_NUMBERS,
+  PLAYER_MEASUREMENT_MODES, PLAYER_TEXT_ALIGNS, PLAYER_UNIT_TYPES, PLAYER_WIDGET_TYPES,
   SCENE_FIELD_KEYS, SCENE_LIMITS, SCENE_RANGES, SCENE_RECORD_KEYS, type SceneFieldKey, type SceneRecordKey,
 } from './sceneTypes';
 
@@ -159,7 +160,9 @@ function isPlayerMeasurement(value: unknown): boolean {
   return isFields(value) && oneOf(PLAYER_MEASUREMENT_MODES)(value.mode) && oneOf(PLAYER_UNIT_TYPES)(value.unitType)
     && inRange(SCENE_RANGES.unitDistance)(value.unitDistance) && oneOf(PLAYER_DIAGONAL_RULES)(value.diagonalRule)
     && Array.isArray(value.rangeBands) && value.rangeBands.length <= SCENE_LIMITS.rangeBands
-    && value.rangeBands.every((band) => isRangeBand(band));
+    && value.rangeBands.every((band) => isRangeBand(band))
+    // An older GM sends no snap flag; the mirror fills it in.
+    && (!Object.hasOwn(value, 'snapToGrid') || isBoolean(value.snapToGrid));
 }
 
 const FIELD_CHECKS: Record<SceneFieldKey, Check> = {
@@ -179,7 +182,8 @@ const RECORD_CHECKS: Record<SceneRecordKey, Check> = {
 /** A snapshot's scene: fog and drawings come in their own parts. */
 export function isPlayerSceneBody(value: unknown): boolean {
   return isFields(value) && isSceneId(value.sceneId)
-    && SCENE_FIELD_KEYS.every((key) => Object.hasOwn(value, key) && FIELD_CHECKS[key](value[key]))
+    // An older GM sends no measurement; the mirror fills it in.
+    && SCENE_FIELD_KEYS.every((key) => (Object.hasOwn(value, key) ? FIELD_CHECKS[key](value[key]) : key === 'measurement'))
     && isRecordOf(value.tokens, isPlayerToken) && isRecordOf(value.texts, isPlayerText);
 }
 

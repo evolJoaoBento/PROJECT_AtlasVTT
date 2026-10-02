@@ -147,7 +147,8 @@ export const GRID_FIELD_COVERAGE: CoverageTable<keyof GridState> = {
   lineWidth: SENT,
   hexNumbers: SENT,
   hexNumberOpacity: SENT,
-  snapToGrid: gmOnly('how the GM\'s tokens move'),
+  // Sent in the measurement, so the page's drag ruler snaps as the GM's tokens do.
+  snapToGrid: SENT,
   scale: gmOnly('used while aligning the grid to the map'),
   mapScale: gmOnly('used while aligning the grid to the map'),
   autoDetect: gmOnly('a one-time request to align the grid on the first load'),
