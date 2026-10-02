@@ -209,7 +209,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .dice-log-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--inset); }
 .dice-log-empty { margin: 0; padding: 24px; color: var(--muted); text-align: center; }
 .dice-entry { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.dice-entry-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--inset); }
 .dice-entry-name { font-size: 13px; font-weight: 600; }
+.dice-entry-device { color: var(--muted); font-size: 11px; font-style: italic; }
 .dice-entry-summary { display: flex; align-items: baseline; gap: var(--inset); }
 .dice-entry-formula, .dice-entry-eq { color: var(--muted); font-size: 13px; }
 .dice-entry-total { font-size: 22px; font-weight: 700; }

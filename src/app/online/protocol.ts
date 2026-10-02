@@ -8,6 +8,7 @@ import type { PlayerDrawing, PlayerFogOp, PlayerSceneBody, ScenePatchBody, Scene
 import {
   isDrawingRecords, isFogRecords, isLastSeq, isPlayerSceneBody, isSceneCamera, isSceneCount, isSceneId, isScenePatchBody, isSceneSeq,
 } from './scene/sceneValidation';
+import { isPhysicalDice, type PhysicalDie } from './tools/physicalRolls';
 import { isDiceLogEntries, isDiceModifier, isDiceSelection, isLaserColor, isLaserPoints, isLaserTimes, type DiceLogEntry } from './tools/toolMessages';
 export const PROTOCOL_VERSION = 1;
 export const MAX_CONTROL_MESSAGE_BYTES = 256 * 1024;
@@ -50,6 +51,8 @@ export type ControlMessage =
   | { v: 1; type: 'token-move-refused'; tokenId: string }
   /** Player to GM: a roll from the dice tray, rolled on the GM's side. */
   | { v: 1; type: 'dice-roll'; dice: DiceSelection; modifier: number }
+  /** Player to GM: a roll the player threw with physical dice on their own device, as its dice read there. */
+  | { v: 1; type: 'dice-physical'; dice: PhysicalDie[]; modifier: number }
   /** GM to players: dice log entries, newest first; `replay` replaces a player's log (sent on every admission). */
   | { v: 1; type: 'dice-log'; entries: DiceLogEntry[]; replay: boolean }
   /**
@@ -61,7 +64,7 @@ export type ControlMessage =
 
 /** What an admitted player may send besides `ping`, `pong` and `bye`; the GM drops every other type from a player. */
 export const PLAYER_MESSAGE_TYPES: ReadonlySet<ControlMessage['type']> = new Set<ControlMessage['type']>([
-  'scene-resync', 'token-move', 'dice-roll', 'laser',
+  'scene-resync', 'token-move', 'dice-roll', 'dice-physical', 'laser',
 ]);
 
 export type Decoded =
@@ -101,6 +104,7 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   'token-move': (m) => isSceneId(m.sceneId) && isSceneId(m.tokenId) && typeof m.x === 'number' && typeof m.y === 'number',
   'token-move-refused': (m) => isSceneId(m.tokenId),
   'dice-roll': (m) => isDiceSelection(m.dice) && isDiceModifier(m.modifier),
+  'dice-physical': (m) => isPhysicalDice(m.dice) && isDiceModifier(m.modifier),
   'dice-log': (m) => isDiceLogEntries(m.entries) && typeof m.replay === 'boolean',
   laser: (m) => isSceneId(m.sceneId) && isLaserPoints(m.points) && typeof m.lifted === 'boolean'
     && isLaserTimes(m.dt, m.points) && (m.color === undefined || isLaserColor(m.color)) && (m.from === undefined || isSceneId(m.from)),

@@ -37,6 +37,8 @@ export interface DiceLogEntry {
   total: number;
   /** When it was rolled: milliseconds since 1970 on the GM's clock. */
   at: number;
+  /** Thrown with physical dice on the roller's own device, which read the faces; absent for rolls the GM's side made. */
+  physical?: boolean;
 }
 
 /** Someone's laser as a player receives it: new points of it, and whether it was let go. */
@@ -85,7 +87,8 @@ export function isDiceLogEntry(value: unknown): value is DiceLogEntry {
   return isFields(value) && isSceneId(value.id) && isText(value.name, 1, DICE_LIMITS.nameLength)
     && isText(value.formula, 0, DICE_LIMITS.formulaLength)
     && Array.isArray(value.dice) && value.dice.length <= DICE_LIMITS.entryDice && value.dice.every((die) => isLoggedDie(die))
-    && isFiniteNumber(value.modifier) && isFiniteNumber(value.total) && isFiniteNumber(value.at);
+    && isFiniteNumber(value.modifier) && isFiniteNumber(value.total) && isFiniteNumber(value.at)
+    && (value.physical === undefined || typeof value.physical === 'boolean');
 }
 
 export function isDiceLogEntries(value: unknown): value is DiceLogEntry[] {
@@ -125,6 +128,7 @@ export function diceLogEntry(result: DiceRollResult, name: string): DiceLogEntry
     modifier: result.modifiers,
     total: result.total,
     at: result.timestamp,
+    ...(result.playerDevice ? { physical: true } : {}),
   };
   return isDiceLogEntry(entry) ? entry : null;
 }

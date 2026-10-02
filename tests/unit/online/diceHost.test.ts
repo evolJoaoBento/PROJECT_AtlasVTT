@@ -48,6 +48,48 @@ describe('DiceHost', () => {
     w.finish();
   });
 
+  it("logs a player's physical roll as their device read it, named from the session and marked physical", async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join('A');
+    const b = await w.join('B');
+    expect(a.session.sendPhysicalDice([{ type: 'd20', value: 19 }, { type: 'd6', value: 2 }], 1)).toBe(true);
+    expect(w.feed.published).toHaveLength(1);
+    expect(w.feed.published[0]).toMatchObject({ formula: 'd20+d6+1', rolledBy: 'A', playerDevice: true, total: 22 });
+    expect(w.logs(b).at(-1)?.entries).toEqual([expect.objectContaining({ name: 'A', formula: 'd20+d6+1', total: 22, physical: true })]);
+    a.session.sendDiceRoll({ d6: 1 }, 0);
+    expect(w.logs(b).at(-1)?.entries[0]).not.toHaveProperty('physical');
+    w.finish();
+  });
+
+  it('counts physical rolls and RNG rolls against one limit of two a second', async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join('A');
+    a.session.sendDiceRoll({ d6: 1 }, 0);
+    a.session.sendPhysicalDice([{ type: 'd6', value: 6 }], 0);
+    a.session.sendPhysicalDice([{ type: 'd6', value: 6 }], 0);
+    a.session.sendDiceRoll({ d6: 1 }, 0);
+    expect(w.feed.published).toHaveLength(2);
+    vi.advanceTimersByTime(1000);
+    a.session.sendPhysicalDice([{ type: 'd6', value: 6 }], 0);
+    expect(w.feed.published).toHaveLength(3);
+    w.finish();
+  });
+
+  it('drops a physical roll with a face its die does not have', async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join('A');
+    a.session.sendPhysicalDice([{ type: 'd6', value: 7 }], 0);
+    a.session.sendPhysicalDice([{ type: 'd10', value: 0 }], 0);
+    expect(w.feed.published).toHaveLength(0);
+    // Dropped as invalid (a third would close the link), not counted: a good roll right after still goes.
+    a.session.sendPhysicalDice([{ type: 'd10', value: 10 }], 0);
+    expect(w.feed.published).toHaveLength(1);
+    w.finish();
+  });
+
   it('names a roll for a hidden token GM, and a roll for a visible one by its token', async () => {
     const w = toolsWorld();
     w.present();

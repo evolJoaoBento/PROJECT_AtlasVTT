@@ -31,6 +31,16 @@ describe('the join page dice log', () => {
     for (const view of views.splice(0)) view.dispose();
   });
 
+  it("marks a roll thrown on the roller's own device, in the list and the toast", () => {
+    const { view, element } = setup();
+    view.receive([{ ...entry('b'), physical: true }, entry('a')], true);
+    const items = element('dice-log-list').querySelectorAll('li');
+    expect(items[0]?.querySelector('.dice-entry-device')?.textContent).toBe('On their device');
+    expect(items[1]?.querySelector('.dice-entry-device')).toBeNull();
+    view.receive([{ ...entry('c'), physical: true }], false);
+    expect(element('dice-toast').querySelector('.dice-entry-device')?.textContent).toBe('On their device');
+  });
+
   it('lists rolls newest first as text, never as markup', () => {
     const { view, element } = setup();
     expect(element('dice-log-empty').hidden).toBe(false);

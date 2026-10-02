@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
-import { rollerName, type DiceRollResult } from '../../../tools/diceRolling';
+import { PLAYER_DEVICE_LABEL, rollerName, type DiceRollResult } from '../../../tools/diceRolling';
 import { getDiceCrit } from '../../../tools/diceCrit';
 import { TokenPortrait } from '../../../packages/components/shared/TokenPortrait';
 import { useDiceAvatar } from './useDiceAvatar';
@@ -71,6 +71,7 @@ export function DiceToast({ result, phase, onDismiss }: DiceToastProps): React.R
           ))}
         <div className="atlas-dice-toast__content">
           {name && <span className="atlas-dice-toast__name">{name}</span>}
+          {result.playerDevice && <span className="atlas-dice-toast__device">{PLAYER_DEVICE_LABEL}</span>}
           {source?.abilityName && (
             <span className="atlas-dice-toast__ability">{source.abilityName}</span>
           )}

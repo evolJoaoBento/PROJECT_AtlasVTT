@@ -23,6 +23,13 @@ describe("an online player's roll in Atlas's dice log", () => {
     expect(inAtlas(<DiceToast result={roll} phase="visible" onDismiss={() => {}} />).querySelector('.atlas-dice-toast__name')?.textContent).toBe('Anna');
   });
 
+  it("marks a roll the player threw on their own device, in the log entry and the toast, and no other", () => {
+    const thrown: DiceRollResult = { ...roll, playerDevice: true };
+    expect(inAtlas(<DiceRollEntry result={thrown} onRepeat={() => {}} />).querySelector('.dice-log-entry__device')?.textContent).toBe('On their device');
+    expect(inAtlas(<DiceToast result={thrown} phase="visible" onDismiss={() => {}} />).querySelector('.atlas-dice-toast__device')?.textContent).toBe('On their device');
+    expect(inAtlas(<DiceRollEntry result={roll} onRepeat={() => {}} />).querySelector('.dice-log-entry__device')).toBeNull();
+  });
+
   it("names nobody for the GM's own roll from the tray", () => {
     const { rolledBy: _rolledBy, ...gmRoll } = roll;
     expect(inAtlas(<DiceRollEntry result={gmRoll} onRepeat={() => {}} />).querySelector('.dice-log-entry__token-name')).toBeNull();

@@ -4,6 +4,7 @@
  * so it imports nothing from Obsidian.
  */
 import type { DiceSelection } from '../tools/diceRolling';
+import type { PhysicalDie } from './tools/physicalRolls';
 import { decodeControl, encodeControl, type PresencePlayer } from './protocol';
 import { PlayerSceneMirror } from './scene/PlayerSceneMirror';
 import { cameraOfMessage, type SceneCamera } from './scene/sceneCamera';
@@ -106,6 +107,13 @@ export class PlayerSession {
   sendDiceRoll(dice: DiceSelection, modifier: number): boolean {
     if (this.finished || this.state.status !== 'admitted' || !this.link) return false;
     this.link.send('control', encodeControl({ v: 1, type: 'dice-roll', dice, modifier }));
+    return true;
+  }
+
+  /** Sends a roll this player threw with physical dice, as their dice read; false when it cannot go. The GM checks it. */
+  sendPhysicalDice(dice: readonly PhysicalDie[], modifier: number): boolean {
+    if (this.finished || this.state.status !== 'admitted' || !this.link) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'dice-physical', dice: dice.map(({ type, value }) => ({ type, value })), modifier }));
     return true;
   }
 

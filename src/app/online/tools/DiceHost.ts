@@ -3,13 +3,16 @@
  * code, so it cannot be faked, and joins Atlas's dice log, toasts and sounds through the dice
  * feed under the player's name. Every roll the dice log gets, the GM's and players', goes to
  * every admitted player as `dice-log`; each admission replays the latest 50, newest first.
- * More than 2 rolls a second from one player are ignored. A `GmSession` handler, started after
+ * A player's physical roll (`dice-physical`) was thrown and read on their own device: it is
+ * logged as they read it, its formula and total worked out here, and marked physical.
+ * More than 2 rolls a second from one player, of either kind, are ignored. A `GmSession` handler, started after
  * the token control host.
  */
 import { diceFormula, rollFormula, type DiceRollResult } from '../../tools/diceRolling';
 import type { SessionHandler, SessionPlayer } from '../GmSession';
 import type { ControlMessage } from '../protocol';
 import { RateLimit } from '../rateLimit';
+import { physicalRollResult } from './physicalRolls';
 import type { CameraProjection } from '../scene/CameraSender';
 import type { PresentedSceneSource, SceneSession } from '../scene/sceneSources';
 import type { DiceFeed } from '../diceFeed';
@@ -49,9 +52,15 @@ export class DiceHost implements SessionHandler {
   }
 
   onMessage(player: SessionPlayer, message: ControlMessage): void {
-    if (message.type !== 'dice-roll' || !this.limit.allow(player.playerId, Date.now())) return;
-    const result = rollFormula(diceFormula(message.dice, message.modifier), this.options.random);
-    this.options.feed.publish({ ...result, rolledBy: player.name });
+    if (message.type !== 'dice-roll' && message.type !== 'dice-physical') return;
+    // One window for both kinds, so mixing them cannot double the rate.
+    if (!this.limit.allow(player.playerId, Date.now())) return;
+    if (message.type === 'dice-roll') {
+      const result = rollFormula(diceFormula(message.dice, message.modifier), this.options.random);
+      this.options.feed.publish({ ...result, rolledBy: player.name });
+      return;
+    }
+    this.options.feed.publish({ ...physicalRollResult(message.dice, message.modifier), rolledBy: player.name, playerDevice: true });
   }
 
   /** Drops the windows of players who left the session: a reconnect must not reset one. */

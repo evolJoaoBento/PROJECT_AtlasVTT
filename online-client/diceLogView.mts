@@ -2,12 +2,14 @@
 /**
  * The dice log on the join page: a side panel, and a bottom sheet on narrow screens. It opens
  * from the top bar's Dice log button or a tap on the toast, and closes with its close button or
- * Escape. It shows every roll's name, formula, dice and total, newest first, as text only. The
+ * Escape. It shows every roll's name, formula, dice and total, newest first, as text only, and
+ * marks a roll thrown with physical dice on the roller's own device. The
  * log's rules live in `PlayerDiceLog` (`src/app/online/page/diceLogModel.ts`).
  */
 import { dieExtreme, PlayerDiceLog } from '../src/app/online/page/diceLogModel';
 import { toolIconUrl } from '../src/app/online/page/toolIcons';
 import type { DiceLogEntry } from '../src/app/online/tools/toolMessages';
+import { PLAYER_DEVICE_LABEL } from '../src/app/tools/diceRolling';
 import { iconElement } from './icons.mts';
 
 export interface DiceLogViewOptions {
@@ -40,7 +42,11 @@ function entryElement(entry: DiceLogEntry, tag: 'li' | 'div'): HTMLElement {
     if (extreme) badge.classList.add(`is-${extreme}`);
     dice.append(badge);
   }
-  item.append(text('dice-entry-name', entry.name), summary, dice);
+  const heading = document.createElement('div');
+  heading.className = 'dice-entry-heading';
+  heading.append(text('dice-entry-name', entry.name));
+  if (entry.physical) heading.append(text('dice-entry-device', PLAYER_DEVICE_LABEL));
+  item.append(heading, summary, dice);
   return item;
 }
 

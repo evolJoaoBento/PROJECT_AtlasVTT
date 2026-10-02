@@ -215,6 +215,12 @@ $toast-reveal-delay: 300ms;
   @include atlas-truncate;
 }
 
+.atlas-dice-toast__device {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
 // Small-caps label, tinted by the accent so crits read at a glance.
 .atlas-dice-toast__ability {
   font-size: 11px;

@@ -31,6 +31,8 @@ export interface DiceRollResult {
   player?: string;
   /** Who rolled it when it was not the GM: an online player's name. */
   rolledBy?: string;
+  /** An online player threw it with physical dice on their own device, which read the faces. */
+  playerDevice?: boolean;
   source?: {
     type: 'toolbar' | 'statblock';
     /** Let the roll follow its token's or statblock's current artwork. */
@@ -132,6 +134,9 @@ export function withoutHiddenToken(result: DiceRollResult, isTokenHidden: (token
 export function persistableDiceLog(log: readonly DiceRollResult[]): DiceRollResult[] {
   return log.filter((entry) => !entry.rolledBy);
 }
+
+/** The label beside the roller's name on a roll an online player threw on their own device. */
+export const PLAYER_DEVICE_LABEL = 'On their device';
 
 /** The name a roll shows: the online player who rolled it, or a statblock roll's token; null for the GM's own. */
 export function rollerName(result: DiceRollResult): string | null {

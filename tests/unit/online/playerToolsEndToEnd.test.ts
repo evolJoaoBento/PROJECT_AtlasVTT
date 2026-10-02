@@ -27,6 +27,29 @@ describe('player tools end to end', () => {
     w.finish();
   });
 
+  it("sends a physical roll from a player's device to the GM's dice log and every player's, marked physical", async () => {
+    const w = toolsWorld();
+    w.present();
+    const logs: Array<{ entries: readonly DiceLogEntry[]; replay: boolean }> = [];
+    const a = await w.join('A', { onDiceLog: (entries, replay) => logs.push({ entries, replay }) });
+    const b = await w.join('B');
+    expect(a.session.sendPhysicalDice([{ type: 'd100', value: 47 }, { type: 'd8', value: 8 }, { type: 'd100', value: 100 }], -3)).toBe(true);
+    expect(w.feed.published).toEqual([expect.objectContaining({ formula: '2d100+d8-3', rolledBy: 'A', playerDevice: true, total: 152 })]);
+    const entry = { name: 'A', formula: '2d100+d8-3', modifier: -3, total: 152, physical: true };
+    expect(logs.at(-1)).toMatchObject({ replay: false, entries: [entry] });
+    expect(w.logs(b).at(-1)).toMatchObject({ replay: false, entries: [entry] });
+    expect(w.logs(b).at(-1)?.entries[0]?.dice).toEqual([{ die: 'd100', value: 47 }, { die: 'd100', value: 100 }, { die: 'd8', value: 8 }]);
+    // Impossible faces never reach the GM's log or anyone's.
+    vi.advanceTimersByTime(1000);
+    a.session.sendPhysicalDice([{ type: 'd8', value: 9 }], 0);
+    expect(w.feed.published).toHaveLength(1);
+    expect(w.logs(b)).toHaveLength(2);
+    // A rejoining player gets the mark in the replay too.
+    const again = await w.join('B');
+    expect(w.logs(again).find((log) => log.replay)?.entries[0]).toMatchObject(entry);
+    w.finish();
+  });
+
   it('replays the latest rolls to a rejoining player, newest first', async () => {
     const w = toolsWorld();
     w.present();

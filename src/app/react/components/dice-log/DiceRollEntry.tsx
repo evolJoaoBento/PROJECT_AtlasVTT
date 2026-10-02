@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, RotateCw } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
-import { rollerName, type DiceRollResult } from '../../../tools/diceRolling';
+import { PLAYER_DEVICE_LABEL, rollerName, type DiceRollResult } from '../../../tools/diceRolling';
 import { TokenPortrait } from '../../../packages/components/shared/TokenPortrait';
 import { useDiceAvatar } from '../dice/useDiceAvatar';
 import { LabelTooltip } from '../../../packages/components/primitives/tooltip';
@@ -80,6 +80,9 @@ export function DiceRollEntry({ result, isNew, onRepeat }: DiceRollEntryProps): 
       <div className="dice-log-entry__body">
         {name && (
           <span className="dice-log-entry__token-name">{name}</span>
+        )}
+        {result.playerDevice && (
+          <span className="dice-log-entry__device">{PLAYER_DEVICE_LABEL}</span>
         )}
         {source?.abilityName && (
           <span className="dice-log-entry__ability-name">{source.abilityName}</span>
