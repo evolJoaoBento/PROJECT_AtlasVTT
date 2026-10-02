@@ -193,3 +193,45 @@ describe('PlayerViewRenderer', () => {
     expect(t.surface.ops('begin')[0]).toMatchObject({ width: 100, height: 50 });
   });
 });
+
+describe('PlayerViewRenderer overlays', () => {
+  function overlaySetup(overlay: { draw(): void; animating(): boolean }) {
+    const frames = fakeFrames();
+    const drawn: string[] = [];
+    const layers = Object.fromEntries(SCENE_LAYER_ORDER.map((name): [SceneLayer, PlayerLayer] => [name, {
+      draw: () => { drawn.push(name); },
+    }])) as Record<SceneLayer, PlayerLayer>;
+    const camera = new CameraController({ now: () => 0, onChange: () => {} });
+    const renderer = new PlayerViewRenderer({
+      surface: new RecordingSurface(), camera, images: () => null, layers, overlays: [overlay],
+      requestFrame: frames.request, cancelFrame: (handle) => frames.cancel(handle), isHidden: () => false,
+    });
+    const scene = playerScene();
+    camera.setScreen({ width: 800, height: 600 });
+    renderer.setSize({ width: 800, height: 600 }, 1);
+    camera.setScene(scene);
+    renderer.setScene(scene);
+    return { frames, drawn };
+  }
+
+  it('draws the overlays over the fog, and keeps drawing while one animates', () => {
+    let animating = true;
+    const order: string[] = [];
+    const t = overlaySetup({ draw: () => { order.push('tools'); }, animating: () => animating });
+    t.frames.run();
+    expect([...t.drawn, ...order]).toEqual([...SCENE_LAYER_ORDER, 'tools']);
+    expect(t.frames.pending).toBe(1);
+    animating = false;
+    t.frames.run();
+    expect(t.frames.pending).toBe(0);
+  });
+
+  it('still draws the scene when an overlay throws', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const t = overlaySetup({ draw: () => { throw new Error('overlay failed'); }, animating: () => false });
+    t.frames.run();
+    expect(t.drawn).toEqual([...SCENE_LAYER_ORDER]);
+    expect(error).toHaveBeenCalledOnce();
+    error.mockRestore();
+  });
+});

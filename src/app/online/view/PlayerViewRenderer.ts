@@ -10,7 +10,7 @@ import { sceneWorldBounds } from '../preview/previewLayout';
 import type { PlayerScene } from '../scene/sceneTypes';
 import { visibleArea, type ScreenSize, type WorldRect } from './camera';
 import type { CameraController } from './CameraController';
-import { NO_TOKEN_OVERLAY, type ImageLookup, type LayerFrame, type PlayerLayer, type TokenOverlay } from './layers/layerTypes';
+import { NO_TOKEN_OVERLAY, type ImageLookup, type LayerFrame, type OverlayLayer, type PlayerLayer, type TokenOverlay } from './layers/layerTypes';
 import type { ViewSurface } from './ViewSurface';
 
 /** Outside the map Atlas's canvas is black. */
@@ -32,6 +32,8 @@ export interface PlayerViewRendererOptions {
   images: ImageLookup;
   /** One per Atlas layer (`createSceneLayers()` on the page); a new Atlas layer fails the build until it has one. */
   layers: Record<SceneLayer, PlayerLayer>;
+  /** Drawn over the scene and its fog, in order: the player's tools. */
+  overlays?: readonly OverlayLayer[];
   requestFrame(draw: () => void): number;
   cancelFrame(handle: number): void;
   isHidden(): boolean;
@@ -45,6 +47,7 @@ export class PlayerViewRenderer {
   private overlay: TokenOverlay = NO_TOKEN_OVERLAY;
   private frame: number | null = null;
   private disposed = false;
+  private overlayFailed = false;
   /** Layers whose failure was already logged, so a broken one does not flood the console. */
   private readonly failed = new Set<SceneLayer>();
 
@@ -124,6 +127,17 @@ export class PlayerViewRenderer {
         surface.setCamera(scale, width / 2 - view.centerX * scale, height / 2 - view.centerY * scale);
       }
     }
+    // Above the fog, as Atlas draws its measurements and lasers.
+    for (const overlay of this.options.overlays ?? []) {
+      try {
+        overlay.draw(surface, frame);
+      } catch (error) {
+        if (!this.overlayFailed) {
+          this.overlayFailed = true;
+          console.error('[Atlas online] a tool overlay failed to draw', error);
+        }
+      }
+    }
   }
 
   private request(): void {
@@ -134,7 +148,11 @@ export class PlayerViewRenderer {
       if (this.disposed || this.options.isHidden()) return;
       this.draw();
       // A glide moves the camera every frame until it arrives.
-      if (this.options.camera.isMoving()) this.request();
+      if (this.options.camera.isMoving() || this.animating()) this.request();
     });
+  }
+
+  private animating(): boolean {
+    return (this.options.overlays ?? []).some((overlay) => overlay.animating());
   }
 }

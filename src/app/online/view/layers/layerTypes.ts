@@ -39,3 +39,8 @@ export interface PlayerLayer {
   /** Frees what the layer caches (the fog image). */
   dispose?(): void;
 }
+
+/** Drawn over the scene (the player's tools); while one animates (a fading laser) the view keeps drawing. */
+export interface OverlayLayer extends PlayerLayer {
+  animating(): boolean;
+}

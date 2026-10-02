@@ -13,10 +13,13 @@ export interface CameraMoves {
   zoomAt(point: ScreenPoint, factor: number): void;
 }
 
-/** A press on one of the player's tokens drags it (`TokenMoves`). */
+/**
+ * A one-finger press the page's tools may take (`PlayerTools`): a drag of one of the player's
+ * tokens, a measurement or the laser.
+ */
 export interface TokenGrab {
-  /** Starts dragging the token under `point`; false when there is none, and the press pans. */
-  grab(point: ScreenPoint): boolean;
+  /** Takes the press at `point`; false when the tool has no use for it, and the press pans. */
+  grab(point: ScreenPoint, kind: PointerKind): boolean;
   /** The pointer moved past the slop, and on with every move after. */
   move(point: ScreenPoint): void;
   /** Released after moving: the move is sent. */
@@ -73,7 +76,7 @@ export class ViewInput {
     if (this.pointers.size === 1) {
       this.start = point;
       this.dragging = false;
-      this.holdingToken = this.tokens?.grab(point) ?? false;
+      this.holdingToken = this.tokens?.grab(point, input.kind) ?? false;
     } else {
       // A second finger makes the gesture a pinch, never a tap or a token drag.
       this.releaseToken();

@@ -1,8 +1,8 @@
 // online-client/main.mts
 /**
- * The join page: the name form, the session, image loading and the map. The logic lives
- * in tested shared modules under `src/app/online/`; this file finds the page's elements
- * and connects them.
+ * The join page: the name form, the session, image loading, the map and the player's tools.
+ * The logic lives in tested shared modules under `src/app/online/` and the tested views beside
+ * this file; this file finds the page's elements and connects them.
  */
 import { AssetCache } from '../src/app/online/assets/AssetCache';
 import { AssetLoader } from '../src/app/online/assets/AssetLoader';
@@ -19,9 +19,12 @@ import type { PlayerScene } from '../src/app/online/scene/sceneTypes';
 import { createPeerClient } from '../src/app/online/transport/PeerTransport';
 import { AssetsPanel, rememberedKeep } from './assetsPanel.mts';
 import { createCanvasSurface } from './canvasSurface.mts';
+import { DiceLogView } from './diceLogView.mts';
+import { DiceTrayView } from './diceTrayView.mts';
 import { decodeImage } from './imageDecoder.mts';
 import { MapView } from './mapView.mts';
 import { Menu } from './menu.mts';
+import { PageToolbar } from './toolbar.mts';
 
 const VERSION = '0.1.0';
 
@@ -45,7 +48,7 @@ const cache = new AssetCache({ keep: rememberedKeep(), openStore: openIndexedDbI
 const panel = new AssetsPanel(cache);
 new Menu(element<HTMLButtonElement>('menu-button'), element<HTMLElement>('menu'), element<HTMLButtonElement>('menu-close'));
 const surface = createCanvasSurface(canvas);
-/** Set once the player joins; until then a drop has nowhere to go. */
+/** Set once the player joins; until then a drop, a laser or a roll has nowhere to go. */
 let session: PlayerSession | null = null;
 // The lookup runs at draw time, in a later animation frame, so `loader` below is already set;
 // it asks the loader every time, so a released image is never drawn.
@@ -54,9 +57,26 @@ const map = surface
     canvas, surface, images: (id) => loader.image(id),
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
     sendMove: (tokenId, x, y) => session?.sendTokenMove(tokenId, x, y) ?? false,
+    sendLaser: (points, lifted) => session?.sendLaser(points, lifted) ?? false,
     notice: element('move-notice'),
+    onToolsChange: () => syncToolbar(),
   })
   : null;
+const diceTray = new DiceTrayView({
+  root: element('dice-tray'),
+  roll: (dice, modifier) => session?.sendDiceRoll(dice, modifier) ?? false,
+  onClose: () => setDiceOpen(false),
+});
+const diceLog = new DiceLogView({
+  panel: element('dice-log'), list: element('dice-log-list'), empty: element('dice-log-empty'),
+  closeButton: element('dice-log-close'), toggleButton: element('dice-log-button'), toast: element('dice-toast'),
+});
+const toolbar = new PageToolbar({
+  root: element('toolbar'),
+  onTool: (tool) => map?.selectTool(tool),
+  onShape: (shape) => map?.selectShape(shape),
+  onDice: () => setDiceOpen(!diceTray.isOpen),
+});
 let assetsFrame: number | null = null;
 const loader = new AssetLoader({
   cache,
@@ -85,6 +105,17 @@ const log = createOnlineLog(() => {
 });
 let tableShown = false;
 let shownScene: PlayerScene | null = null;
+
+/** The dice tray hangs from the toolbar's Dice button. */
+function setDiceOpen(open: boolean): void {
+  diceTray.setOpen(open);
+  syncToolbar();
+}
+
+/** The toolbar shows the map's tool and shape, and whether the tray is open. */
+function syncToolbar(): void {
+  toolbar.update({ ...(map?.toolState() ?? {}), diceOpen: diceTray.isOpen });
+}
 
 /** localStorage can throw in private windows; the page still works without it. */
 function stored(key: string, fallback: () => string): string {
@@ -120,8 +151,11 @@ function show(view: PageScreen): void {
   if (view.kind === 'table') {
     sessionName.textContent = view.title;
     connection.textContent = view.connection;
-    // The canvas has its size only once the table is shown; after that it resizes itself.
-    if (!tableShown) map?.measure();
+    // The canvas and the toolbar have their sizes only once the table is shown; after that they follow resizes.
+    if (!tableShown) {
+      map?.measure();
+      toolbar.fit();
+    }
   }
   tableShown = view.kind === 'table';
 }
@@ -129,13 +163,16 @@ function show(view: PageScreen): void {
 function render(state: PlayerSessionState): void {
   log.event('status', { status: state.status, reason: state.reason, players: state.players.length });
   sessionState = state;
-  // Only an admitted player drags tokens: reconnecting or ended cancels a drag.
+  // Only an admitted player drags tokens and uses the tools: reconnecting or ended cancels a gesture.
   map?.setConnected(state.status === 'admitted');
+  // The session's order of players decides whose laser has which colour.
+  map?.setPlayers(state.players.map((player) => player.playerId), state.playerId);
   let ended = false;
   if (state.status === 'denied' || state.status === 'lost') {
     // The session is over for good: free the decoded images and hide the loading bar.
     loader.dispose();
     panel.showProgress(loader.progress());
+    setDiceOpen(false);
     ended = true;
   }
   fillList(playerList, playerLines(state.players));
@@ -205,6 +242,12 @@ if (!target) {
         log.event('move refused', { tokenId });
         map.moveRefused(tokenId);
       },
+      onDiceLog: (entries, replay) => {
+        log.event('dice log', { entries: entries.length, replay });
+        diceLog.receive(entries, replay);
+      },
+      // Not logged: lasers arrive up to twenty times a second per person.
+      onLaser: (laser) => map.receiveLaser(laser),
     });
     session.start();
   });

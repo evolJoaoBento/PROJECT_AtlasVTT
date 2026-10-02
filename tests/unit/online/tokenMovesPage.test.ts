@@ -30,6 +30,7 @@ async function page() {
     canvas, surface: new RecordingSurface(), images: () => null, frames: fakeFrames(), isHidden: () => false,
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
     sendMove: (tokenId, x, y) => player?.session.sendTokenMove(tokenId, x, y) ?? false,
+    sendLaser: () => false,
     notice: element('move-notice'),
   });
   w.present();

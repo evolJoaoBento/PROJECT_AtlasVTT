@@ -31,6 +31,7 @@ function setup() {
       sent.push([tokenId, x, y]);
       return true;
     },
+    sendLaser: () => true,
     notice: element('move-notice'),
   });
   return {
@@ -173,5 +174,39 @@ describe('MapView', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('adds a waypoint on Space during a drag, and presses no focused button', () => {
+    const t = setup();
+    withToken(t);
+    let pressed = 0;
+    t.menu.addEventListener('click', () => { pressed++; });
+    t.menu.focus();
+    pointer(t.canvas, 'pointerdown', 116, 87);
+    expect(document.activeElement).not.toBe(t.menu);
+    pointer(t.canvas, 'pointermove', 216, 87);
+    const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    document.body.dispatchEvent(space);
+    expect(space.defaultPrevented).toBe(true);
+    pointer(t.canvas, 'pointermove', 216, 187);
+    t.frames.run();
+    // (105, 105) → (245, 105) → (245, 245): four cells of 5 ft.
+    expect(t.surface.ops('text').map((call) => call.text)).toContain('20ft');
+    expect(pressed).toBe(0);
+  });
+
+  it('measures with the Measure tool without breaking away, and Escape returns to Move', () => {
+    const t = setup();
+    t.view.setScene(playerScene());
+    t.view.selectTool('measure');
+    expect(t.canvas.dataset.tool).toBe('measure');
+    pointer(t.canvas, 'pointerdown', 116, 87);
+    pointer(t.canvas, 'pointermove', 216, 87);
+    t.frames.run();
+    expect(t.surface.ops('text').map((call) => call.text)).toContain('10ft');
+    expect(t.buttons.hidden).toBe(true);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(t.view.toolState().tool).toBe('move');
+    expect(t.canvas.dataset.tool).toBe('move');
   });
 });

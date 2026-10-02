@@ -30,6 +30,8 @@ export interface TokenMovesOptions {
 
 interface Held {
   tokenId: string;
+  /** Where the token was when it was grabbed: the drag ruler starts there. */
+  origin: ScenePoint;
   /** From the pointer's world point to the token's centre, so the token does not jump to the pointer. */
   offset: ScenePoint;
   /** Where it is dragged to; null until the pointer moved past the slop. */
@@ -111,7 +113,7 @@ export class TokenMoves implements TokenGrab {
     const shown = tokenId === null ? null : this.shownPosition(tokenId);
     if (tokenId === null || !shown) return false;
     const world = this.options.toWorld(point);
-    this.held = { tokenId, offset: { x: shown.x - world.x, y: shown.y - world.y }, position: null };
+    this.held = { tokenId, origin: { x: shown.x, y: shown.y }, offset: { x: shown.x - world.x, y: shown.y - world.y }, position: null };
     this.options.onChange();
     return true;
   }
@@ -152,6 +154,12 @@ export class TokenMoves implements TokenGrab {
 
   isDragging(): boolean {
     return this.held !== null;
+  }
+
+  /** The token being dragged: where it was grabbed and where it is dragged to (null until it moved). */
+  dragged(): { tokenId: string; origin: ScenePoint; position: ScenePoint | null } | null {
+    const held = this.held;
+    return held ? { tokenId: held.tokenId, origin: held.origin, position: held.position } : null;
   }
 
   notice(): string | null {
