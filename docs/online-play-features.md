@@ -88,7 +88,7 @@ The join page has Atlas's table tools: the drag ruler, the measure tool, the las
   - Senders batch with `LaserBatcher`, so a player's page stays under the GM's rate limit.
   - Receivers let a laser go after `LASER_STALE_MS`, and the GM lets a player's laser go when the player leaves.
 - **Rolls.** Dice are rolled on the GM's side (`DiceHost`), never on the page, so a roll cannot be faked.
-  - Every roll reaches Atlas's dice log, toasts and sounds through the `atlas-dice-rolled` event (`DiceFeed`). Anything that rolls in Atlas, the toolbar, statblocks or a future physical-dice integration, must dispatch it.
+  - Every roll reaches Atlas's dice log, toasts and sounds through the `atlas-dice-rolled` event (`DiceFeed`). Anything that rolls in Atlas, the toolbar, statblocks or a future physical-dice integration, must dispatch it. Rolls with `rolledBy` (players') stay in the live dice log only: `persistableDiceLog` filters them out of what `storeFactory`'s `partialize` saves into the map file.
   - `DiceHost` names a roll from the projection players have (`currentProjection().tokens[tokenId].name`), so a roll for a token that is hidden, under fog, unnamed (nameplates off), on a held scene, or with nothing presented is "GM".
 - **Tests.**
   - The shared modules have their own tests (`tests/unit/playerToolsShared.test.ts`, `diceRolling.test.ts`, `remoteLasers.test.ts`), and Atlas's renderer tests must pass unchanged.

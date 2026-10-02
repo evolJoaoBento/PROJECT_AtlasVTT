@@ -27,6 +27,7 @@ import { withWidgetOff } from './utils/widgetActivation';
 import { createMapObjectsActions, type MapObjectsSlice } from './stores/mapObjectsSlice';
 import { computeNextInstanceNumber } from './stores/tokenInstanceNumbers';
 import type { DiceRollResult } from './tools/DiceTool';
+import { persistableDiceLog } from './tools/diceRolling';
 import { isAtlasToolAvailable } from './tools/toolAvailability';
 import { isPinLabelKind, nextPinLabel } from './tools/pinLabels';
 import { movedPathOf, rewriteMapReferences } from './services/renamedPaths';
@@ -1448,7 +1449,7 @@ export function createViewAtlasStore(app: App, viewId: string, plugin?: AtlasVTT
               tokenSettings: state.tokenSettings, // Token display settings
               initiative: state.initiative, // Initiative tracker state
               initiativeTrackerOpen: state.initiativeTrackerOpen, // Initiative tracker open/closed state
-              diceLog: state.diceLog, // Dice roll history (last 20 per map)
+              diceLog: persistableDiceLog(state.diceLog), // Dice roll history (last 20 per map); online players' rolls stay in memory
               pinnedNotePreviews: state.pinnedNotePreviews, // Pinned note preview windows
               lootRoller: state.lootRoller, // Loot roller window, filters and history
             };

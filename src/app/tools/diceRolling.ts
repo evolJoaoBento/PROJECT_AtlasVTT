@@ -102,6 +102,11 @@ export function withoutHiddenToken(result: DiceRollResult, isTokenHidden: (token
   return { ...result, source: abilityName ? { type, abilityName } : { type } };
 }
 
+/** The dice log as a map file keeps it: online players' rolls stay in the live session's log only. */
+export function persistableDiceLog(log: readonly DiceRollResult[]): DiceRollResult[] {
+  return log.filter((entry) => !entry.rolledBy);
+}
+
 /** The name a roll shows: the online player who rolled it, or a statblock roll's token; null for the GM's own. */
 export function rollerName(result: DiceRollResult): string | null {
   if (result.rolledBy) return result.rolledBy;

@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { describe, expect, it } from 'vitest';
 import {
-  DICE_TYPES, diceFormula, diceTerms, rollerName, rollFormula, withoutHiddenToken, type DiceRollResult,
+  DICE_TYPES, diceFormula, diceTerms, persistableDiceLog, rollerName, rollFormula, withoutHiddenToken, type DiceRollResult,
 } from '../../src/app/tools/diceRolling';
 import { DiceTool } from '../../src/app/tools/DiceTool';
 
@@ -73,5 +73,13 @@ describe('what players see of a roll', () => {
     expect(rollerName(statblock)).toBe('Goblin');
     expect(rollerName(withoutHiddenToken(statblock, () => true))).toBeNull();
     expect(rollerName({ ...statblock, source: { type: 'toolbar' } })).toBeNull();
+  });
+});
+
+describe('what the dice log saves', () => {
+  it("keeps the GM's rolls and leaves online players' rolls in memory", () => {
+    const gm = rollFormula('d20');
+    const player = { ...rollFormula('d6'), rolledBy: 'Anna' };
+    expect(persistableDiceLog([player, gm])).toEqual([gm]);
   });
 });
