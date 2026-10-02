@@ -92,9 +92,11 @@ export function DiceToast({ result, phase, onDismiss }: DiceToastProps): React.R
                   'atlas-dice-toast__die-badge',
                   roll.value === roll.max && 'atlas-dice-toast__die-badge--max',
                   roll.value === 1 && 'atlas-dice-toast__die-badge--min',
+                  roll.color && 'atlas-dice-toast__die-badge--colored',
                 )}
+                style={roll.color ? { '--atlas-die-color': roll.color } as React.CSSProperties : undefined}
               >
-                {roll.die}: {roll.value}
+                {roll.colorName ? `${roll.colorName} ` : ''}{roll.die}: {roll.value}
               </span>
             ))}
           </div>

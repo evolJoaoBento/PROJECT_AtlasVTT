@@ -62,4 +62,32 @@ export interface CollectionSettings {
   lootBases?: string[];
   /** Named after plain-number item prices, e.g. "gold" or "thorns". */
   lootCurrency?: string | undefined;
+  /** How the physical dice look and read. Unset means the defaults (`resolvePhysicalDice`). */
+  physicalDice?: PhysicalDiceSettings;
+}
+
+/** A collection's physical dice. */
+export interface PhysicalDiceSettings {
+  /** Folder of a pack under the collection's `dice/` folder; unset is the pack Atlas ships with. */
+  pack?: string | undefined;
+  diceSize: number;
+  enableShadows: boolean;
+  ambientLightIntensity: number;
+  directionalLightIntensity: number;
+  /** How still the dice must be before they are read (higher waits longer). */
+  motionThreshold: number;
+  /** How squarely a face must sit to count as read; below it the die is caught for a reroll. */
+  faceDetectionTolerance: number;
+  highlightCompletedDice: boolean;
+  completedDiceHighlightColor: string;
+  /** Colours dice can be added in, beside the pack's own. */
+  colors?: DiceColor[] | undefined;
+}
+
+/** A colour physical dice can be added in: a red set for damage, a blue d20 for advantage. */
+export interface DiceColor {
+  id: string;
+  name: string;
+  /** `#rrggbb` */
+  color: string;
 }

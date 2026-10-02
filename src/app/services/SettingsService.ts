@@ -24,6 +24,8 @@ export interface NavigationSettings {
 export const TUTORIAL_IDS = ['assets', 'palette', 'tokenStatblocks', 'lootSettings', 'lootRoller', 'lootResults'] as const;
 export type TutorialId = typeof TUTORIAL_IDS[number];
 
+export type DiceMode = 'rng' | 'physical';
+
 export interface AtlasSettings {
   showChangelogOnUpdate: boolean;
   changelogMajorUpdatesOnly: boolean;
@@ -38,6 +40,8 @@ export interface AtlasSettings {
   systemPresets: unknown[];
   /** Hosting online sessions; nothing here is used until a session starts. */
   online: OnlineSettings;
+  /** Where dice results come from: Atlas' random numbers or the 3D physical dice. */
+  diceMode: DiceMode;
   localPlayerView: {
     // UI element visibility toggles
     showToolbar: boolean;
@@ -66,6 +70,7 @@ const DEFAULT_SETTINGS: AtlasSettings = {
   laserPointer: DEFAULT_LASER_POINTER_SETTINGS,
   systemPresets: [],
   online: DEFAULT_ONLINE_SETTINGS,
+  diceMode: 'rng',
   localPlayerView: {
     // UI element visibility defaults
     showToolbar: false, // Hide toolbar by default in player view
@@ -311,6 +316,15 @@ export class SettingsService {
 
   setOnlineSettings(settings: Partial<OnlineSettings>): void {
     this.settings.online = { ...this.getOnlineSettings(), ...settings };
+    this.commit();
+  }
+
+  getDiceMode(): DiceMode {
+    return this.settings.diceMode === 'physical' ? 'physical' : 'rng';
+  }
+
+  setDiceMode(mode: DiceMode): void {
+    this.settings.diceMode = mode;
     this.commit();
   }
 

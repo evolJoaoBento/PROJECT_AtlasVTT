@@ -22,6 +22,9 @@ export interface DiceRollResult {
     die: string; // e.g., "d20", "d6"
     value: number;
     max: number;
+    /** The colour the physical die was thrown in, when it had one of its own. */
+    color?: string;
+    colorName?: string;
   }>;
   modifiers: number;
   total: number;
@@ -64,33 +67,56 @@ export function diceFormula(selection: Readonly<Partial<Record<string, number>>>
  */
 const TERM = /([+-])?\s*(\d+)?d(\d+)|([+-])\s*(\d+)/gi;
 
-/**
- * Rolls `formula` with `random` for the dice. Dice add up whatever their sign, as Atlas has
- * always rolled them. The id stays random however the dice are rolled, so rolls made in the
- * same millisecond never share one.
- */
-export function rollFormula(formula: string, random: () => number = Math.random, now: number = Date.now()): DiceRollResult {
-  const rolls: DiceRollResult['rolls'] = [];
+export interface ParsedFormula {
+  /** Faces of each die to roll, in formula order: `2d6+d20` is [6, 6, 20]. */
+  sides: number[];
+  /** Sum of the flat modifiers: `1d20+5-1` is 4. */
+  modifiers: number;
+}
+
+/** Reads a formula like `2d6+1d8+3` into its dice and flat modifier. Dice add up whatever their sign, as Atlas has always rolled them. */
+export function parseDiceFormula(formula: string): ParsedFormula {
+  const sides: number[] = [];
   let modifiers = 0;
-  for (const [, , count, sides, sign, flat] of formula.matchAll(TERM)) {
-    if (sides !== undefined) {
-      const max = parseInt(sides, 10);
+  for (const [, , count, faces, sign, flat] of formula.matchAll(TERM)) {
+    if (faces !== undefined) {
+      const max = parseInt(faces, 10);
       const times = parseInt(count ?? '1', 10);
-      for (let i = 0; i < times; i++) rolls.push({ die: `d${max}`, value: Math.floor(random() * max) + 1, max });
+      for (let i = 0; i < times; i++) sides.push(max);
     } else if (flat !== undefined) {
       modifiers += sign === '-' ? -parseInt(flat, 10) : parseInt(flat, 10);
     }
   }
-  const total = rolls.reduce((sum, roll) => sum + roll.value, 0) + modifiers;
+  return { sides, modifiers };
+}
+
+/** One die of `sides` faces rolled with `random`. */
+export function rollRandomDie(sides: number, random: () => number = Math.random): number {
+  return Math.floor(random() * sides) + 1;
+}
+
+/**
+ * A roll result from dice values already known, one per entry of `parsed.sides`. The id stays
+ * random however the dice were rolled, so rolls made in the same millisecond never share one.
+ */
+export function buildRollResult(formula: string, parsed: ParsedFormula, values: readonly number[], now: number = Date.now()): DiceRollResult {
+  const rolls = parsed.sides.map((max, i) => ({ die: `d${max}`, value: values[i] ?? 0, max }));
+  const total = rolls.reduce((sum, roll) => sum + roll.value, 0) + parsed.modifiers;
   return {
     id: `roll_${now}_${Math.random().toString(36).slice(2, 11)}`,
     timestamp: now,
     formula,
     rolls,
-    modifiers,
+    modifiers: parsed.modifiers,
     total,
     player: 'Player',
   };
+}
+
+/** Rolls `formula` with `random` for the dice. */
+export function rollFormula(formula: string, random: () => number = Math.random, now: number = Date.now()): DiceRollResult {
+  const parsed = parseDiceFormula(formula);
+  return buildRollResult(formula, parsed, parsed.sides.map((sides) => rollRandomDie(sides, random)), now);
 }
 
 /** A roll for a token hidden from players keeps its ability and result, not the token's name or portrait. */
