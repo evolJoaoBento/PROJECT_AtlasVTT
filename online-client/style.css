@@ -204,7 +204,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* The physical dice table covers the window; only this player sees it. The engine turns its canvas's
    pointer events off except over a die, from mouse moves a phone never sends, so here it always takes them. */
-.physical-dice { position: fixed; inset: 0; z-index: 5; background: rgba(0, 0, 0, 0.45); touch-action: none; }
+.physical-dice { position: fixed; inset: 0; z-index: 5; background: transparent; touch-action: none; }
 .physical-dice-stage { position: absolute; inset: 0; overflow: hidden; }
 .physical-dice-stage canvas { pointer-events: auto !important; touch-action: none; }
 .physical-dice-bar {
