@@ -49,6 +49,8 @@ export class LaserPointerRenderer {
   private unsubscribeFromStore?: () => void;
   private onCanvasLeave: () => void;
   private onWindowBlur: () => void;
+  /** The window the canvas lives in, which differs from the main one in a popout. */
+  private blurWindow: Window;
 
   // Bound viewport handlers (stored for cleanup)
   private onPointerDown: (e: FederatedPointerEvent) => void;
@@ -125,7 +127,8 @@ export class LaserPointerRenderer {
     };
     this.canvasEl.addEventListener('mouseleave', this.onCanvasLeave);
     this.onWindowBlur = this.handleWindowBlur.bind(this);
-    window.addEventListener('blur', this.onWindowBlur);
+    this.blurWindow = this.canvasEl.ownerDocument.defaultView ?? window;
+    this.blurWindow.addEventListener('blur', this.onWindowBlur);
   }
 
   public getContainer(): Container {
@@ -320,7 +323,7 @@ export class LaserPointerRenderer {
     this.viewport.off('pointerupoutside', this.onPointerUpOutside);
     this.viewport.off('moved', this.onViewportMoved);
     this.canvasEl.removeEventListener('mouseleave', this.onCanvasLeave);
-    window.removeEventListener('blur', this.onWindowBlur);
+    this.blurWindow.removeEventListener('blur', this.onWindowBlur);
 
     this.trail.clear();
     destroyTree(this.container);
