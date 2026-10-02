@@ -76,8 +76,7 @@ export class PlayerSceneMirror {
           break;
         }
         this.lastSeq = message.seq;
-        const patched = applyPatch(this.current, message);
-        this.current = { ...patched, measurement: withMeasurementDefaults(patched.measurement) };
+        this.current = this.withDefaults(applyPatch(this.current, message));
         this.options.onChange(this.current);
         break;
       case 'scene-clear': {
@@ -135,6 +134,11 @@ export class PlayerSceneMirror {
       fog: toRecord(pending.fog), drawings: toRecord(pending.drawings),
     };
     this.options.onChange(this.current);
+  }
+
+  /** A patch from an older GM may set a measurement without every field. */
+  private withDefaults(scene: PlayerScene): PlayerScene {
+    return { ...scene, measurement: withMeasurementDefaults(scene.measurement) };
   }
 
   /** A message did not follow the last one: drop it and any half-received snapshot, keep the scene shown. */
