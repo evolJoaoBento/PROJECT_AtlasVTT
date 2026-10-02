@@ -73,7 +73,7 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
   if (tabs.length === 0) return null;
 
   const presentLabel = (tab: SceneTab, isPresented: boolean): string => {
-    if (isPresented) return `Stop presenting ${tab.displayName}`;
+    if (isPresented) return hosting ? `Stop presenting ${tab.displayName}` : `${tab.displayName} is shown to players`;
     return hosting ? `Present ${tab.displayName} to players` : `Show ${tab.displayName} on the player view`;
   };
 
@@ -125,11 +125,11 @@ export function SceneTabBar({ onSwitchTab, onCloseTab, onAddTab, onPresentTab, o
                 </LabelTooltip>
                 {tab.isDirty && <span className="atlas-scene-tab__dirty" />}
                 <TabActionButton
-                  icon={isPresented ? EyeOff : Eye}
+                  icon={isPresented && hosting ? EyeOff : Eye}
                   label={presentLabel(tab, isPresented)}
                   isActive={isPresented}
-                  // The presented scene's eye hides it again.
-                  onClick={() => (isPresented ? stopPresenting() : onPresentTab(tab.id))}
+                  // While hosting, the presented scene's eye hides it again.
+                  onClick={() => (isPresented && hosting ? stopPresenting() : onPresentTab(tab.id))}
                   onContextMenu={onPresentTabMenu && ((position) => onPresentTabMenu(tab.id, position))}
                 />
                 <TabActionButton icon={X} label={`Close ${tab.displayName}`} onClick={() => onCloseTab(tab.id)} />

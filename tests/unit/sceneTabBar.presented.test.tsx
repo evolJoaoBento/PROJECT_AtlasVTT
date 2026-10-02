@@ -6,6 +6,7 @@ import { AtlasUIContext } from '../../src/app/react/root/AtlasUIContext';
 import { SceneTabBar } from '../../src/app/react/components/SceneTabBar';
 import { presentedScene, type PresentedView } from '../../src/app/services/PresentedScene';
 import { createTabMetaStore } from '../../src/app/stores/tabMetaStore';
+import { onlineSessionStore, resetOnlineSessionStore } from '../../src/app/online/onlineSessionStore';
 
 class StubResizeObserver {
   observe(): void {}
@@ -49,7 +50,8 @@ it('marks the tab presented to players, whether or not the player window is open
   expect(pressed()).toBe(0);
 });
 
-it("turns the presented tab's eye into a hide button that stops presenting", () => {
+it("turns the presented tab's eye into a hide button that stops presenting while hosting", () => {
+  onlineSessionStore.setState({ status: 'hosting' });
   const tabMetaStore = createTabMetaStore();
   const tavern = tabMetaStore.getState().addTab('Tavern.atlasmap', 'Tavern');
   tabMetaStore.getState().setActiveTab(tavern);
@@ -64,4 +66,23 @@ it("turns the presented tab's eye into a hide button that stops presenting", () 
   act(() => { getByRole('button', { name: 'Stop presenting Tavern' }).click(); });
   expect(onPresentTab).not.toHaveBeenCalled();
   expect(presentedScene.current()).toBeNull();
+  resetOnlineSessionStore();
+});
+
+it('keeps the plain eye on the presented tab without an online session', () => {
+  const tabMetaStore = createTabMetaStore();
+  const tavern = tabMetaStore.getState().addTab('Tavern.atlasmap', 'Tavern');
+  tabMetaStore.getState().setActiveTab(tavern);
+  const onPresentTab = vi.fn();
+  const value = { app: {}, view: { viewId: 'map', tabMetaStore }, pixiApp: null, renderer: null } as never;
+  const { getByRole, queryByRole } = render(<AtlasUIContext.Provider value={value}>
+    <SceneTabBar onSwitchTab={vi.fn()} onCloseTab={vi.fn()} onAddTab={vi.fn()} onPresentTab={onPresentTab} onShowAllTabs={vi.fn()} />
+  </AtlasUIContext.Provider>);
+  const view = { tabMetaStore, atlasStore: createStore(() => ({ isMapLoading: false })), register: () => {} } as unknown as PresentedView;
+  act(() => { presentedScene.present(view, tavern); });
+
+  expect(queryByRole('button', { name: 'Stop presenting Tavern' })).toBeNull();
+  act(() => { getByRole('button', { name: 'Tavern is shown to players' }).click(); });
+  expect(onPresentTab).toHaveBeenCalledWith(tavern);
+  expect(presentedScene.current()).not.toBeNull();
 });
