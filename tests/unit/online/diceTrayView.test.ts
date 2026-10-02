@@ -32,6 +32,18 @@ describe('the join page dice tray', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it('keeps the tray open and says so when the roll was not sent', () => {
+    const t = setup(false);
+    t.die('d20').click();
+    t.root.querySelector<HTMLButtonElement>('.dice-roll')!.click();
+    expect(t.closed()).toBe(0);
+    expect(t.view.isOpen).toBe(true);
+    expect(t.text()).toBe('d20');
+    expect(t.root.querySelector('.dice-note')?.textContent).toBe('Wait a moment before rolling again.');
+    t.die('d20').click();
+    expect(t.root.querySelector('.dice-note')?.textContent).toBe('');
+  });
+
   it("adds a die on a click and removes one on a right-click, showing Atlas's formula", () => {
     const t = setup();
     t.die('d6').click();

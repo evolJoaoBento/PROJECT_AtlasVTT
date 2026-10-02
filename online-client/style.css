@@ -182,6 +182,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .dice-label { color: var(--muted); font-size: 11px; }
 .dice-formula-bar { display: flex; align-items: center; gap: var(--inset); }
 .dice-formula { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 14px; }
+.dice-note { margin: 0; padding: 4px var(--inset) 0; color: var(--muted); font-size: 13px; }
+.dice-note:empty { display: none; }
 .dice-modifier { width: 72px; min-height: var(--tool-size); padding: 4px 8px; }
 .dice-roll { display: flex; align-items: center; gap: var(--inset); min-height: var(--tool-size); padding: 0 16px; border-bottom-right-radius: var(--inset-radius); }
 

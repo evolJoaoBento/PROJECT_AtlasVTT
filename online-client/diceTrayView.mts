@@ -21,6 +21,7 @@ export interface DiceTrayViewOptions {
 
 /** After a removal by long-press or right-click, the click or contextmenu the browser adds is ignored for this long. */
 const AFTER_REMOVAL_MS = 800;
+const ROLL_WAIT_NOTE = 'Wait a moment before rolling again.';
 
 export class DiceTrayView {
   readonly tray = new DiceTray();
@@ -29,6 +30,7 @@ export class DiceTrayView {
   private readonly modifier: HTMLInputElement;
   private readonly clearButton: HTMLButtonElement;
   private readonly rollButton: HTMLButtonElement;
+  private readonly note: HTMLElement;
   private pressTimer: number | null = null;
   private ignoreUntil = 0;
 
@@ -68,7 +70,10 @@ export class DiceTrayView {
     const bar = document.createElement('div');
     bar.className = 'dice-formula-bar';
     bar.append(this.formula, this.modifier, this.clearButton, this.rollButton);
-    options.root.replaceChildren(grid, bar);
+    this.note = document.createElement('p');
+    this.note.className = 'dice-note';
+    this.note.setAttribute('role', 'status');
+    options.root.replaceChildren(grid, bar, this.note);
     this.render();
   }
 
@@ -135,7 +140,12 @@ export class DiceTrayView {
   }
 
   private roll(): void {
-    if (!this.tray.canRoll() || !this.options.roll(this.tray.selection, this.tray.modifier)) return;
+    if (!this.tray.canRoll()) return;
+    if (!this.options.roll(this.tray.selection, this.tray.modifier)) {
+      // Not sent (too fast, or not connected): the dice stay selected so the player can roll again.
+      this.note.textContent = ROLL_WAIT_NOTE;
+      return;
+    }
     this.empty();
     this.options.onClose();
   }
@@ -148,6 +158,7 @@ export class DiceTrayView {
   }
 
   private render(): void {
+    this.note.textContent = '';
     const full = this.tray.isFull();
     for (const [die, { button, badge }] of this.dice) {
       const count = this.tray.count(die);
