@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildRollResult, parseDiceFormula } from '../../src/app/tools/diceFormula';
-import { readTableDice, tableDiceFor } from '../../src/app/physical-dice/physicalDiceValues';
+import { planTableDice, readPlannedDice, readTableDice, tableDiceFor } from '../../src/app/physical-dice/physicalDiceValues';
 
 describe('parseDiceFormula', () => {
   it('reads every die and the flat modifier', () => {
@@ -39,5 +39,13 @@ describe('physical dice values', () => {
     expect(readTableDice(100, [0, 5])).toBe(5);
     expect(readTableDice(100, [90, 0])).toBe(90);
     expect(readTableDice(100, [0, 0])).toBe(100);
+  });
+
+  it('plans the table dice of a formula and reads each formula die back, in order', () => {
+    const sides = [20, 100, 3, 10];
+    const plan = planTableDice(sides);
+    expect(plan.perDie).toEqual([['d20'], ['d100', 'd10'], null, ['d10']]);
+    expect(plan.types).toEqual(['d20', 'd100', 'd10', 'd10']);
+    expect(readPlannedDice(sides, plan, [17, 40, 7, 0], () => 2)).toEqual([17, 47, 2, 10]);
   });
 });

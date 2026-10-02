@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import type { DiceMode, SettingsService } from '../services/SettingsService';
 import type { DiceColor } from '../types/collectionSettingsTypes';
 import type { PhysicalDiceTable } from '../physical-dice/PhysicalDiceTable';
-import { readTableDice, tableDiceFor } from '../physical-dice/physicalDiceValues';
+import { planTableDice, readPlannedDice } from '../physical-dice/physicalDiceValues';
 import {
   buildRollResult, DICE_ROLLED_EVENT, DICE_TYPES, parseDiceFormula, rollFormula, rollRandomDie, type DiceRollResult,
 } from './diceRolling';
@@ -56,28 +56,20 @@ export class DiceTool {
     if (this.getMode() !== 'physical' || !table) return this.rollDice(formula, source);
 
     const parsed = parseDiceFormula(formula);
-    const plan = parsed.sides.map(tableDiceFor);
-    const types = plan.flatMap((dice) => dice ?? []);
-    if (types.length === 0) return this.rollDice(formula, source);
+    const plan = planTableDice(parsed.sides);
+    if (plan.types.length === 0) return this.rollDice(formula, source);
     // A percentile die's tens die and d10 share its colour.
-    const colors = plan.flatMap((dice, i) => (dice ?? []).map(() => dieColors?.[i] ?? null));
+    const colors = plan.perDie.flatMap((dice, i) => (dice ?? []).map(() => dieColors?.[i] ?? null));
 
-    const faces = await table.roll(types, formula, colors);
+    const faces = await table.roll(plan.types, formula, colors);
     if (!faces) return null;
 
     // Dice the table has no model for (a d3, a d7) still get random numbers.
-    let next = 0;
-    const values = parsed.sides.map((sides, i) => {
-      const dice = plan[i];
-      if (!dice) return rollRandomDie(sides);
-      const read = readTableDice(sides, faces.slice(next, next + dice.length));
-      next += dice.length;
-      return read;
-    });
+    const values = readPlannedDice(parsed.sides, plan, faces, (sides) => rollRandomDie(sides));
     const result = buildRollResult(formula, parsed, values);
     const names = new Map(table.getDiceColors().map((entry) => [entry.color, entry.name || entry.color]));
     result.rolls.forEach((roll, i) => {
-      const color = plan[i] ? dieColors?.[i] : null;
+      const color = plan.perDie[i] ? dieColors?.[i] : null;
       if (!color) return;
       roll.color = color;
       roll.colorName = names.get(color) ?? color;

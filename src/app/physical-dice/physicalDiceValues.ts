@@ -24,3 +24,32 @@ export function readTableDice(sides: number, faces: readonly number[]): number {
   const face = faces[0] ?? 0;
   return sides === 10 && face === 0 ? 10 : face;
 }
+
+/** The table dice a roll throws: per formula die (null where the table has no such die), and all of them in order. */
+export interface TableDicePlan {
+  perDie: Array<string[] | null>;
+  types: string[];
+}
+
+/** The table dice for a formula's dice, given as their sides in formula order. */
+export function planTableDice(sides: readonly number[]): TableDicePlan {
+  const perDie = sides.map(tableDiceFor);
+  return { perDie, types: perDie.flatMap((dice) => dice ?? []) };
+}
+
+/**
+ * Each formula die's value from the faces the plan's table dice came up on, in plan order.
+ * A die the table has no model for (a d3, a d7) gets `unplanned(sides)`.
+ */
+export function readPlannedDice(
+  sides: readonly number[], plan: TableDicePlan, faces: readonly number[], unplanned: (sides: number) => number,
+): number[] {
+  let next = 0;
+  return sides.map((count, i) => {
+    const dice = plan.perDie[i];
+    if (!dice) return unplanned(count);
+    const read = readTableDice(count, faces.slice(next, next + dice.length));
+    next += dice.length;
+    return read;
+  });
+}
