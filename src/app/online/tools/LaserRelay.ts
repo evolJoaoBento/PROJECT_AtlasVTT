@@ -3,7 +3,7 @@
  * `from`, the sender's session id (anything the player put there is ignored), and shows in the
  * GM's view while the presented scene is live. The GM's own laser in that view goes to every
  * player from `gm`, batched like the page's. Lasers for another scene than the one players have
- * are dropped, more than 40 a second from one player are ignored (a lift of a laser being held still goes on, without points), and nothing is stored. A
+ * are dropped, more than 60 a second from one player are ignored (a lift of a laser being held still goes on, without points), and nothing is stored. A
  * player who leaves or is removed mid-stroke is let go everywhere. A `GmSession` handler.
  */
 import type { PresentedSceneInfo } from '../../services/PresentedScene';
@@ -26,7 +26,7 @@ export interface LaserRelayOptions {
 
 export class LaserRelay implements SessionHandler {
   private readonly limit = new RateLimit(LASER_LIMITS.perSecond * 2);
-  private readonly batcher = new LaserBatcher((points, lifted) => this.relay(GM_LASER_ID, points, lifted, null));
+  private readonly batcher = new LaserBatcher((points, lifted, dt) => this.relay(GM_LASER_ID, points, lifted, null, dt));
   private readonly stops: Array<() => void> = [];
   /** The presented scene while it is live; the GM's laser is read from its view. */
   private live: PresentedSceneInfo | null = null;
@@ -59,15 +59,16 @@ export class LaserRelay implements SessionHandler {
 
   onMessage(player: SessionPlayer, message: ControlMessage): void {
     if (message.type !== 'laser') return;
-    // Over the limit (40 a second, twice the sender's rate) only a lift of a laser being held goes on, with no points.
+    // Over the limit (60 a second, twice the sender's rate) only a lift of a laser being held goes on, with no points.
     const allowed = this.limit.allow(player.playerId, Date.now());
     if (!allowed && !(message.lifted && this.drawing.has(player.playerId))) return;
     const points = allowed ? message.points : [];
+    const dt = allowed ? message.dt : undefined;
     if (message.sceneId !== this.options.projection.currentProjection()?.sceneId) return;
     if (message.lifted) this.drawing.delete(player.playerId);
     else this.drawing.add(player.playerId);
     // Field by field: a page may add keys to its points.
-    this.relay(player.playerId, points.map(({ x, y }) => ({ x, y })), message.lifted, player.playerId);
+    this.relay(player.playerId, points.map(({ x, y }) => ({ x, y })), message.lifted, player.playerId, dt ? [...dt] : undefined);
   }
 
   onGone(player: SessionPlayer): void {
@@ -103,17 +104,17 @@ export class LaserRelay implements SessionHandler {
   }
 
   /** To every admitted player but the sender; a player's laser also into the GM's view while the scene is live. */
-  private relay(from: string, points: ScenePoint[], lifted: boolean, sender: string | null): void {
+  private relay(from: string, points: ScenePoint[], lifted: boolean, sender: string | null, dt?: number[]): void {
     const scene = this.options.projection.currentProjection();
     if (!scene) return;
     const { session, presented } = this.options;
     const players = session.getPlayers();
     for (const player of players) {
       if (player.status !== 'admitted' || player.playerId === sender) continue;
-      session.send(player.playerId, { v: 1, type: 'laser', from, sceneId: scene.sceneId, points, lifted });
+      session.send(player.playerId, { v: 1, type: 'laser', from, sceneId: scene.sceneId, points, lifted, ...(dt ? { dt } : {}) });
     }
     if (sender === null || !this.live || presented.isHeld()) return;
     const order = players.filter((player) => player.status !== 'pending').map((player) => player.playerId);
-    this.live.laser()?.showRemote({ from, color: laserColor(from, order), points, lifted });
+    this.live.laser()?.showRemote({ from, color: laserColor(from, order), points, lifted, ...(dt ? { dt } : {}) });
   }
 }

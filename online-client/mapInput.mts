@@ -45,6 +45,9 @@ export function bindMapInput({ canvas, input, tools, signal, onHover }: MapInput
   }, { signal });
   canvas.addEventListener('pointermove', (event) => {
     const moved = pointer(event);
+    // The browser merges the moves of a frame: a laser takes each of them, so its line follows the hand's path.
+    const merged = tools.tool === 'laser' && moved.kind !== 'touch' ? event.getCoalescedEvents?.() ?? [] : [];
+    for (const earlier of merged) if (earlier.timeStamp < event.timeStamp) input.move(pointer(earlier));
     input.move(moved);
     if (moved.kind === 'mouse') onHover({ x: moved.x, y: moved.y });
   }, { signal });

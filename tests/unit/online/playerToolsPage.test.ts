@@ -27,7 +27,7 @@ async function page() {
     canvas, surface: new RecordingSurface(), images: () => null, frames: fakeFrames(), isHidden: () => false,
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
     sendMove: (tokenId, x, y) => player?.session.sendTokenMove(tokenId, x, y) ?? false,
-    sendLaser: (points, lifted) => player?.session.sendLaser(points, lifted) ?? false,
+    sendLaser: (points, lifted, dt) => player?.session.sendLaser(points, lifted, dt) ?? false,
     notice: element('move-notice'),
   });
   w.present();
@@ -43,6 +43,20 @@ async function page() {
   const other = await w.join('B');
   w.gm.use({ onMessage: (_player, message) => { seen.push(message.type); } });
   return { w, view, canvas, seen, player, other };
+}
+
+/** A move whose frame the browser merged with earlier moves, as a mouse reports many a frame. */
+function mergedMove(target: EventTarget, earlier: Array<[number, number, number]>, x: number, y: number, time: number): void {
+  const coalesced = earlier.map(([ex, ey, et]) => {
+    const e = new MouseEvent('pointermove', { clientX: ex, clientY: ey, button: 0 });
+    Object.defineProperties(e, { pointerId: { value: 1 }, pointerType: { value: 'mouse' }, timeStamp: { value: et } });
+    return e;
+  });
+  const event = new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y, button: 0 });
+  Object.defineProperties(event, {
+    pointerId: { value: 1 }, pointerType: { value: 'mouse' }, timeStamp: { value: time }, getCoalescedEvents: { value: () => coalesced },
+  });
+  target.dispatchEvent(event);
 }
 
 describe('the player tools on the join page', () => {
@@ -65,6 +79,21 @@ describe('the player tools on the join page', () => {
     const relayed = w.lasersOf(other);
     expect(relayed.every((laser) => laser.from === player.playerId)).toBe(true);
     expect(relayed.at(-1)?.lifted).toBe(true);
+    w.finish();
+  });
+
+  it("sends the laser's merged pointer moves, each with its own time", async () => {
+    const { w, view, canvas, other } = await page();
+    view.selectTool('laser');
+    pointer(canvas, 'pointerdown', 300, 300);
+    mergedMove(canvas, [[340, 300, 1010], [380, 300, 1020]], 420, 300, 1030);
+    await vi.advanceTimersByTimeAsync(100);
+    const sent = w.lasersOf(other).flatMap((laser) => laser.points.map((point, index) => ({ x: point.x, dt: laser.dt?.[index] })));
+    const xs = sent.map((point) => point.x);
+    expect(xs).toHaveLength(new Set(xs).size);
+    expect(xs.length).toBeGreaterThanOrEqual(4);
+    const gaps = sent.slice(-2).map((point) => point.dt);
+    expect(gaps).toEqual([10, 10]);
     w.finish();
   });
 });

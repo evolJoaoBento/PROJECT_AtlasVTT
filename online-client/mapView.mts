@@ -35,7 +35,7 @@ export interface MapViewOptions {
   /** Sends one drop of a controlled token; false when it could not be sent. */
   sendMove(tokenId: string, x: number, y: number): boolean;
   /** Sends new points of the player's laser; false when they could not be sent. */
-  sendLaser(points: ScenePoint[], lifted: boolean): boolean;
+  sendLaser(points: ScenePoint[], lifted: boolean, dt: number[]): boolean;
   /** Shows "Move not allowed." after a refused move. */
   notice: HTMLElement;
   /** The tool or measure shape changed, also by Escape: the toolbar follows. */
@@ -89,7 +89,7 @@ export class MapView {
       toWorld: (point) => this.camera.toWorld(point),
       zoom: () => this.camera.current().zoom,
       now: options.now ?? ((): number => performance.now()),
-      sendLaser: (points, lifted) => options.sendLaser(points, lifted),
+      sendLaser: (points, lifted, dt) => options.sendLaser(points, lifted, dt),
       onChange: () => this.toolsChanged(),
     });
     this.input = new ViewInput(this.camera, this.tools);

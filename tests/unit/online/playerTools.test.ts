@@ -4,6 +4,7 @@ import { LASER_INTERVAL_MS } from '../../../src/app/online/tools/LaserBatcher';
 import { TokenMoves } from '../../../src/app/online/view/TokenMoves';
 import { PlayerTools } from '../../../src/app/online/view/tools/PlayerTools';
 import { ViewInput, type PointerInput } from '../../../src/app/online/view/ViewInput';
+import { LASER_PLAYBACK_DELAY_MS } from '../../../src/app/pixi/laser/remoteLasers';
 import { LASER_COLOR_SWATCHES, LASER_FADE_TIME } from '../../../src/app/tools/laserPointerSettings';
 import { playerScene } from './sceneFixtures';
 
@@ -142,6 +143,9 @@ describe('PlayerTools', () => {
     const { tools } = setup();
     tools.receiveLaser({ from: 'other', sceneId: 'scene-1', points: [{ x: 5, y: 5 }], lifted: false });
     tools.receiveLaser({ from: 'gm', sceneId: 'old-scene', points: [{ x: 9, y: 9 }], lifted: false });
+    // Played back a moment behind the message.
+    expect(tools.overlay().lasers).toEqual([]);
+    vi.advanceTimersByTime(LASER_PLAYBACK_DELAY_MS);
     expect(tools.overlay().lasers).toEqual([expect.objectContaining({ from: 'other', color: LASER_COLOR_SWATCHES[1].value })]);
     tools.setScene(playerScene({ sceneId: 'scene-2' }));
     expect(tools.overlay().lasers).toEqual([]);

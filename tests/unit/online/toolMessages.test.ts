@@ -67,6 +67,20 @@ describe('player tool messages', () => {
     expect(valid(laser({ from: 'p1' }))).toBe(true);
   });
 
+  it('checks the point times of a laser: none, or one gap from 0 to 2 seconds per point', () => {
+    expect(valid(laser({ dt: [0] }))).toBe(true);
+    expect(valid(laser({ points: [], dt: [] }))).toBe(true);
+    expect(valid(laser({ dt: [2000] }))).toBe(true);
+    expect(valid(laser({ dt: [2001] }))).toBe(false);
+    expect(valid(laser({ dt: [-1] }))).toBe(false);
+    expect(valid(laser({ dt: ['5'] }))).toBe(false);
+    expect(valid(laser({ dt: [null] }))).toBe(false);
+    expect(valid(laser({ dt: [0, 0] }))).toBe(false);
+    expect(valid(laser({ dt: {} }))).toBe(false);
+    expect(valid(laser({ dt: null }))).toBe(false);
+    expect(valid(laser({ dt: 5 }))).toBe(false);
+  });
+
   it('lets admitted players send rolls and lasers, never dice logs', () => {
     expect(PLAYER_MESSAGE_TYPES.has('dice-roll')).toBe(true);
     expect(PLAYER_MESSAGE_TYPES.has('laser')).toBe(true);

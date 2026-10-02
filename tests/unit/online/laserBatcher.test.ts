@@ -4,11 +4,11 @@ import { LASER_INTERVAL_MS, LASER_KEEPALIVE_MS, LaserBatcher } from '../../../sr
 import { GM_LASER_ID, laserColor } from '../../../src/app/online/tools/laserColors';
 import { LASER_COLOR_SWATCHES } from '../../../src/app/tools/laserPointerSettings';
 
-interface Sent { points: ScenePoint[]; lifted: boolean; at: number }
+interface Sent { points: ScenePoint[]; lifted: boolean; at: number; dt: number[] }
 
 function batcher(): { batcher: LaserBatcher; sent: Sent[] } {
   const sent: Sent[] = [];
-  return { batcher: new LaserBatcher((points, lifted) => sent.push({ points, lifted, at: Date.now() })), sent };
+  return { batcher: new LaserBatcher((points, lifted, dt) => sent.push({ points, lifted, at: Date.now(), dt }), () => Date.now()), sent };
 }
 const at = (x: number): ScenePoint => ({ x, y: 0 });
 
@@ -24,9 +24,9 @@ describe('LaserBatcher', () => {
     laser.point(at(0));
     laser.point(at(1));
     laser.point(at(2));
-    expect(sent).toEqual([{ points: [at(0)], lifted: false, at: 0 }]);
+    expect(sent).toEqual([{ points: [at(0)], lifted: false, at: 0, dt: [0] }]);
     vi.advanceTimersByTime(LASER_INTERVAL_MS);
-    expect(sent[1]).toEqual({ points: [at(1), at(2)], lifted: false, at: 50 });
+    expect(sent[1]).toMatchObject({ points: [at(1), at(2)], lifted: false, at: Math.round(LASER_INTERVAL_MS) });
   });
 
   it('keeps the newest 64 points of a batch', () => {
@@ -49,13 +49,15 @@ describe('LaserBatcher', () => {
     ]);
   });
 
-  it('sends at most 20 messages a second however fast the points come', () => {
+  it('sends at most 30 messages a second however fast the points come', () => {
     const { batcher: laser, sent } = batcher();
     for (let time = 0; time < 1000; time += 5) {
       laser.point(at(time));
       vi.advanceTimersByTime(5);
     }
-    expect(sent.filter((message) => message.at < 1000).length).toBeLessThanOrEqual(20);
+    const times = sent.map((message) => message.at);
+    for (let i = 1; i < times.length; i++) expect(times[i]! - times[i - 1]!).toBeGreaterThanOrEqual(Math.floor(LASER_INTERVAL_MS));
+    expect(sent.length).toBeLessThanOrEqual(31);
   });
 
   it('keeps a laser held still alive every 500 ms, and stops once it is let go', () => {
@@ -65,7 +67,37 @@ describe('LaserBatcher', () => {
     expect(sent.map(({ points, at: time }) => [points.length, time])).toEqual([[1, 0], [0, 500], [0, 1000]]);
     laser.lift();
     vi.advanceTimersByTime(LASER_KEEPALIVE_MS * 4);
-    expect(sent.slice(3)).toEqual([{ points: [], lifted: true, at: 1050 }]);
+    expect(sent.slice(3).map(({ points, lifted }) => ({ points, lifted }))).toEqual([{ points: [], lifted: true }]);
+  });
+
+  it('times each point against the one before it, not against the send', () => {
+    const sent: Array<{ points: ScenePoint[]; dt: number[] }> = [];
+    const laser = new LaserBatcher((points, _lifted, dt) => sent.push({ points, dt }), () => 0);
+    laser.point(at(0), 1000);
+    laser.point(at(1), 1010);
+    laser.point(at(2), 1010);
+    laser.point(at(3), 1042);
+    vi.advanceTimersByTime(LASER_INTERVAL_MS);
+    expect(sent.map(({ dt }) => dt)).toEqual([[0], [10, 0, 32]]);
+    // A new stroke starts on its own: its first point has no gap, however long the pause was.
+    laser.lift();
+    vi.advanceTimersByTime(LASER_INTERVAL_MS);
+    laser.point(at(4), 9000);
+    vi.advanceTimersByTime(LASER_INTERVAL_MS);
+    expect(sent.at(-1)!.dt).toEqual([0]);
+  });
+
+  it('keeps the times with the newest 64 points, and caps a long pause', () => {
+    const sent: Array<{ points: ScenePoint[]; dt: number[] }> = [];
+    const laser = new LaserBatcher((points, _lifted, dt) => sent.push({ points, dt }), () => 0);
+    laser.point(at(0), 0);
+    for (let x = 1; x <= 70; x++) laser.point(at(x), x * 10);
+    vi.advanceTimersByTime(LASER_INTERVAL_MS);
+    expect(sent[1]!.points).toHaveLength(64);
+    expect(sent[1]!.dt).toHaveLength(64);
+    laser.point(at(99), 70 * 10 + 60_000);
+    vi.advanceTimersByTime(LASER_INTERVAL_MS);
+    expect(sent.at(-1)!.dt).toEqual([2000]);
   });
 
   it('sends no lift without a stroke, and nothing after dispose', () => {

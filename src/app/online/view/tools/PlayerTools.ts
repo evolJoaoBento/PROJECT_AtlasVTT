@@ -39,7 +39,7 @@ export interface PlayerToolsOptions {
   /** Screen pixels per world unit now, so laser points are spaced like Atlas's. */
   zoom(): number;
   now(): number;
-  sendLaser(points: ScenePoint[], lifted: boolean): boolean;
+  sendLaser(points: ScenePoint[], lifted: boolean, dt: number[]): boolean;
   /** The tool, the shape, or what the tools draw changed. */
   onChange(): void;
 }
@@ -65,13 +65,15 @@ export class PlayerTools implements TokenGrab {
   constructor(private readonly options: PlayerToolsOptions) {
     this.ruler = new DragRulerTool(() => options.onChange());
     this.laser = new LaserTool({
-      send: (points, lifted) => {
-        options.sendLaser(points, lifted);
+      now: () => options.now(),
+      send: (points, lifted, dt) => {
+        options.sendLaser(points, lifted, dt);
         // A held laser sends empty batches to stay alive: they keep it alive here too.
         if (points.length === 0 && !lifted) this.lasers.receive(SELF, this.selfColor(), [], false, options.now());
       },
       echo: (points, lifted) => {
-        this.lasers.receive(SELF, this.selfColor(), points, lifted, options.now());
+        // This player's own laser is drawn as it is made: no playback delay.
+        this.lasers.receive(SELF, this.selfColor(), points, lifted, options.now(), { immediate: true });
       },
     });
   }
@@ -146,7 +148,7 @@ export class PlayerTools implements TokenGrab {
   /** Someone else's laser; one for another scene is ignored. */
   receiveLaser(laser: PlayerLaser): void {
     if (!this.scene || laser.sceneId !== this.scene.sceneId) return;
-    this.lasers.receive(laser.from, laserColor(laser.from, this.order), laser.points, laser.lifted, this.options.now());
+    this.lasers.receive(laser.from, laserColor(laser.from, this.order), laser.points, laser.lifted, this.options.now(), laser.dt ? { dt: laser.dt } : {});
     this.options.onChange();
   }
 
@@ -169,7 +171,8 @@ export class PlayerTools implements TokenGrab {
     return true;
   }
 
-  move(point: ScreenPoint): void {
+  /** `time`: when the pointer was there, on the page's clock (a laser times its points with it). */
+  move(point: ScreenPoint, time?: number): void {
     const grid = this.grid;
     if (!this.pressed || !grid) return;
     if (this.pressed === 'move') {
@@ -179,7 +182,7 @@ export class PlayerTools implements TokenGrab {
     } else if (this.pressed === 'measure') {
       this.measure.move(this.options.toWorld(point), grid);
     } else {
-      this.laser.move(this.options.toWorld(point), laserPointSpacing(DEFAULT_LASER_POINTER_SETTINGS.size, this.options.zoom()));
+      this.laser.move(this.options.toWorld(point), laserPointSpacing(DEFAULT_LASER_POINTER_SETTINGS.size, this.options.zoom()), time);
     }
     this.options.onChange();
   }

@@ -20,7 +20,8 @@ export const DICE_LIMITS = {
   formulaLength: 200,
 } as const;
 
-export const LASER_LIMITS = { points: 64, perSecond: 20 } as const;
+/** `maxGapMs`: the longest gap a point's `dt` may state (a laser held still is kept alive, not timed). */
+export const LASER_LIMITS = { points: 64, perSecond: 30, maxGapMs: 2000 } as const;
 
 /** The name of a roll that is neither an online player's nor that of a visible token on the live presented scene. */
 export const GM_ROLLER_NAME = 'GM';
@@ -44,6 +45,8 @@ export interface PlayerLaser {
   sceneId: string;
   points: ScenePoint[];
   lifted: boolean;
+  /** Milliseconds from each point to the one before it in the stroke (0 for its first), when the sender timed them. */
+  dt?: number[];
 }
 
 type Fields = Record<string, unknown>;
@@ -93,6 +96,13 @@ export function isLaserPoints(value: unknown): value is ScenePoint[] {
   const inRange = (number: unknown): boolean => isFiniteNumber(number) && number >= min && number <= max;
   return Array.isArray(value) && value.length <= LASER_LIMITS.points
     && value.every((point) => isFields(point) && inRange(point.x) && inRange(point.y));
+}
+
+/** Absent, or one gap in milliseconds (0 to `LASER_LIMITS.maxGapMs`) per point. */
+export function isLaserTimes(value: unknown, points: readonly unknown[]): value is number[] | undefined {
+  if (value === undefined) return true;
+  return Array.isArray(value) && value.length === points.length
+    && value.every((gap) => isFiniteNumber(gap) && gap >= 0 && gap <= LASER_LIMITS.maxGapMs);
 }
 
 /** A roll as the dice log shows it, under `name`, clipped to the limits; null when players would refuse it anyway. */

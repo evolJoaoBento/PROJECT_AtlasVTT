@@ -13,6 +13,8 @@ export interface RemoteLaser {
   color: string;
   points: ReadonlyArray<{ x: number; y: number }>;
   lifted: boolean;
+  /** Milliseconds from each point to the one before it in the stroke, when the sender timed them. */
+  dt?: ReadonlyArray<number>;
 }
 
 export class LaserHub {

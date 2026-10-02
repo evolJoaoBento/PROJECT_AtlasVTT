@@ -57,7 +57,7 @@ const map = surface
     canvas, surface, images: (id) => loader.image(id),
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
     sendMove: (tokenId, x, y) => session?.sendTokenMove(tokenId, x, y) ?? false,
-    sendLaser: (points, lifted) => session?.sendLaser(points, lifted) ?? false,
+    sendLaser: (points, lifted, dt) => session?.sendLaser(points, lifted, dt) ?? false,
     notice: element('move-notice'),
     onToolsChange: () => syncToolbar(),
   })

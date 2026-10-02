@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { LaserBeamFrame, LaserBeamView } from '../../src/app/pixi/laser/LaserBeam';
 import { LaserHub } from '../../src/app/pixi/laser/LaserHub';
 import { RemoteLaserRenderer } from '../../src/app/pixi/laser/RemoteLaserRenderer';
+import { LASER_PLAYBACK_DELAY_MS } from '../../src/app/pixi/laser/remoteLasers';
 import { LASER_FADE_TIME } from '../../src/app/tools/laserPointerSettings';
 import { manualTicker } from '../mocks/manualTicker';
 
@@ -29,13 +30,14 @@ describe('RemoteLaserRenderer', () => {
       },
     });
     hub.showRemote({ from: 'p1', color: '#ff9f2e', points: [{ x: 5, y: 5 }], lifted: false });
+    now = LASER_PLAYBACK_DELAY_MS;
     advance(16);
     expect(beams).toHaveLength(1);
     expect(renderer.container.children).toContain(beams[0]!.view);
     expect(beams[0]!.frames.at(-1)).toMatchObject({ color: '#ff9f2e', pointer: { x: 5, y: 5 }, dot: null, zoom: 2 });
 
     hub.showRemote({ from: 'p1', color: '#ff9f2e', points: [], lifted: true });
-    now = LASER_FADE_TIME;
+    now = LASER_PLAYBACK_DELAY_MS + LASER_FADE_TIME;
     advance(16);
     expect(beams[0]!.destroyed).toBe(true);
     expect(renderer.container.children).toHaveLength(0);

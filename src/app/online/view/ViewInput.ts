@@ -21,7 +21,7 @@ export interface TokenGrab {
   /** Takes the press at `point`; false when the tool has no use for it, and the press pans. */
   grab(point: ScreenPoint, kind: PointerKind): boolean;
   /** The pointer moved past the slop, and on with every move after. */
-  move(point: ScreenPoint): void;
+  move(point: ScreenPoint, time?: number): void;
   /** Released after moving: the move is sent. */
   drop(point: ScreenPoint): void;
   /** Released without moving, cancelled by the browser, or a second finger came down: nothing is sent. */
@@ -99,10 +99,10 @@ export class ViewInput {
       if (!start || distance(start, point) < TAP_SLOP) return;
       this.dragging = true;
       this.lastTap = null;
-      if (this.holdingToken) this.tokens?.move(point);
+      if (this.holdingToken) this.tokens?.move(point, input.time);
       else this.camera.pan(point.x - start.x, point.y - start.y);
     } else if (this.holdingToken) {
-      this.tokens?.move(point);
+      this.tokens?.move(point, input.time);
     } else {
       this.camera.pan(point.x - previous.x, point.y - previous.y);
     }

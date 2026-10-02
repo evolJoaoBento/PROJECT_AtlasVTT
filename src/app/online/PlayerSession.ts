@@ -110,10 +110,10 @@ export class PlayerSession {
   }
 
   /** Sends new points of this player's laser for the scene they have; false when it cannot go. */
-  sendLaser(points: readonly ScenePoint[], lifted: boolean): boolean {
+  sendLaser(points: readonly ScenePoint[], lifted: boolean, dt?: readonly number[]): boolean {
     const scene = this.mirror.scene;
     if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
-    this.link.send('control', encodeControl({ v: 1, type: 'laser', sceneId: scene.sceneId, points: [...points], lifted }));
+    this.link.send('control', encodeControl({ v: 1, type: 'laser', sceneId: scene.sceneId, points: [...points], lifted, ...(dt ? { dt: [...dt] } : {}) }));
     return true;
   }
 
@@ -218,7 +218,7 @@ export class PlayerSession {
       case 'laser':
         // Only the GM's relays carry `from`.
         if (message.from !== undefined) {
-          this.options.onLaser?.({ from: message.from, sceneId: message.sceneId, points: message.points, lifted: message.lifted });
+          this.options.onLaser?.({ from: message.from, sceneId: message.sceneId, points: message.points, lifted: message.lifted, ...(message.dt ? { dt: message.dt } : {}) });
         }
         break;
       default:

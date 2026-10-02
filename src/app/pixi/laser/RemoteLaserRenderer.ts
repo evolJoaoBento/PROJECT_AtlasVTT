@@ -31,7 +31,7 @@ export class RemoteLaserRenderer {
   constructor(private readonly options: RemoteLaserRendererOptions) {
     this.container.eventMode = 'none';
     this.stopListening = options.hub.onRemote((laser) => {
-      this.lasers.receive(laser.from, laser.color, laser.points, laser.lifted, this.now());
+      this.lasers.receive(laser.from, laser.color, laser.points, laser.lifted, this.now(), laser.dt ? { dt: laser.dt } : {});
       this.startTicking();
     });
   }

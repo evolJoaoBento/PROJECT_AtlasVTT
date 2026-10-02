@@ -21,12 +21,28 @@ describe('LaserRelay', () => {
     w.finish();
   });
 
+  it("relays a player's point times to the other players and the GM's view, and drops times it does not accept", async () => {
+    const w = toolsWorld();
+    w.present();
+    const heard: PlayerLaser[] = [];
+    const a = await w.join('A');
+    await w.join('B', { onLaser: (laser) => heard.push(laser) });
+    a.session.sendLaser([{ x: 1, y: 1 }, { x: 2, y: 2 }], false, [0, 33]);
+    expect(heard.at(-1)).toMatchObject({ points: [{ x: 1, y: 1 }, { x: 2, y: 2 }], dt: [0, 33] });
+    expect(w.shown.at(-1)).toMatchObject({ dt: [0, 33] });
+    const count = heard.length;
+    a.sendRaw(encodeControl({ v: 1, type: 'laser', sceneId: w.sceneId(), points: [{ x: 1, y: 1 }], lifted: false, dt: [1, 2] }));
+    a.sendRaw(encodeControl({ v: 1, type: 'laser', sceneId: w.sceneId(), points: [{ x: 1, y: 1 }], lifted: false, dt: [-5] }));
+    expect(heard).toHaveLength(count);
+    w.finish();
+  });
+
   it("sends the GM's own laser to every player while the scene is live, and lets it go when the scene is held", async () => {
     const w = toolsWorld();
     w.present();
     const a = await w.join('A');
     w.hub.emitLocal({ kind: 'point', x: 1, y: 2 });
-    expect(w.lasersOf(a).at(-1)).toEqual({ v: 1, type: 'laser', from: 'gm', sceneId: w.sceneId(), points: [{ x: 1, y: 2 }], lifted: false });
+    expect(w.lasersOf(a).at(-1)).toEqual({ v: 1, type: 'laser', from: 'gm', sceneId: w.sceneId(), points: [{ x: 1, y: 2 }], lifted: false, dt: [0] });
     w.tabs.getState().setActiveTab(w.dungeon);
     await vi.advanceTimersByTimeAsync(100);
     expect(w.lasersOf(a).at(-1)).toMatchObject({ from: 'gm', points: [], lifted: true });
@@ -60,23 +76,23 @@ describe('LaserRelay', () => {
     w.finish();
   });
 
-  it('ignores more than 40 lasers a second from one player', async () => {
+  it('ignores more than 60 lasers a second from one player', async () => {
     const w = toolsWorld();
     w.present();
     const a = await w.join('A');
     const b = await w.join('B');
-    for (let i = 0; i < 45; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
-    expect(w.lasersOf(b)).toHaveLength(40);
+    for (let i = 0; i < 65; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
+    expect(w.lasersOf(b)).toHaveLength(60);
     w.finish();
   });
 
-  it('allows 40 lasers a second, and never limits a lift', async () => {
+  it('allows 60 lasers a second, and never limits a lift', async () => {
     const w = toolsWorld();
     w.present();
     const a = await w.join('A');
     const b = await w.join('B');
-    for (let i = 0; i < 45; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
-    expect(w.lasersOf(b)).toHaveLength(40);
+    for (let i = 0; i < 65; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
+    expect(w.lasersOf(b)).toHaveLength(60);
     a.session.sendLaser([], true);
     expect(w.lasersOf(b).at(-1)).toMatchObject({ from: a.playerId, lifted: true });
     w.finish();
@@ -87,17 +103,17 @@ describe('LaserRelay', () => {
     w.present();
     const a = await w.join('A');
     const b = await w.join('B');
-    for (let i = 0; i < 40; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
+    for (let i = 0; i < 60; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
     // Over the limit and holding: the lift goes on, its points do not; then there is nothing to lift.
     a.session.sendLaser([{ x: 9, y: 9 }], true);
     a.session.sendLaser([{ x: 9, y: 9 }], true);
     const sent = w.lasersOf(b);
-    expect(sent).toHaveLength(41);
+    expect(sent).toHaveLength(61);
     expect(sent.at(-1)).toMatchObject({ from: a.playerId, points: [], lifted: true });
     // Never held: a flood of lifts carries nothing.
     const c = await w.join('C');
-    for (let i = 0; i < 60; i++) c.session.sendLaser([{ x: i, y: 1 }], true);
-    expect(w.lasersOf(b).filter((laser) => laser.from === c.playerId)).toHaveLength(40);
+    for (let i = 0; i < 80; i++) c.session.sendLaser([{ x: i, y: 1 }], true);
+    expect(w.lasersOf(b).filter((laser) => laser.from === c.playerId)).toHaveLength(60);
     w.finish();
   });
 
