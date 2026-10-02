@@ -48,7 +48,7 @@ describe('OnlineSessionService', () => {
     const { svc } = service();
     await svc.start();
     expect(onlineSessionStore.getState()).toMatchObject({
-      status: 'hosting', peerId: 'gm-id', joinUrl: 'https://evoljoaobento.github.io/atlas-vtt/#id=gm-id', error: null,
+      status: 'hosting', peerId: 'gm-id', joinUrl: 'https://evoljoaobento.github.io/PROJECT_AtlasVTT/#id=gm-id', error: null,
     });
   });
 
