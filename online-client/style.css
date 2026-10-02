@@ -196,6 +196,29 @@ button:disabled { opacity: 0.5; cursor: default; }
 .dice-note:empty { display: none; }
 .dice-modifier { width: 72px; min-height: var(--tool-size); padding: 4px 8px; }
 .dice-roll { display: flex; align-items: center; gap: var(--inset); min-height: var(--tool-size); padding: 0 16px; border-bottom-right-radius: var(--inset-radius); }
+/* RNG or Physical, a segmented row on top of the tray like Atlas's; it takes the top corners. */
+.dice-mode { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; background: var(--hover); border-radius: var(--inset-radius); }
+.dice-mode-option { min-height: 0; height: calc(var(--tool-size) - 8px); padding: 0 12px; background: transparent; color: var(--muted); font-weight: 500; border-radius: calc(var(--inset-radius) - 4px); }
+.dice-mode-option.is-active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
+.dice-mode + .dice-grid > .dice-cell > .dice-button { border-radius: 8px; }
+
+/* The physical dice table covers the window; only this player sees it. The engine turns its canvas's
+   pointer events off except over a die, from mouse moves a phone never sends, so here it always takes them. */
+.physical-dice { position: fixed; inset: 0; z-index: 5; background: rgba(0, 0, 0, 0.45); touch-action: none; }
+.physical-dice-stage { position: absolute; inset: 0; overflow: hidden; }
+.physical-dice-stage canvas { pointer-events: auto !important; touch-action: none; }
+.physical-dice-bar {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: max(12px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100% - 32px);
+  display: flex; align-items: center; gap: var(--inset); padding: var(--inset);
+  background: var(--card); border: var(--panel-border) solid var(--border); border-radius: var(--panel-radius); box-shadow: var(--shadow);
+}
+.physical-dice-text { display: grid; min-width: 0; padding: 0 var(--inset); }
+.physical-dice-formula { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.physical-dice-status { color: var(--muted); font-size: 13px; line-height: 1.3; }
+.physical-dice-reroll, .physical-dice-throw { min-height: var(--tool-size); padding: 0 16px; white-space: nowrap; }
+.physical-dice-throw { border-radius: 8px; }
+.physical-dice-cancel { flex: none; border-top-right-radius: var(--inset-radius); border-bottom-right-radius: var(--inset-radius); }
+@media (max-width: 480px) { .physical-dice-bar { flex-wrap: wrap; justify-content: flex-end; } .physical-dice-text { flex: 1 1 100%; } }
 
 /* The dice log: a side panel on the left, a bottom sheet on narrow screens, like the menu. */
 .dice-log {

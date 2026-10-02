@@ -2,11 +2,14 @@
 /**
  * The dice tray on the join page, like Atlas's: its dice with their icons and counts, the
  * formula, a modifier, Clear selection and Roll. A click adds a die; a right-click or a
- * long-press removes one. The tray's rules live in `DiceTray` (`src/app/online/page/diceTray.ts`).
+ * long-press removes one. Like Atlas's, it switches between RNG (the GM's side rolls) and
+ * Physical (the player throws 3D dice on their own screen). The tray's rules live in `DiceTray`
+ * (`src/app/online/page/diceTray.ts`).
  */
 import {
   CLEAR_SELECTION_LABEL, DiceTray, dieHint, LONG_PRESS_MS, MODIFIER_LABEL, ROLL_LABEL,
 } from '../src/app/online/page/diceTray';
+import { DICE_MODE_LABEL, DICE_MODES, type PageDiceMode } from '../src/app/online/page/physicalDice';
 import { dieIconUrl, toolIconUrl } from '../src/app/online/page/toolIcons';
 import { DICE_TYPES, type DiceSelection, type DieType } from '../src/app/tools/diceRolling';
 import { iconElement } from './icons.mts';
@@ -15,6 +18,14 @@ export interface DiceTrayViewOptions {
   root: HTMLElement;
   /** Sends the roll to the GM; false when it could not go. */
   roll(dice: DiceSelection, modifier: number): boolean;
+  /**
+   * Opens the 3D dice with the picked dice; false when the roll could not go. Without it the tray
+   * has no Physical mode. `text` is the tray's formula.
+   */
+  throwPhysical?(dice: DiceSelection, modifier: number, text: string): boolean;
+  /** The mode the tray opens in, and where a change of it goes, to be remembered. */
+  mode?: PageDiceMode;
+  onModeChange?(mode: PageDiceMode): void;
   /** The tray rolled and wants to close. */
   onClose(): void;
 }
@@ -31,10 +42,13 @@ export class DiceTrayView {
   private readonly clearButton: HTMLButtonElement;
   private readonly rollButton: HTMLButtonElement;
   private readonly note: HTMLElement;
+  private readonly modeButtons = new Map<PageDiceMode, HTMLButtonElement>();
   private pressTimer: number | null = null;
   private ignoreUntil = 0;
+  private diceMode: PageDiceMode;
 
   constructor(private readonly options: DiceTrayViewOptions) {
+    this.diceMode = options.throwPhysical ? options.mode ?? 'rng' : 'rng';
     const grid = document.createElement('div');
     grid.className = 'dice-grid';
     for (const die of DICE_TYPES) grid.append(this.cell(die));
@@ -73,8 +87,12 @@ export class DiceTrayView {
     this.note = document.createElement('p');
     this.note.className = 'dice-note';
     this.note.setAttribute('role', 'status');
-    options.root.replaceChildren(grid, bar, this.note);
+    options.root.replaceChildren(...(options.throwPhysical ? [this.modeSwitch()] : []), grid, bar, this.note);
     this.render();
+  }
+
+  get mode(): PageDiceMode {
+    return this.diceMode;
   }
 
   get isOpen(): boolean {
@@ -85,6 +103,32 @@ export class DiceTrayView {
   setOpen(open: boolean): void {
     this.options.root.hidden = !open;
     if (!open) this.empty();
+  }
+
+  /** RNG or Physical, as Atlas's tray offers them. */
+  private modeSwitch(): HTMLElement {
+    const group = document.createElement('div');
+    group.className = 'dice-mode';
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', DICE_MODE_LABEL);
+    for (const { value, label } of DICE_MODES) {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'dice-mode-option';
+      option.setAttribute('role', 'radio');
+      option.textContent = label;
+      option.addEventListener('click', () => this.setMode(value));
+      this.modeButtons.set(value, option);
+      group.append(option);
+    }
+    return group;
+  }
+
+  private setMode(mode: PageDiceMode): void {
+    if (mode === this.diceMode) return;
+    this.diceMode = mode;
+    this.options.onModeChange?.(mode);
+    this.render();
   }
 
   private cell(die: DieType): HTMLElement {
@@ -141,7 +185,11 @@ export class DiceTrayView {
 
   private roll(): void {
     if (!this.tray.canRoll()) return;
-    if (!this.options.roll(this.tray.selection, this.tray.modifier)) {
+    const { throwPhysical } = this.options;
+    const sent = this.diceMode === 'physical' && throwPhysical
+      ? throwPhysical(this.tray.selection, this.tray.modifier, this.tray.text())
+      : this.options.roll(this.tray.selection, this.tray.modifier);
+    if (!sent) {
       // Not sent (too fast, or not connected): the dice stay selected so the player can roll again.
       this.note.textContent = ROLL_WAIT_NOTE;
       return;
@@ -166,6 +214,10 @@ export class DiceTrayView {
       button.setAttribute('aria-disabled', String(full));
       badge.hidden = count === 0;
       badge.textContent = String(count);
+    }
+    for (const [mode, option] of this.modeButtons) {
+      option.setAttribute('aria-checked', String(mode === this.diceMode));
+      option.classList.toggle('is-active', mode === this.diceMode);
     }
     this.formula.textContent = this.tray.text();
     this.clearButton.disabled = !this.tray.canRoll() && this.tray.modifier === 0;

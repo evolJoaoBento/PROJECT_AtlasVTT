@@ -11,6 +11,7 @@ import { randomId } from '../src/app/online/ids';
 import { parseJoinFragment } from '../src/app/online/joinLink';
 import { createOnlineLog } from '../src/app/online/onlineLog';
 import { loadLaserColor, saveLaserColor } from '../src/app/online/page/laserColorStore';
+import { loadDiceMode, saveDiceMode } from '../src/app/online/page/physicalDice';
 import { INCOMPLETE_LINK_TEXT, NAME_PROBLEM_TEXT, NO_CANVAS_TEXT, pageScreen, type PageScreen } from '../src/app/online/page/pageScreen';
 import type { PlayerSession, PlayerSessionState } from '../src/app/online/PlayerSession';
 import { createJoinSession } from '../src/app/online/preview/joinSession';
@@ -25,6 +26,7 @@ import { DiceTrayView } from './diceTrayView.mts';
 import { decodeImage } from './imageDecoder.mts';
 import { MapView } from './mapView.mts';
 import { Menu } from './menu.mts';
+import { PhysicalDiceOverlay } from './physicalDiceOverlay.mts';
 import { PageToolbar } from './toolbar.mts';
 
 const VERSION = '0.1.0';
@@ -65,9 +67,22 @@ const map = surface
     onToolsChange: () => syncToolbar(),
   })
   : null;
+// Registered before the tray, so an open table takes Escape first; the tray is closed then anyway.
+const physicalDice = new PhysicalDiceOverlay({
+  root: element('physical-dice'),
+  send: (dice, modifier) => session?.sendPhysicalDice(dice, modifier) ?? false,
+});
 const diceTray = new DiceTrayView({
   root: element('dice-tray'),
   roll: (dice, modifier) => session?.sendDiceRoll(dice, modifier) ?? false,
+  // The table opens only for an admitted player; the roll goes once the dice are read.
+  throwPhysical: (dice, modifier, text) => {
+    if (sessionState?.status !== 'admitted') return false;
+    void physicalDice.open(dice, modifier, text);
+    return true;
+  },
+  mode: loadDiceMode(() => localStorage),
+  onModeChange: (mode) => saveDiceMode(mode, () => localStorage),
   onClose: () => setDiceOpen(false),
 });
 const diceLog = new DiceLogView({
@@ -183,6 +198,7 @@ function render(state: PlayerSessionState): void {
     loader.dispose();
     panel.showProgress(loader.progress());
     setDiceOpen(false);
+    physicalDice.close();
     diceLog.setOpen(false);
     diceLog.dispose();
     ended = true;

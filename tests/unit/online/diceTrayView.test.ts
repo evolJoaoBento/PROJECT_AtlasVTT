@@ -106,3 +106,70 @@ describe('the join page dice tray', () => {
     expect(t.die('d4').getAttribute('aria-disabled')).toBe('true');
   });
 });
+
+describe('the join page dice tray mode', () => {
+  function physicalSetup(mode: 'rng' | 'physical' = 'rng', sends = true) {
+    document.body.innerHTML = '<div id="dice-tray" hidden></div>';
+    const root = document.getElementById('dice-tray')!;
+    const rolls: DiceSelection[] = [];
+    const thrown: Array<{ dice: DiceSelection; modifier: number; text: string }> = [];
+    const modes: string[] = [];
+    let closed = 0;
+    const view = new DiceTrayView({
+      root,
+      roll: (dice) => { rolls.push(dice); return true; },
+      throwPhysical: (dice, modifier, text) => { thrown.push({ dice, modifier, text }); return sends; },
+      mode,
+      onModeChange: (next) => modes.push(next),
+      onClose: () => { closed++; },
+    });
+    view.setOpen(true);
+    const option = (label: string): HTMLButtonElement => [...root.querySelectorAll<HTMLButtonElement>('.dice-mode-option')].find((button) => button.textContent === label)!;
+    const die = (name: string): HTMLButtonElement => root.querySelector<HTMLButtonElement>(`[data-die="${name}"]`)!;
+    const rollButton = (): HTMLButtonElement => root.querySelector<HTMLButtonElement>('.dice-roll')!;
+    return { root, view, rolls, thrown, modes, closed: () => closed, option, die, rollButton };
+  }
+
+  it('offers RNG and Physical, as Atlas does, opening in the remembered mode', () => {
+    const t = physicalSetup('physical');
+    expect([...t.root.querySelectorAll('.dice-mode-option')].map((button) => button.textContent)).toEqual(['RNG', 'Physical']);
+    expect(t.option('Physical').getAttribute('aria-checked')).toBe('true');
+    expect(t.option('RNG').getAttribute('aria-checked')).toBe('false');
+    expect(t.view.mode).toBe('physical');
+  });
+
+  it('remembers a switch and rolls the way it shows', () => {
+    const t = physicalSetup();
+    t.die('d20').click();
+    t.rollButton().click();
+    expect(t.rolls).toEqual([{ d20: 1 }]);
+    t.view.setOpen(true);
+    t.option('Physical').click();
+    expect(t.modes).toEqual(['physical']);
+    expect(t.option('Physical').classList.contains('is-active')).toBe(true);
+    t.die('d6').click();
+    t.die('d6').click();
+    const modifier = t.root.querySelector<HTMLInputElement>('.dice-modifier')!;
+    modifier.value = '3';
+    modifier.dispatchEvent(new Event('input'));
+    t.rollButton().click();
+    expect(t.thrown).toEqual([{ dice: { d6: 2 }, modifier: 3, text: '2d6 + 3' }]);
+    expect(t.rolls).toHaveLength(1);
+    expect(t.closed()).toBe(2);
+  });
+
+  it('keeps the dice picked when the physical roll cannot start', () => {
+    const t = physicalSetup('physical', false);
+    t.die('d8').click();
+    t.rollButton().click();
+    expect(t.view.tray.selection).toEqual({ d8: 1 });
+    expect(t.root.querySelector('.dice-note')?.textContent).not.toBe('');
+    expect(t.closed()).toBe(0);
+  });
+
+  it('has no mode switch without physical dice', () => {
+    const { root, view } = setup();
+    expect(root.querySelector('.dice-mode')).toBeNull();
+    expect(view.mode).toBe('rng');
+  });
+});
