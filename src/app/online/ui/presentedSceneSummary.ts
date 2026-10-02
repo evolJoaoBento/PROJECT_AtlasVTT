@@ -20,11 +20,9 @@ export interface PresentedSceneSummary {
   name: string | null;
   /** The presented scene's character tokens; empty while it cannot be assigned from. */
   characters: readonly PresentedCharacter[];
-  /** False while nothing is presented, the scene is held or its map loads. */
-  assignable: boolean;
 }
 
-const NOTHING: PresentedSceneSummary = { tabId: null, name: null, characters: [], assignable: false };
+const NOTHING: PresentedSceneSummary = { tabId: null, name: null, characters: [] };
 
 interface Cached {
   scene: PresentedSceneInfo;
@@ -60,7 +58,6 @@ export function readPresentedScene(): PresentedSceneSummary {
     tabId: scene.tabId,
     name: tabs.find((tab) => tab.id === scene.tabId)?.displayName ?? null,
     characters: tokens ? charactersOf(tokens) : [],
-    assignable,
   };
   // Token drags change the tokens every frame: keep the previous summary while nothing it shows changed.
   const result = cached && sameSummary(cached.value, value) ? cached.value : value;
@@ -69,7 +66,7 @@ export function readPresentedScene(): PresentedSceneSummary {
 }
 
 function sameSummary(a: PresentedSceneSummary, b: PresentedSceneSummary): boolean {
-  return a.tabId === b.tabId && a.name === b.name && a.assignable === b.assignable
+  return a.tabId === b.tabId && a.name === b.name
     && a.characters.length === b.characters.length
     && a.characters.every((character, index) => character.id === b.characters[index]?.id && character.name === b.characters[index].name);
 }

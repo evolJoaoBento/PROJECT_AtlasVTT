@@ -89,7 +89,7 @@ function HostingView({ session, service }: { session: OnlineSessionState; servic
           <div className="atlas-online-panel__link">
             <input type="text" readOnly value={url} aria-label="Join link" onFocus={(event) => event.currentTarget.select()} />
             <LabelTooltip label="Copy link">
-              <Button variant="ghost" size="icon" onClick={() => copyJoinLink(url)}>
+              <Button variant="ghost" size="icon" aria-label="Copy link" onClick={() => copyJoinLink(url)}>
                 <Copy />
               </Button>
             </LabelTooltip>
