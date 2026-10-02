@@ -37,14 +37,14 @@ export const MIDDLE_ROLL = (): number => 0.5;
 type Laser = Extract<ControlMessage, { type: 'laser' }>;
 type DiceLog = Extract<ControlMessage, { type: 'dice-log' }>;
 
-export function toolsWorld() {
-  const world = moveWorld();
+export function toolsWorld(options: Parameters<typeof moveWorld>[0] = {}) {
+  const world = moveWorld({ rules: { showTokenNameplates: true }, ...options });
   const feed = memoryDiceFeed();
   const hub = new LaserHub();
   const shown: RemoteLaser[] = [];
   hub.onRemote((laser) => shown.push(laser));
   Object.assign(world.view.renderer!, { getLaserHub: () => hub });
-  const dice = new DiceHost({ session: world.gm, presented: world.presented, feed, random: MIDDLE_ROLL });
+  const dice = new DiceHost({ session: world.gm, presented: world.presented, projection: world.broadcaster, feed, random: MIDDLE_ROLL });
   const lasers = new LaserRelay({ session: world.gm, presented: world.presented, projection: world.broadcaster });
   dice.start();
   lasers.start();

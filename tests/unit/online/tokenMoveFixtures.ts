@@ -82,7 +82,7 @@ export interface MovePlayer {
   controlLists(): string[][];
 }
 
-export function moveWorld(options: { state?: CameraSceneState; mapSize?: { width: number; height: number } } = {}) {
+export function moveWorld(options: { state?: CameraSceneState; mapSize?: { width: number; height: number }; rules?: Partial<PlayerViewRules> } = {}) {
   const network = new MemoryNetwork();
   const requests: SessionPlayer[] = [];
   let host: TokenControlHost | null = null;
@@ -93,7 +93,7 @@ export function moveWorld(options: { state?: CameraSceneState; mapSize?: { width
   });
   gm.start();
   const rules: PlayerViewRules = {
-    showGrid: true, showTokenHP: false, showTokenStress: false, showTokenNameplates: false, showWidgets: true, showInitiative: true,
+    showGrid: true, showTokenHP: false, showTokenStress: false, showTokenNameplates: false, showWidgets: true, showInitiative: true, ...options.rules,
   };
   const settings = { getLocalPlayerViewSettings: (): PlayerViewRules => rules, onChange: (): (() => void) => () => {} };
   const presented = new PresentedScene();

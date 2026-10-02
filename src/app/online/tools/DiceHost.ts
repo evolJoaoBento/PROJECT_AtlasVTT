@@ -10,14 +10,17 @@ import { diceFormula, rollFormula, type DiceRollResult } from '../../tools/diceR
 import type { SessionHandler, SessionPlayer } from '../GmSession';
 import type { ControlMessage } from '../protocol';
 import { RateLimit } from '../rateLimit';
+import type { CameraProjection } from '../scene/CameraSender';
 import type { PresentedSceneSource, SceneSession } from '../scene/sceneSources';
 import type { DiceFeed } from '../diceFeed';
 import { DICE_LIMITS, diceLogEntry, GM_ROLLER_NAME, type DiceLogEntry } from './toolMessages';
 
 export interface DiceHostOptions {
   session: SceneSession;
-  /** Tells which tokens are hidden from players, for roll names. */
+  /** Tells whether the GM looks at another scene than the one players have: ids of another map name nothing. */
   presented: PresentedSceneSource;
+  /** The scene players have: a roll names a token only when players see it there, by name. */
+  projection: Pick<CameraProjection, 'currentProjection'>;
   feed: DiceFeed;
   /** Tests pass their own; `Math.random` otherwise. */
   random?: () => number;
@@ -69,17 +72,15 @@ export class DiceHost implements SessionHandler {
 
   /**
    * An online player's roll carries their name ("GM (player)" for a player called GM). A statblock
-   * roll carries its token's name only when `tokenId` is a visible token of the live presented
-   * scene; a roll with no token id, a hidden token, a held or loading scene or nothing presented is "GM".
+   * roll carries its token's name only when `tokenId` is a token players have in their scene, with
+   * a name, and the GM looks at that scene (hidden, fogged and unnamed tokens, a held scene and nothing presented are not); else "GM".
    */
   private nameOf(result: DiceRollResult): string {
     if (result.rolledBy) return result.rolledBy.trim().toLowerCase() === GM_ROLLER_NAME.toLowerCase() ? `${GM_ROLLER_NAME} (player)` : result.rolledBy;
     const { source } = result;
-    if (source?.type !== 'statblock' || !source.tokenName || !source.tokenId) return GM_ROLLER_NAME;
-    const live = this.options.presented.current();
-    if (!live || this.options.presented.isHeld()) return GM_ROLLER_NAME;
-    const state = live.store.getState();
-    const token = Object.hasOwn(state.objects?.tokens ?? {}, source.tokenId) ? state.objects.tokens[source.tokenId] : undefined;
-    return !state.isMapLoading && token && !token.isHidden ? source.tokenName : GM_ROLLER_NAME;
+    if (source?.type !== 'statblock' || !source.tokenId || this.options.presented.isHeld()) return GM_ROLLER_NAME;
+    const tokens = this.options.projection.currentProjection()?.tokens ?? {};
+    const name = Object.hasOwn(tokens, source.tokenId) ? tokens[source.tokenId]?.name : null;
+    return name || GM_ROLLER_NAME;
   }
 }

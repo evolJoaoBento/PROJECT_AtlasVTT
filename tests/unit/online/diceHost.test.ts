@@ -60,6 +60,26 @@ describe('DiceHost', () => {
     w.finish();
   });
 
+  it('names a roll only from what players see: a fogged token or nameplates off make it "GM"', async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join('A');
+    const roll = (tokenId: string, tokenName: string): void => w.feed.publish({ ...rollFormula('d20'), source: { type: 'statblock', tokenId, tokenName } });
+    roll('goblin', 'Goblin');
+    roll('hero', 'Hero');
+    expect(w.logs(a).slice(-2).map((log) => log.entries[0]?.name)).toEqual(['GM', 'Hero']);
+    const b = await w.join('B');
+    expect(w.logs(b)[0]?.entries.map((entry) => entry.name)).toEqual(['Hero', 'GM']);
+    expect(JSON.stringify(b.received)).not.toContain('Goblin');
+    w.finish();
+    const quiet = toolsWorld({ rules: { showTokenNameplates: false } });
+    quiet.present();
+    const c = await quiet.join('C');
+    quiet.feed.publish({ ...rollFormula('d20'), source: { type: 'statblock', tokenId: 'hero', tokenName: 'Hero' } });
+    expect(quiet.logs(c).slice(-1).map((log) => log.entries[0]?.name)).toEqual(['GM']);
+    quiet.finish();
+  });
+
   it('never names a token without a live presented token id, in the log or the replay', async () => {
     const w = toolsWorld();
     const a = await w.join('A');

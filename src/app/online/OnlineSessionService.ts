@@ -152,7 +152,7 @@ export class OnlineSessionService {
     const tokenControlHost = new TokenControlHost({ session: scenes, presented: this.presented, projection: broadcaster });
     this.tokenControlHost = tokenControlHost;
     // Players' dice and lasers; registered after the token control host.
-    const diceHost = new DiceHost({ session: scenes, presented: this.presented, feed: this.diceFeed });
+    const diceHost = new DiceHost({ session: scenes, presented: this.presented, projection: broadcaster, feed: this.diceFeed });
     this.diceHost = diceHost;
     const laserRelay = new LaserRelay({ session: scenes, presented: this.presented, projection: broadcaster });
     this.laserRelay = laserRelay;
