@@ -116,6 +116,16 @@ describe('DiceHost', () => {
     w.finish();
   });
 
+  it('shows a player called GM with a zero-width space as "GM (player)"', async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join('G\u200BM');
+    const b = await w.join('Bea');
+    a.session.sendDiceRoll({ d6: 1 }, 0);
+    expect(w.logs(b).slice(1).map((log) => log.entries[0]?.name)).toEqual(['GM (player)']);
+    w.finish();
+  });
+
   it("hears every roll Atlas's dice tool dispatches, and dispatches player rolls the same way", () => {
     const feed = documentDiceFeed();
     const heard: string[] = [];

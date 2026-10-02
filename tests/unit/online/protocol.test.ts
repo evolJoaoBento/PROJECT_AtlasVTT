@@ -57,6 +57,9 @@ describe('online protocol', () => {
     expect(normalizePlayerName('  Anna   the\tBold  ')).toBe('Anna the Bold');
     expect(normalizePlayerName('Jo\u0000hn')).toBe('John');
     expect(normalizePlayerName('Bob\u0000\u0007')).toBe('Bob');
+    expect(normalizePlayerName('G\u200BM')).toBe('GM');
+    expect(normalizePlayerName('\u202EAnna\u2060 \ufeffB')).toBe('Anna B');
+    expect(normalizePlayerName('\u200B\u200F')).toBeNull();
     expect(normalizePlayerName('   ')).toBeNull();
     expect(normalizePlayerName(12)).toBeNull();
     expect(normalizePlayerName('x'.repeat(41))).toBeNull();
