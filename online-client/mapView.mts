@@ -24,6 +24,13 @@ import { ViewInput } from '../src/app/online/view/ViewInput';
 import type { ViewSurface } from '../src/app/online/view/ViewSurface';
 import { bindMapInput } from './mapInput.mts';
 
+/** What the toolbar shows of the tools. */
+export interface ToolState {
+  tool: PlayerTool;
+  shape: MeasureChoice;
+  laserColor: string;
+}
+
 export interface MapViewOptions {
   canvas: HTMLCanvasElement;
   surface: ViewSurface;
@@ -35,7 +42,11 @@ export interface MapViewOptions {
   /** Sends one drop of a controlled token; false when it could not be sent. */
   sendMove(tokenId: string, x: number, y: number): boolean;
   /** Sends new points of the player's laser; false when they could not be sent. */
-  sendLaser(points: ScenePoint[], lifted: boolean, dt: number[]): boolean;
+  sendLaser(points: ScenePoint[], lifted: boolean, dt: number[], color?: string): boolean;
+  /** The laser colour remembered from an earlier visit. */
+  laserColor?: string | null;
+  /** The player picked a laser colour: remember it. */
+  onLaserColor?(color: string): void;
   /** Shows "Move not allowed." after a refused move. */
   notice: HTMLElement;
   /** The tool or measure shape changed, also by Escape: the toolbar follows. */
@@ -56,7 +67,7 @@ export class MapView {
   /** Where the mouse is over the canvas, for the grab cursor; null when it is elsewhere. */
   private hover: ScreenPoint | null = null;
   /** What the toolbar was last told. */
-  private shownTool: { tool: PlayerTool; shape: MeasureChoice } = { tool: 'move', shape: 'line' };
+  private shownTool: ToolState = { tool: 'move', shape: 'line', laserColor: '' };
   private readonly listeners = new AbortController();
   private resizeObserver: ResizeObserver | null = null;
   private watchedRatio: number | null = null;
@@ -89,7 +100,8 @@ export class MapView {
       toWorld: (point) => this.camera.toWorld(point),
       zoom: () => this.camera.current().zoom,
       now: options.now ?? ((): number => performance.now()),
-      sendLaser: (points, lifted, dt) => options.sendLaser(points, lifted, dt),
+      sendLaser: (points, lifted, dt, color) => options.sendLaser(points, lifted, dt, color),
+      laserColor: options.laserColor ?? null,
       onChange: () => this.toolsChanged(),
     });
     this.input = new ViewInput(this.camera, this.tools);
@@ -137,13 +149,19 @@ export class MapView {
     this.tools.selectShape(shape);
   }
 
-  toolState(): { tool: PlayerTool; shape: MeasureChoice } {
-    return { tool: this.tools.tool, shape: this.tools.shape };
+  selectLaserColor(color: string): void {
+    if (this.tools.selectLaserColor(color)) this.options.onLaserColor?.(this.tools.laserColor);
+  }
+
+  toolState(): ToolState {
+    return { tool: this.tools.tool, shape: this.tools.shape, laserColor: this.tools.laserColor };
   }
 
   /** The session's players in order and this player's id: whose laser has which colour. */
   setPlayers(order: readonly string[], self: string | null): void {
     this.tools.setPlayers(order, self);
+    // The laser colour follows a player's place until they pick one.
+    this.toolsChanged();
   }
 
   receiveLaser(laser: PlayerLaser): void {
@@ -214,9 +232,10 @@ export class MapView {
   /** Draws again; the toolbar hears only of a new tool or shape, never of every move. */
   private toolsChanged(): void {
     this.renderer.invalidate();
-    const { tool, shape } = this.tools;
-    if (tool === this.shownTool.tool && shape === this.shownTool.shape) return;
-    this.shownTool = { tool, shape };
+    const state = this.toolState();
+    if (state.tool === this.shownTool.tool && state.shape === this.shownTool.shape && state.laserColor === this.shownTool.laserColor) return;
+    this.shownTool = state;
+    const { tool } = state;
     this.options.canvas.dataset.tool = tool;
     this.updateCursor();
     this.options.onToolsChange?.();

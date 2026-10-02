@@ -154,7 +154,7 @@ export class OnlineSessionService {
     // Players' dice and lasers; registered after the token control host.
     const diceHost = new DiceHost({ session: scenes, presented: this.presented, projection: broadcaster, feed: this.diceFeed });
     this.diceHost = diceHost;
-    const laserRelay = new LaserRelay({ session: scenes, presented: this.presented, projection: broadcaster });
+    const laserRelay = new LaserRelay({ session: scenes, presented: this.presented, projection: broadcaster, gmColor: () => this.settings.getLaserPointerSettings().color });
     this.laserRelay = laserRelay;
     // Serves the images of the scene players have, over each player's assets channel.
     const assetServer = new AssetServer({ session, projection: broadcaster, files: registry });

@@ -10,6 +10,7 @@ function setup(available = 1000) {
     root,
     onTool: (tool) => calls.push(`tool ${tool}`),
     onShape: (shape) => calls.push(`shape ${shape}`),
+    onLaserColor: (color) => calls.push(`color ${color}`),
     onDice: () => calls.push('dice'),
     measure: (element) => (element.dataset.control === 'measure' ? 56 : 36),
     layout: () => ({ available, chrome: 19, gap: 8, overflowButtonWidth: 36 }),
@@ -73,7 +74,7 @@ describe('the join page toolbar', () => {
     document.body.innerHTML = '<section><nav id="toolbar"></nav></section>';
     const root = document.getElementById('toolbar')!;
     const toolbar = new PageToolbar({
-      root, onTool: () => {}, onShape: () => {}, onDice: () => {},
+      root, onTool: () => {}, onShape: () => {}, onLaserColor: () => {}, onDice: () => {},
       measure: (element) => (element.dataset.control === 'measure' ? 56 : 36),
       layout: () => ({ available, chrome: 19, gap: 8, overflowButtonWidth: 36 }),
     });

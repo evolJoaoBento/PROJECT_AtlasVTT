@@ -154,6 +154,16 @@ button:disabled { opacity: 0.5; cursor: default; }
   display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 18px; font-size: 14px; text-align: left;
 }
 .menu-entry:hover { background: var(--hover); }
+/* The laser flyout: round swatches in two rows of four, and the hint under them. */
+.swatch-menu { min-width: 0; width: 196px; padding: 8px; gap: 8px; border-radius: var(--panel-radius); }
+.swatch-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; justify-items: center; }
+.swatch {
+  width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%; background: var(--swatch);
+  border: 2px solid var(--border);
+}
+.swatch.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+.swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.menu-hint { margin: 0; font-size: 12px; line-height: 1.3; color: var(--muted); }
 .menu-entry.is-active { color: var(--accent); }
 
 /* The dice tray floats above the toolbar, like Atlas's above its Dice button. */

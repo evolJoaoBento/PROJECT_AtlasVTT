@@ -11,7 +11,7 @@ function pointer(target: EventTarget, type: string, x: number, y: number): void 
 }
 
 /** What `main.mts` does for the tools: a `MapView` whose laser goes through a real `PlayerSession` to the GM. */
-async function page() {
+async function page(extra: Partial<ConstructorParameters<typeof MapView>[0]> = {}) {
   document.body.innerHTML = [
     '<section><canvas id="map"></canvas>',
     '<div id="view-buttons" hidden><button id="follow-gm" type="button">Follow GM</button>',
@@ -27,8 +27,9 @@ async function page() {
     canvas, surface: new RecordingSurface(), images: () => null, frames: fakeFrames(), isHidden: () => false,
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
     sendMove: (tokenId, x, y) => player?.session.sendTokenMove(tokenId, x, y) ?? false,
-    sendLaser: (points, lifted, dt) => player?.session.sendLaser(points, lifted, dt) ?? false,
+    sendLaser: (points, lifted, dt, color) => player?.session.sendLaser(points, lifted, dt, color) ?? false,
     notice: element('move-notice'),
+    ...extra,
   });
   w.present();
   const seen: string[] = [];
@@ -94,6 +95,28 @@ describe('the player tools on the join page', () => {
     expect(xs.length).toBeGreaterThanOrEqual(4);
     const gaps = sent.slice(-2).map((point) => point.dt);
     expect(gaps).toEqual([10, 10]);
+    w.finish();
+  });
+
+  it('sends the laser in the picked color, remembers the pick and tells the toolbar', async () => {
+    const remembered: string[] = [];
+    let changes = 0;
+    const { w, view, canvas, other } = await page({
+      laserColor: '#ffffff', onLaserColor: (color) => remembered.push(color), onToolsChange: () => { changes += 1; },
+    });
+    expect(view.toolState().laserColor).toBe('#ffffff');
+    view.selectLaserColor('#00A9FF');
+    expect(remembered).toEqual(['#00a9ff']);
+    expect(view.toolState()).toMatchObject({ tool: 'laser', laserColor: '#00a9ff' });
+    expect(changes).toBeGreaterThan(0);
+    pointer(canvas, 'pointerdown', 300, 300);
+    pointer(canvas, 'pointermove', 400, 300);
+    pointer(canvas, 'pointerup', 400, 300);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(w.lasersOf(other).every((laser) => laser.color === '#00a9ff')).toBe(true);
+    expect(w.shown.at(-1)?.color).toBe('#00a9ff');
+    view.selectLaserColor('#123456');
+    expect(remembered).toHaveLength(1);
     w.finish();
   });
 });

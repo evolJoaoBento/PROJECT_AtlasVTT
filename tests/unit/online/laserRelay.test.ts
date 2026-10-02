@@ -15,7 +15,7 @@ describe('LaserRelay', () => {
     const a = await w.join('A');
     const b = await w.join('B', { onLaser: (laser) => heard.push(laser) });
     expect(a.session.sendLaser([{ x: 10, y: 20 }], false)).toBe(true);
-    expect(heard).toEqual([{ from: a.playerId, sceneId: w.sceneId(), points: [{ x: 10, y: 20 }], lifted: false }]);
+    expect(heard).toEqual([{ from: a.playerId, sceneId: w.sceneId(), points: [{ x: 10, y: 20 }], lifted: false, color: LASER_COLOR_SWATCHES[1].value }]);
     expect(w.lasersOf(a)).toEqual([]);
     expect(w.shown).toEqual([{ from: a.playerId, color: LASER_COLOR_SWATCHES[1].value, points: [{ x: 10, y: 20 }], lifted: false }]);
     w.finish();
@@ -42,7 +42,7 @@ describe('LaserRelay', () => {
     w.present();
     const a = await w.join('A');
     w.hub.emitLocal({ kind: 'point', x: 1, y: 2 });
-    expect(w.lasersOf(a).at(-1)).toEqual({ v: 1, type: 'laser', from: 'gm', sceneId: w.sceneId(), points: [{ x: 1, y: 2 }], lifted: false, dt: [0] });
+    expect(w.lasersOf(a).at(-1)).toEqual({ v: 1, type: 'laser', from: 'gm', sceneId: w.sceneId(), points: [{ x: 1, y: 2 }], lifted: false, dt: [0], color: LASER_COLOR_SWATCHES[0].value });
     w.tabs.getState().setActiveTab(w.dungeon);
     await vi.advanceTimersByTimeAsync(100);
     expect(w.lasersOf(a).at(-1)).toMatchObject({ from: 'gm', points: [], lifted: true });
@@ -126,7 +126,7 @@ describe('LaserRelay', () => {
     a.session.sendLaser([{ x: 1, y: 1 }], false);
     a.session.stop();
     await vi.advanceTimersByTimeAsync(0);
-    expect(w.lasersOf(b).at(-1)).toEqual({ v: 1, type: 'laser', from: a.playerId, sceneId: w.sceneId(), points: [], lifted: true });
+    expect(w.lasersOf(b).at(-1)).toEqual({ v: 1, type: 'laser', from: a.playerId, sceneId: w.sceneId(), points: [], lifted: true, color: LASER_COLOR_SWATCHES[1].value });
     expect(w.shown.at(-1)).toMatchObject({ from: a.playerId, lifted: true });
     // Removed by the GM mid-stroke: the session's player list no longer has them.
     c.session.sendLaser([{ x: 2, y: 2 }], false);

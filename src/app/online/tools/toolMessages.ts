@@ -47,6 +47,8 @@ export interface PlayerLaser {
   lifted: boolean;
   /** Milliseconds from each point to the one before it in the stroke (0 for its first), when the sender timed them. */
   dt?: number[];
+  /** The laser's colour, `#rrggbb`: the sender's pick, or the one the GM gave it. */
+  color?: string;
 }
 
 type Fields = Record<string, unknown>;
@@ -103,6 +105,13 @@ export function isLaserTimes(value: unknown, points: readonly unknown[]): value 
   if (value === undefined) return true;
   return Array.isArray(value) && value.length === points.length
     && value.every((gap) => isFiniteNumber(gap) && gap >= 0 && gap <= LASER_LIMITS.maxGapMs);
+}
+
+const LASER_COLOR = /^#[0-9a-f]{6}$/i;
+
+/** A `#rrggbb` colour. */
+export function isLaserColor(value: unknown): value is string {
+  return typeof value === 'string' && LASER_COLOR.test(value);
 }
 
 /** A roll as the dice log shows it, under `name`, clipped to the limits; null when players would refuse it anyway. */

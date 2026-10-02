@@ -16,3 +16,10 @@ export function laserColor(from: string, order: readonly string[]): string {
   const index = from === GM_LASER_ID || place > 0 ? place : LASER_PALETTE.length - 1;
   return LASER_PALETTE[index % LASER_PALETTE.length]!;
 }
+
+/** The swatch `value` names (any letter case), as the palette spells it; null for any other colour. */
+export function swatchLaserColor(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const lower = value.toLowerCase();
+  return LASER_PALETTE.find((swatch) => swatch === lower) ?? null;
+}

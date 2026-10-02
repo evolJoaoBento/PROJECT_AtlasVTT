@@ -12,7 +12,7 @@ import { laserPointSpacing } from '../../../pixi/laser/laserBeamGeometry';
 import { RemoteLasers, type RemoteLaserFrame } from '../../../pixi/laser/remoteLasers';
 import { DEFAULT_LASER_POINTER_SETTINGS } from '../../../tools/laserPointerSettings';
 import type { PlayerScene, ScenePoint } from '../../scene/sceneTypes';
-import { laserColor } from '../../tools/laserColors';
+import { laserColor, swatchLaserColor } from '../../tools/laserColors';
 import type { PlayerLaser } from '../../tools/toolMessages';
 import type { ScreenPoint } from '../camera';
 import type { TokenMoves } from '../TokenMoves';
@@ -39,7 +39,10 @@ export interface PlayerToolsOptions {
   /** Screen pixels per world unit now, so laser points are spaced like Atlas's. */
   zoom(): number;
   now(): number;
-  sendLaser(points: ScenePoint[], lifted: boolean, dt: number[]): boolean;
+  /** `color`: this player's pick, absent until they pick one (the GM then colours it by their place). */
+  sendLaser(points: ScenePoint[], lifted: boolean, dt: number[], color?: string): boolean;
+  /** The colour remembered from an earlier visit, if any. */
+  laserColor?: string | null;
   /** The tool, the shape, or what the tools draw changed. */
   onChange(): void;
 }
@@ -50,6 +53,8 @@ const SELF = 'self';
 export class PlayerTools implements TokenGrab {
   private current: PlayerTool = 'move';
   private shapeChoice: MeasureChoice = 'line';
+  /** The laser swatch this player picked; null until then, when the colour follows their place in the session. */
+  private pickedColor: string | null;
   private scene: PlayerScene | null = null;
   private grid: ToolGrid | null = null;
   private order: readonly string[] = [];
@@ -63,11 +68,12 @@ export class PlayerTools implements TokenGrab {
   private connected = false;
 
   constructor(private readonly options: PlayerToolsOptions) {
+    this.pickedColor = swatchLaserColor(options.laserColor);
     this.ruler = new DragRulerTool(() => options.onChange());
     this.laser = new LaserTool({
       now: () => options.now(),
       send: (points, lifted, dt) => {
-        options.sendLaser(points, lifted, dt);
+        options.sendLaser(points, lifted, dt, this.pickedColor ?? undefined);
         // A held laser sends empty batches to stay alive: they keep it alive here too.
         if (points.length === 0 && !lifted) this.lasers.receive(SELF, this.selfColor(), [], false, options.now());
       },
@@ -91,6 +97,22 @@ export class PlayerTools implements TokenGrab {
     this.endGesture();
     this.current = tool === this.current ? 'move' : tool;
     this.options.onChange();
+  }
+
+  /** The colour this player's laser has now: their pick, else the one their place in the session gives it. */
+  get laserColor(): string {
+    return this.selfColor();
+  }
+
+  /** Picks a laser colour (one of the swatches; others are ignored) and the laser tool with it; it applies from the next stroke. */
+  selectLaserColor(color: string): boolean {
+    const swatch = swatchLaserColor(color);
+    if (!swatch) return false;
+    this.endGesture();
+    this.pickedColor = swatch;
+    this.current = 'laser';
+    this.options.onChange();
+    return true;
   }
 
   /** Chooses the measure shape, and the measure tool with it. */
@@ -148,7 +170,7 @@ export class PlayerTools implements TokenGrab {
   /** Someone else's laser; one for another scene is ignored. */
   receiveLaser(laser: PlayerLaser): void {
     if (!this.scene || laser.sceneId !== this.scene.sceneId) return;
-    this.lasers.receive(laser.from, laserColor(laser.from, this.order), laser.points, laser.lifted, this.options.now(), laser.dt ? { dt: laser.dt } : {});
+    this.lasers.receive(laser.from, laser.color ?? laserColor(laser.from, this.order), laser.points, laser.lifted, this.options.now(), laser.dt ? { dt: laser.dt } : {});
     this.options.onChange();
   }
 
@@ -217,7 +239,7 @@ export class PlayerTools implements TokenGrab {
   }
 
   private selfColor(): string {
-    return laserColor(this.self ?? SELF, this.order);
+    return this.pickedColor ?? laserColor(this.self ?? SELF, this.order);
   }
 
   /** Released: the measurement goes, the ruler goes, the laser is let go. */

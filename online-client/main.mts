@@ -10,6 +10,7 @@ import { openIndexedDbImageStore } from '../src/app/online/assets/indexedDbImage
 import { randomId } from '../src/app/online/ids';
 import { parseJoinFragment } from '../src/app/online/joinLink';
 import { createOnlineLog } from '../src/app/online/onlineLog';
+import { loadLaserColor, saveLaserColor } from '../src/app/online/page/laserColorStore';
 import { INCOMPLETE_LINK_TEXT, NAME_PROBLEM_TEXT, NO_CANVAS_TEXT, pageScreen, type PageScreen } from '../src/app/online/page/pageScreen';
 import type { PlayerSession, PlayerSessionState } from '../src/app/online/PlayerSession';
 import { createJoinSession } from '../src/app/online/preview/joinSession';
@@ -57,7 +58,9 @@ const map = surface
     canvas, surface, images: (id) => loader.image(id),
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
     sendMove: (tokenId, x, y) => session?.sendTokenMove(tokenId, x, y) ?? false,
-    sendLaser: (points, lifted, dt) => session?.sendLaser(points, lifted, dt) ?? false,
+    sendLaser: (points, lifted, dt, color) => session?.sendLaser(points, lifted, dt, color) ?? false,
+    laserColor: loadLaserColor(() => localStorage),
+    onLaserColor: (color) => saveLaserColor(color, () => localStorage),
     notice: element('move-notice'),
     onToolsChange: () => syncToolbar(),
   })
@@ -75,6 +78,7 @@ const toolbar = new PageToolbar({
   root: element('toolbar'),
   onTool: (tool) => map?.selectTool(tool),
   onShape: (shape) => map?.selectShape(shape),
+  onLaserColor: (color) => map?.selectLaserColor(color),
   onDice: () => setDiceOpen(!diceTray.isOpen),
 });
 let assetsFrame: number | null = null;

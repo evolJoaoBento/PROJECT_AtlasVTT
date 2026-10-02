@@ -14,14 +14,16 @@ import type { CameraProjection } from '../scene/CameraSender';
 import type { PresentedSceneSource, SceneSession } from '../scene/sceneSources';
 import type { ScenePoint } from '../scene/sceneTypes';
 import { LaserBatcher } from './LaserBatcher';
-import { GM_LASER_ID, laserColor } from './laserColors';
-import { LASER_LIMITS } from './toolMessages';
+import { GM_LASER_ID, laserColor, swatchLaserColor } from './laserColors';
+import { isLaserColor, LASER_LIMITS } from './toolMessages';
 
 export interface LaserRelayOptions {
   session: SceneSession;
   presented: PresentedSceneSource;
   /** The scene players have: lasers for any other are dropped. */
   projection: Pick<CameraProjection, 'currentProjection'>;
+  /** The GM's laser colour in Atlas, read for every message so a change applies from the next one. */
+  gmColor?: () => string;
 }
 
 export class LaserRelay implements SessionHandler {
@@ -33,6 +35,8 @@ export class LaserRelay implements SessionHandler {
   private stopLocal: (() => void) | null = null;
   /** Players with a stroke in progress, so leaving lets it go. */
   private readonly drawing = new Set<string>();
+  /** The swatch each drawing player last sent, so a stroke that is let go for them keeps its color. */
+  private readonly picks = new Map<string, string>();
 
   constructor(private readonly options: LaserRelayOptions) {}
 
@@ -68,7 +72,12 @@ export class LaserRelay implements SessionHandler {
     if (message.lifted) this.drawing.delete(player.playerId);
     else this.drawing.add(player.playerId);
     // Field by field: a page may add keys to its points.
-    this.relay(player.playerId, points.map(({ x, y }) => ({ x, y })), message.lifted, player.playerId, dt ? [...dt] : undefined);
+    // A player's color is one of the swatches; anything else is theirs by join order.
+    const picked = swatchLaserColor(message.color);
+    if (picked && !message.lifted) this.picks.set(player.playerId, picked);
+    else if (!picked) this.picks.delete(player.playerId);
+    this.relay(player.playerId, points.map(({ x, y }) => ({ x, y })), message.lifted, player.playerId, dt ? [...dt] : undefined, picked ?? null);
+    if (message.lifted) this.picks.delete(player.playerId);
   }
 
   onGone(player: SessionPlayer): void {
@@ -99,22 +108,33 @@ export class LaserRelay implements SessionHandler {
     this.live = null;
   }
 
+  /** The GM's from Atlas's settings, a player's from their pick or else their place in the session. */
+  private colorOf(from: string, order: readonly string[], picked: string | null): string {
+    if (from === GM_LASER_ID) {
+      const own = this.options.gmColor?.();
+      return isLaserColor(own) ? own : laserColor(from, order);
+    }
+    return picked ?? laserColor(from, order);
+  }
+
   private letGo(playerId: string): void {
-    if (this.drawing.delete(playerId)) this.relay(playerId, [], true, playerId);
+    if (this.drawing.delete(playerId)) this.relay(playerId, [], true, playerId, undefined, this.picks.get(playerId) ?? null);
+    this.picks.delete(playerId);
   }
 
   /** To every admitted player but the sender; a player's laser also into the GM's view while the scene is live. */
-  private relay(from: string, points: ScenePoint[], lifted: boolean, sender: string | null, dt?: number[]): void {
+  private relay(from: string, points: ScenePoint[], lifted: boolean, sender: string | null, dt?: number[], picked: string | null = null): void {
     const scene = this.options.projection.currentProjection();
     if (!scene) return;
     const { session, presented } = this.options;
     const players = session.getPlayers();
+    const order = players.filter((player) => player.status !== 'pending').map((player) => player.playerId);
+    const color = this.colorOf(from, order, picked);
     for (const player of players) {
       if (player.status !== 'admitted' || player.playerId === sender) continue;
-      session.send(player.playerId, { v: 1, type: 'laser', from, sceneId: scene.sceneId, points, lifted, ...(dt ? { dt } : {}) });
+      session.send(player.playerId, { v: 1, type: 'laser', from, sceneId: scene.sceneId, points, lifted, color, ...(dt ? { dt } : {}) });
     }
     if (sender === null || !this.live || presented.isHeld()) return;
-    const order = players.filter((player) => player.status !== 'pending').map((player) => player.playerId);
-    this.live.laser()?.showRemote({ from, color: laserColor(from, order), points, lifted, ...(dt ? { dt } : {}) });
+    this.live.laser()?.showRemote({ from, color, points, lifted, ...(dt ? { dt } : {}) });
   }
 }

@@ -8,7 +8,7 @@ import type { PlayerDrawing, PlayerFogOp, PlayerSceneBody, ScenePatchBody, Scene
 import {
   isDrawingRecords, isFogRecords, isLastSeq, isPlayerSceneBody, isSceneCamera, isSceneCount, isSceneId, isScenePatchBody, isSceneSeq,
 } from './scene/sceneValidation';
-import { isDiceLogEntries, isDiceModifier, isDiceSelection, isLaserPoints, isLaserTimes, type DiceLogEntry } from './tools/toolMessages';
+import { isDiceLogEntries, isDiceModifier, isDiceSelection, isLaserColor, isLaserPoints, isLaserTimes, type DiceLogEntry } from './tools/toolMessages';
 export const PROTOCOL_VERSION = 1;
 export const MAX_CONTROL_MESSAGE_BYTES = 256 * 1024;
 export const MAX_PLAYER_NAME_LENGTH = 40;
@@ -57,7 +57,7 @@ export type ControlMessage =
    * it with `from`, the sender's session id (`gm` for the GM's own). `dt` times the points: the
    * milliseconds from each to the one before it in the stroke, so receivers can play the motion back smoothly.
    */
-  | { v: 1; type: 'laser'; sceneId: string; points: ScenePoint[]; lifted: boolean; dt?: number[]; from?: string };
+  | { v: 1; type: 'laser'; sceneId: string; points: ScenePoint[]; lifted: boolean; dt?: number[]; color?: string; from?: string };
 
 /** What an admitted player may send besides `ping`, `pong` and `bye`; the GM drops every other type from a player. */
 export const PLAYER_MESSAGE_TYPES: ReadonlySet<ControlMessage['type']> = new Set<ControlMessage['type']>([
@@ -103,7 +103,7 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   'dice-roll': (m) => isDiceSelection(m.dice) && isDiceModifier(m.modifier),
   'dice-log': (m) => isDiceLogEntries(m.entries) && typeof m.replay === 'boolean',
   laser: (m) => isSceneId(m.sceneId) && isLaserPoints(m.points) && typeof m.lifted === 'boolean'
-    && isLaserTimes(m.dt, m.points) && (m.from === undefined || isSceneId(m.from)),
+    && isLaserTimes(m.dt, m.points) && (m.color === undefined || isLaserColor(m.color)) && (m.from === undefined || isSceneId(m.from)),
 };
 
 export function encodeControl(message: ControlMessage): string {

@@ -37,7 +37,7 @@ export const MIDDLE_ROLL = (): number => 0.5;
 type Laser = Extract<ControlMessage, { type: 'laser' }>;
 type DiceLog = Extract<ControlMessage, { type: 'dice-log' }>;
 
-export function toolsWorld(options: Parameters<typeof moveWorld>[0] = {}) {
+export function toolsWorld(options: Parameters<typeof moveWorld>[0] = {}, gmColor?: () => string) {
   const world = moveWorld({ rules: { showTokenNameplates: true }, ...options });
   const feed = memoryDiceFeed();
   const hub = new LaserHub();
@@ -45,7 +45,7 @@ export function toolsWorld(options: Parameters<typeof moveWorld>[0] = {}) {
   hub.onRemote((laser) => shown.push(laser));
   Object.assign(world.view.renderer!, { getLaserHub: () => hub });
   const dice = new DiceHost({ session: world.gm, presented: world.presented, projection: world.broadcaster, feed, random: MIDDLE_ROLL });
-  const lasers = new LaserRelay({ session: world.gm, presented: world.presented, projection: world.broadcaster });
+  const lasers = new LaserRelay({ session: world.gm, presented: world.presented, projection: world.broadcaster, ...(gmColor ? { gmColor } : {}) });
   dice.start();
   lasers.start();
   return {

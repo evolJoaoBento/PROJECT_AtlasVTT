@@ -5,8 +5,8 @@
  * the state the page gives it and hands clicks back; the tools themselves live in the map view.
  */
 import {
-  hiddenControls, isControlActive, MEASURE_OPTIONS_LABEL, MEASURE_SHAPE_OPTIONS, measureIcon, MORE_TOOLS_LABEL,
-  TOOLBAR_CONTROLS, type ToolbarControlId, type ToolbarState,
+  hiddenControls, isControlActive, LASER_COLOR_HINT, LASER_OPTIONS_LABEL, laserSwatches, MEASURE_OPTIONS_LABEL,
+  MEASURE_SHAPE_OPTIONS, measureIcon, MORE_TOOLS_LABEL, TOOLBAR_CONTROLS, type ToolbarControlId, type ToolbarState,
 } from '../src/app/online/page/playerToolbar';
 import { toolIconUrl, type ToolIconName } from '../src/app/online/page/toolIcons';
 import type { MeasureChoice } from '../src/app/online/view/tools/MeasureTool';
@@ -18,6 +18,7 @@ export interface PageToolbarOptions {
   root: HTMLElement;
   onTool(tool: PlayerTool): void;
   onShape(shape: MeasureChoice): void;
+  onLaserColor(color: string): void;
   onDice(): void;
   /** Tests pass their own; the page measures rendered widths and reads the bar's style. */
   measure?: (element: HTMLElement) => number;
@@ -65,12 +66,32 @@ function menuEntry(label: string, icon: ToolIconName, onSelect: () => void): HTM
   return entry;
 }
 
+/** The chevron of a split button, as in Atlas: it opens the flyout next to the tool. */
+function chevronButton(label: string, onClick: () => void): HTMLButtonElement {
+  const chevron = document.createElement('button');
+  chevron.type = 'button';
+  chevron.className = 'tool-chevron';
+  chevron.setAttribute('aria-label', label);
+  chevron.setAttribute('aria-haspopup', 'menu');
+  chevron.setAttribute('aria-expanded', 'false');
+  chevron.append(iconElement(toolIconUrl('chevron-down')));
+  chevron.addEventListener('click', onClick);
+  return chevron;
+}
+
+type OpenMenu = 'measure' | 'laser' | 'more';
+
 export class PageToolbar {
-  private state: ToolbarState = { tool: 'move', shape: 'line', diceOpen: false, measureMenuOpen: false };
+  private state: ToolbarState = {
+    tool: 'move', shape: 'line', diceOpen: false, measureMenuOpen: false, laserMenuOpen: false, laserColor: '',
+  };
   private readonly controls = new Map<ToolbarControlId, Control>();
   private readonly widths = new Map<ToolbarControlId, number>();
   private readonly chevron: HTMLButtonElement;
   private readonly flyout: HTMLElement;
+  private readonly laserChevron: HTMLButtonElement;
+  private readonly laserFlyout: HTMLElement;
+  private readonly swatchButtons = new Map<string, HTMLButtonElement>();
   private readonly more: HTMLElement;
   private readonly moreButton: HTMLButtonElement;
   private readonly moreMenu: HTMLElement;
@@ -101,14 +122,7 @@ export class PageToolbar {
     // Measure is a split button, as in Atlas: the tool, and a chevron that opens the shapes.
     const measure = this.controls.get('measure')!.item;
     measure.classList.add('tool-group');
-    this.chevron = document.createElement('button');
-    this.chevron.type = 'button';
-    this.chevron.className = 'tool-chevron';
-    this.chevron.setAttribute('aria-label', MEASURE_OPTIONS_LABEL);
-    this.chevron.setAttribute('aria-haspopup', 'menu');
-    this.chevron.setAttribute('aria-expanded', 'false');
-    this.chevron.append(iconElement(toolIconUrl('chevron-down')));
-    this.chevron.addEventListener('click', () => this.setMenus(!this.state.measureMenuOpen, false));
+    this.chevron = chevronButton(MEASURE_OPTIONS_LABEL, () => this.setMenu(this.state.measureMenuOpen ? null : 'measure'));
     this.flyout = menu();
     for (const option of MEASURE_SHAPE_OPTIONS) {
       this.flyout.append(menuEntry(option.label, option.icon, () => {
@@ -117,6 +131,12 @@ export class PageToolbar {
       }));
     }
     measure.append(this.chevron, this.flyout);
+    // Laser is one too: its flyout lists the colors.
+    const laser = this.controls.get('laser')!.item;
+    laser.classList.add('tool-group');
+    this.laserChevron = chevronButton(LASER_OPTIONS_LABEL, () => this.setMenu(this.state.laserMenuOpen ? null : 'laser'));
+    this.laserFlyout = this.laserMenu();
+    laser.append(this.laserChevron, this.laserFlyout);
     // More tools comes last and shows only while something is in it.
     this.more = document.createElement('div');
     this.more.className = 'toolbar-item toolbar-more';
@@ -124,7 +144,7 @@ export class PageToolbar {
     this.moreButton = toolButton(MORE_TOOLS_LABEL, 'ellipsis');
     this.moreButton.setAttribute('aria-haspopup', 'menu');
     this.moreButton.setAttribute('aria-expanded', 'false');
-    this.moreButton.addEventListener('click', () => this.setMenus(false, this.moreMenu.hidden));
+    this.moreButton.addEventListener('click', () => this.setMenu(this.moreMenu.hidden ? 'more' : null));
     this.more.append(this.moreButton, this.moreMenu);
     root.append(this.more);
     this.bind();
@@ -132,7 +152,7 @@ export class PageToolbar {
   }
 
   /** The page's tool, shape or tray changed. */
-  update(state: Partial<Pick<ToolbarState, 'tool' | 'shape' | 'diceOpen'>>): void {
+  update(state: Partial<Pick<ToolbarState, 'tool' | 'shape' | 'diceOpen' | 'laserColor'>>): void {
     this.state = { ...this.state, ...state };
     this.render();
   }
@@ -149,11 +169,11 @@ export class PageToolbar {
       control.entry.hidden = !hidden.has(id);
     }
     this.more.hidden = hidden.size === 0;
-    if (this.more.hidden && !this.moreMenu.hidden) this.setMenus(this.state.measureMenuOpen, false);
+    if (this.more.hidden && !this.moreMenu.hidden) this.setMenu(this.state.measureMenuOpen ? 'measure' : this.state.laserMenuOpen ? 'laser' : null);
   }
 
   closeMenus(): void {
-    this.setMenus(false, false);
+    this.setMenu(null);
   }
 
   dispose(): void {
@@ -166,14 +186,47 @@ export class PageToolbar {
     else this.options.onTool(id);
   }
 
-  private setMenus(measureOpen: boolean, moreOpen: boolean): void {
-    this.state = { ...this.state, measureMenuOpen: measureOpen };
-    this.flyout.hidden = !measureOpen;
-    this.chevron.setAttribute('aria-expanded', String(measureOpen));
-    this.moreMenu.hidden = !moreOpen;
-    this.moreButton.setAttribute('aria-expanded', String(moreOpen));
-    // An open flyout keeps Measure in the bar.
+  /** The laser flyout: a round swatch per color and the hint for colour-blind players. */
+  private laserMenu(): HTMLElement {
+    const flyout = menu();
+    flyout.classList.add('swatch-menu');
+    const grid = document.createElement('div');
+    grid.className = 'swatch-grid';
+    for (const swatch of laserSwatches('')) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'swatch';
+      button.setAttribute('role', 'menuitemradio');
+      button.setAttribute('aria-label', swatch.ariaLabel);
+      button.style.setProperty('--swatch', swatch.value);
+      button.addEventListener('click', () => {
+        this.closeMenus();
+        this.options.onLaserColor(swatch.value);
+      });
+      this.swatchButtons.set(swatch.value, button);
+      grid.append(button);
+    }
+    const hint = document.createElement('p');
+    hint.className = 'menu-hint';
+    hint.textContent = LASER_COLOR_HINT;
+    flyout.append(grid, hint);
+    return flyout;
+  }
+
+  /** Opens one menu and closes the others; an open flyout keeps its tool in the bar. */
+  private setMenu(open: OpenMenu | null): void {
+    this.state = { ...this.state, measureMenuOpen: open === 'measure', laserMenuOpen: open === 'laser' };
+    this.flyout.hidden = open !== 'measure';
+    this.chevron.setAttribute('aria-expanded', String(open === 'measure'));
+    this.laserFlyout.hidden = open !== 'laser';
+    this.laserChevron.setAttribute('aria-expanded', String(open === 'laser'));
+    this.moreMenu.hidden = open !== 'more';
+    this.moreButton.setAttribute('aria-expanded', String(open === 'more'));
     this.fit();
+  }
+
+  private anyMenuOpen(): boolean {
+    return !this.flyout.hidden || !this.laserFlyout.hidden || !this.moreMenu.hidden;
   }
 
   private render(): void {
@@ -187,6 +240,11 @@ export class PageToolbar {
     const icon = toolIconUrl(measureIcon(this.state.shape));
     setIcon(measure.button, icon);
     setIcon(measure.entry, icon);
+    const current = this.state.laserColor.toLowerCase();
+    for (const [value, button] of this.swatchButtons) {
+      button.setAttribute('aria-checked', String(value === current));
+      button.classList.toggle('is-selected', value === current);
+    }
     this.fit();
   }
 
@@ -195,13 +253,13 @@ export class PageToolbar {
     const { root } = this.options;
     // An open menu takes Escape first: closing it is all Escape does then.
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || (this.flyout.hidden && this.moreMenu.hidden)) return;
+      if (event.key !== 'Escape' || !this.anyMenuOpen()) return;
       event.stopImmediatePropagation();
       this.closeMenus();
     }, { capture: true, signal });
     document.addEventListener('pointerdown', (event) => {
       if (event.target instanceof Node && root.contains(event.target)) return;
-      if (!this.flyout.hidden || !this.moreMenu.hidden) this.closeMenus();
+      if (this.anyMenuOpen()) this.closeMenus();
     }, { signal });
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', () => this.fit(), { signal });
