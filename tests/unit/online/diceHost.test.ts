@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { documentDiceFeed } from '../../../src/app/online/tools/diceFeed';
+import { documentDiceFeed } from '../../../src/app/online/diceFeed';
 import { DICE_LIMITS } from '../../../src/app/online/tools/toolMessages';
 import { DiceTool } from '../../../src/app/tools/DiceTool';
 import { rollFormula } from '../../../src/app/tools/diceRolling';
@@ -57,6 +57,42 @@ describe('DiceHost', () => {
     w.feed.publish(rollFormula('d20'));
     expect(w.logs(a).slice(-3).map((log) => log.entries[0]?.name)).toEqual(['GM', 'Hero', 'GM']);
     expect(JSON.stringify(a.received)).not.toContain('Orc');
+    w.finish();
+  });
+
+  it('never names a token without a live presented token id, in the log or the replay', async () => {
+    const w = toolsWorld();
+    const a = await w.join('A');
+    const statblock = (tokenId?: string): ReturnType<typeof rollFormula> => ({
+      ...rollFormula('d20'), source: { type: 'statblock', ...(tokenId ? { tokenId } : {}), tokenName: 'Hero', abilityName: 'Axe' },
+    });
+    // Nothing presented yet: even a token that exists later is not named.
+    w.feed.publish(statblock('hero'));
+    w.present();
+    // A statblock note roll has no token id; an unknown id names nothing either.
+    w.feed.publish(statblock());
+    w.feed.publish(statblock('nobody'));
+    // Held: the store shows another map than the one players have.
+    w.tabs.getState().setActiveTab(w.dungeon);
+    w.feed.publish(statblock('hero'));
+    w.tabs.getState().setActiveTab(w.tavern);
+    await vi.advanceTimersByTimeAsync(100);
+    w.feed.publish(statblock('hero'));
+    const live = w.logs(a).slice(1).map((log) => log.entries[0]?.name);
+    expect(live).toEqual(['GM', 'GM', 'GM', 'GM', 'Hero']);
+    const b = await w.join('B');
+    expect(w.logs(b)[0]?.entries.map((entry) => entry.name)).toEqual(['Hero', 'GM', 'GM', 'GM', 'GM']);
+    w.finish();
+  });
+
+  it('shows a player called GM as "GM (player)"', async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join(' gM ');
+    const b = await w.join('Bea');
+    a.session.sendDiceRoll({ d6: 1 }, 0);
+    b.session.sendDiceRoll({ d6: 1 }, 0);
+    expect(w.logs(b).slice(1).map((log) => log.entries[0]?.name)).toEqual(['GM (player)', 'Bea']);
     w.finish();
   });
 

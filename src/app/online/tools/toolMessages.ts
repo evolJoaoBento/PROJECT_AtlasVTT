@@ -22,13 +22,13 @@ export const DICE_LIMITS = {
 
 export const LASER_LIMITS = { points: 64, perSecond: 20 } as const;
 
-/** The name of a roll that is neither an online player's nor a visible statblock token's. */
+/** The name of a roll that is neither an online player's nor that of a visible token on the live presented scene. */
 export const GM_ROLLER_NAME = 'GM';
 
 /** One roll in the shared dice log. */
 export interface DiceLogEntry {
   id: string;
-  /** An online player's name, a visible statblock token's, or "GM". */
+  /** An online player's name ("GM (player)" for one called GM), a visible token's on the live presented scene, or "GM". */
   name: string;
   formula: string;
   dice: Array<{ die: string; value: number }>;

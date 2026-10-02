@@ -60,13 +60,25 @@ describe('LaserRelay', () => {
     w.finish();
   });
 
-  it('ignores more than 20 lasers a second from one player', async () => {
+  it('ignores more than 40 lasers a second from one player', async () => {
     const w = toolsWorld();
     w.present();
     const a = await w.join('A');
     const b = await w.join('B');
-    for (let i = 0; i < 25; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
-    expect(w.lasersOf(b)).toHaveLength(20);
+    for (let i = 0; i < 45; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
+    expect(w.lasersOf(b)).toHaveLength(40);
+    w.finish();
+  });
+
+  it('allows 40 lasers a second, and never limits a lift', async () => {
+    const w = toolsWorld();
+    w.present();
+    const a = await w.join('A');
+    const b = await w.join('B');
+    for (let i = 0; i < 45; i++) a.session.sendLaser([{ x: i, y: 0 }], false);
+    expect(w.lasersOf(b)).toHaveLength(40);
+    a.session.sendLaser([], true);
+    expect(w.lasersOf(b).at(-1)).toMatchObject({ from: a.playerId, lifted: true });
     w.finish();
   });
 

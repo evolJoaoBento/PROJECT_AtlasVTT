@@ -396,6 +396,8 @@ describe('OnlineSessionService', () => {
     expect(received.filter((message) => message.type === 'dice-log')).toHaveLength(2);
     svc.stop();
     expect(feed.listening()).toBe(0);
+    const before = received.filter((message) => message.type === 'dice-log').length;
     feed.publish(rollFormula('d6'));
+    expect(received.filter((message) => message.type === 'dice-log')).toHaveLength(before);
   });
 });

@@ -5,7 +5,7 @@
  */
 import { LaserHub, type RemoteLaser } from '../../../src/app/pixi/laser/LaserHub';
 import type { ControlMessage } from '../../../src/app/online/protocol';
-import type { DiceFeed } from '../../../src/app/online/tools/diceFeed';
+import type { DiceFeed } from '../../../src/app/online/diceFeed';
 import { DiceHost } from '../../../src/app/online/tools/DiceHost';
 import { LaserRelay } from '../../../src/app/online/tools/LaserRelay';
 import type { DiceRollResult } from '../../../src/app/tools/diceRolling';

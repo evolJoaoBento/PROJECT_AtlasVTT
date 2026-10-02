@@ -27,6 +27,17 @@ describe("LaserPointerRenderer and online play", () => {
     expect(events).toEqual([{ kind: 'point', x: 10, y: 20 }, { kind: 'lift' }]);
   });
 
+  it('lets the laser go when the window loses focus while pointing, and only then', () => {
+    const { self, events } = harness();
+    self.isPointing = false;
+    proto.handleWindowBlur!.call(self);
+    expect(events).toEqual([]);
+    self.isPointing = true;
+    proto.handleWindowBlur!.call(self);
+    expect(events).toEqual([{ kind: 'lift' }]);
+    expect(self.isPointing).toBe(false);
+  });
+
   it('lets the laser go when the pointer is released outside the canvas', () => {
     const { self, events } = harness();
     proto.handlePointerUpOutside!.call(self);

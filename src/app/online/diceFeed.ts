@@ -3,7 +3,7 @@
  * dice tray, statblock rolls and online rolls all dispatch, and which Atlas's dice log, toasts
  * and dice sounds listen to. A physical-dice integration that dispatches it is relayed too.
  */
-import { DICE_ROLLED_EVENT, type DiceRollResult } from '../../tools/diceRolling';
+import { DICE_ROLLED_EVENT, type DiceRollResult } from '../tools/diceRolling';
 
 export interface DiceFeed {
   subscribe(listener: (result: DiceRollResult) => void): () => void;

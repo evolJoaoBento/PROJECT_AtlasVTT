@@ -6,12 +6,12 @@
  * More than 2 rolls a second from one player are ignored. A `GmSession` handler, started after
  * the token control host.
  */
-import { diceFormula, rollerName, rollFormula, withoutHiddenToken, type DiceRollResult } from '../../tools/diceRolling';
+import { diceFormula, rollFormula, type DiceRollResult } from '../../tools/diceRolling';
 import type { SessionHandler, SessionPlayer } from '../GmSession';
 import type { ControlMessage } from '../protocol';
 import { RateLimit } from '../rateLimit';
 import type { PresentedSceneSource, SceneSession } from '../scene/sceneSources';
-import type { DiceFeed } from './diceFeed';
+import type { DiceFeed } from '../diceFeed';
 import { DICE_LIMITS, diceLogEntry, GM_ROLLER_NAME, type DiceLogEntry } from './toolMessages';
 
 export interface DiceHostOptions {
@@ -67,10 +67,19 @@ export class DiceHost implements SessionHandler {
     }
   }
 
-  /** A roll for a token hidden on the presented scene is named "GM", as the player window hides it. */
+  /**
+   * An online player's roll carries their name ("GM (player)" for a player called GM). A statblock
+   * roll carries its token's name only when `tokenId` is a visible token of the live presented
+   * scene; a roll with no token id, a hidden token, a held or loading scene or nothing presented is "GM".
+   */
   private nameOf(result: DiceRollResult): string {
-    const store = this.options.presented.current()?.store;
-    const isHidden = (tokenId: string): boolean => Boolean(store?.getState().objects?.tokens?.[tokenId]?.isHidden);
-    return rollerName(withoutHiddenToken(result, isHidden)) ?? GM_ROLLER_NAME;
+    if (result.rolledBy) return result.rolledBy.trim().toLowerCase() === GM_ROLLER_NAME.toLowerCase() ? `${GM_ROLLER_NAME} (player)` : result.rolledBy;
+    const { source } = result;
+    if (source?.type !== 'statblock' || !source.tokenName || !source.tokenId) return GM_ROLLER_NAME;
+    const live = this.options.presented.current();
+    if (!live || this.options.presented.isHeld()) return GM_ROLLER_NAME;
+    const state = live.store.getState();
+    const token = Object.hasOwn(state.objects?.tokens ?? {}, source.tokenId) ? state.objects.tokens[source.tokenId] : undefined;
+    return !state.isMapLoading && token && !token.isHidden ? source.tokenName : GM_ROLLER_NAME;
   }
 }

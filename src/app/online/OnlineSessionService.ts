@@ -15,7 +15,7 @@ import { AssetRegistry, type ImageFiles } from './scene/AssetRegistry';
 import { CameraSender } from './scene/CameraSender';
 import { TokenControlHost } from './control/TokenControlHost';
 import { DiceHost } from './tools/DiceHost';
-import { documentDiceFeed, type DiceFeed } from './tools/diceFeed';
+import { documentDiceFeed, type DiceFeed } from './diceFeed';
 import { LaserRelay } from './tools/LaserRelay';
 import { SceneBroadcaster, type PresentedSceneSource } from './scene/SceneBroadcaster';
 import { createPeerHost, type PeerServerOptions } from './transport/PeerTransport';

@@ -3,7 +3,7 @@
  * `from`, the sender's session id (anything the player put there is ignored), and shows in the
  * GM's view while the presented scene is live. The GM's own laser in that view goes to every
  * player from `gm`, batched like the page's. Lasers for another scene than the one players have
- * are dropped, more than 20 a second from one player are ignored, and nothing is stored. A
+ * are dropped, more than 40 a second from one player (never a lift) are ignored, and nothing is stored. A
  * player who leaves or is removed mid-stroke is let go everywhere. A `GmSession` handler.
  */
 import type { PresentedSceneInfo } from '../../services/PresentedScene';
@@ -25,7 +25,7 @@ export interface LaserRelayOptions {
 }
 
 export class LaserRelay implements SessionHandler {
-  private readonly limit = new RateLimit(LASER_LIMITS.perSecond);
+  private readonly limit = new RateLimit(LASER_LIMITS.perSecond * 2);
   private readonly batcher = new LaserBatcher((points, lifted) => this.relay(GM_LASER_ID, points, lifted, null));
   private readonly stops: Array<() => void> = [];
   /** The presented scene while it is live; the GM's laser is read from its view. */
@@ -58,7 +58,8 @@ export class LaserRelay implements SessionHandler {
   }
 
   onMessage(player: SessionPlayer, message: ControlMessage): void {
-    if (message.type !== 'laser' || !this.limit.allow(player.playerId, Date.now())) return;
+    // A lift is never limited, so a laser is never left held; other messages: 40 a second, twice the sender's rate.
+    if (message.type !== 'laser' || (!message.lifted && !this.limit.allow(player.playerId, Date.now()))) return;
     if (message.sceneId !== this.options.projection.currentProjection()?.sceneId) return;
     if (message.lifted) this.drawing.delete(player.playerId);
     else this.drawing.add(player.playerId);

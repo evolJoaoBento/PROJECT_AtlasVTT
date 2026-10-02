@@ -48,6 +48,7 @@ export class LaserPointerRenderer {
   private tickerCallback: (() => void) | null = null;
   private unsubscribeFromStore?: () => void;
   private onCanvasLeave: () => void;
+  private onWindowBlur: () => void;
 
   // Bound viewport handlers (stored for cleanup)
   private onPointerDown: (e: FederatedPointerEvent) => void;
@@ -118,9 +119,13 @@ export class LaserPointerRenderer {
     this.onCanvasLeave = (): void => {
       this.lastPointerScreen = null;
       this.pointer = null;
+      // Online players must not see a laser held where nobody points any more.
+      this.liftLaser();
       this.redraw();
     };
     this.canvasEl.addEventListener('mouseleave', this.onCanvasLeave);
+    this.onWindowBlur = this.handleWindowBlur.bind(this);
+    window.addEventListener('blur', this.onWindowBlur);
   }
 
   public getContainer(): Container {
@@ -209,6 +214,14 @@ export class LaserPointerRenderer {
       this.redraw();
       e.stopPropagation();
     }
+  }
+
+  /** The window lost focus mid-stroke: no pointer-up will come, so the laser is let go. */
+  private handleWindowBlur(): void {
+    if (!this.isPointing) return;
+    this.isPointing = false;
+    this.liftLaser();
+    this.redraw();
   }
 
   private handlePointerUpOutside(): void {
@@ -307,6 +320,7 @@ export class LaserPointerRenderer {
     this.viewport.off('pointerupoutside', this.onPointerUpOutside);
     this.viewport.off('moved', this.onViewportMoved);
     this.canvasEl.removeEventListener('mouseleave', this.onCanvasLeave);
+    window.removeEventListener('blur', this.onWindowBlur);
 
     this.trail.clear();
     destroyTree(this.container);
